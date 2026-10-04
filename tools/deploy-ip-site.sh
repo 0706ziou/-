@@ -354,7 +354,7 @@ PY
 fi
 GIT_TERMINAL_PROMPT=0 git -C "$task_source" -c http.lowSpeedLimit=1024 -c http.lowSpeedTime=60 \
   fetch --depth=1 --filter=blob:none origin "$commit"
-git -C "$task_source" checkout --detach -q FETCH_HEAD
+GIT_TERMINAL_PROMPT=0 git -C "$task_source" checkout --detach -q FETCH_HEAD
 [[ $(git -C "$task_source" rev-parse HEAD) == "$commit" ]] || fail 'Downloaded commit does not match.'
 node "$task_source/tools/package-site.cjs" --out deployment-artifacts/server-release
 # The packager prints and returns one archive plus a staged site directory.

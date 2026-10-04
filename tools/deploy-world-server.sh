@@ -160,11 +160,16 @@ trap 'exit 143' TERM
 printf '%s\n' '1/4 Fetching one fixed server blob and checking the release.'
 task_source=$(mktemp -d "$ops/source-XXXXXXXX")
 git -C "$task_source" init --bare --quiet
-git -C "$task_source" -c http.lowSpeedLimit=1024 -c http.lowSpeedTime=60 \
-  fetch --quiet --filter=blob:none --depth=1 "$repo" "$commit"
+git -C "$task_source" remote add origin "$repo"
+git -C "$task_source" config remote.origin.promisor true
+git -C "$task_source" config remote.origin.partialclonefilter blob:none
+git -C "$task_source" config http.lowSpeedLimit 1024
+git -C "$task_source" config http.lowSpeedTime 60
+GIT_TERMINAL_PROMPT=0 git -C "$task_source" \
+  fetch --quiet --filter=blob:none --depth=1 origin "$commit"
 [[ $(git -C "$task_source" rev-parse FETCH_HEAD) == "$commit" ]] || fail 'Fetched commit does not match the reviewed version.'
 # Raw bytes anchored by the Git commit; no Windows checkout/archive conversion.
-git -C "$task_source" cat-file blob "$commit:tools/world-server.py" > "$task_source/world-server.py"
+GIT_TERMINAL_PROMPT=0 git -C "$task_source" cat-file blob "$commit:tools/world-server.py" > "$task_source/world-server.py"
 python3 - "$task_source/world-server.py" <<'PY'
 import ast, pathlib, sys
 source = pathlib.Path(sys.argv[1]).read_bytes()
