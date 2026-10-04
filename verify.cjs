@@ -1439,7 +1439,11 @@ test('Four permanent research trees debit their costs and cap their shared next-
 test('Hero selection, training and research survive reload and stale saves receive safe growth defaults',({t,storage})=>{
   t.startScreen();t.profile.clearedStages=[2,5,8];t.profile.unlockedStage=9;t.profile.seeds=5000;t.profile.cores=1000;
   assert(t.selectHero('lime'));assert(t.trainHero('lime'));assert(t.researchTalent('insight'));t.saveProfile();
-  const loaded=createGame(storage);assert.equal(JSON.stringify(loaded.t.profile),JSON.stringify(t.profile));loaded.t.start();
+  const expected=JSON.parse(JSON.stringify(t.profile));
+  // This legacy fixture omits already earned rescue and first-clear equipment rewards.
+  expected.rescuedSprites=[2,5,8];expected.spriteLevels={2:0,5:0,8:0};
+  expected.inventory.weapon_pea={level:0};expected.inventory.charm_bloom={level:0};
+  const loaded=createGame(storage);assert.deepEqual(JSON.parse(JSON.stringify(loaded.t.profile)),expected);loaded.t.start();
   assert.equal(loaded.t.player.heroId,'lime');assert.equal(loaded.t.profile.heroLevels.lime,1);assert.equal(loaded.t.profile.talents.insight,1);
   const invalid=createGame(new Map([['orchard-save-v1',JSON.stringify({version:1,selectedHero:'lime',heroLevels:{orange:900,lime:900,fake:4},talents:{vitality:900,damage:-1,fake:4}})]]));
   assert.equal(invalid.t.profile.selectedHero,'lime');assert.equal(invalid.t.profile.heroLevels.orange,30);assert.equal(invalid.t.profile.heroLevels.lime,30);
