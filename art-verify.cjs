@@ -12,11 +12,11 @@ const seenHashes = new Set();
 const themes = new Set();
 let count = 0;
 const check = (value, message) => { if (!value) throw new Error(message); count++; };
-check(art.stages.length === 20, 'Exactly 20 stage illustrations');
+check(art.stages.length === 100, '100 stage art entries using 20 original illustrations');
 check(Object.isFrozen(art) && Object.isFrozen(art.stages), 'Art catalog immutable');
 for (const stage of art.stages) {
   check(stage.name === stages[stage.id - 1].name, 'Stage ' + stage.id + ' name preserved');
-  check(!themes.has(stage.theme), 'Stage ' + stage.id + ' unique theme');
+  check(stage.id > 20 || !themes.has(stage.theme), 'Stage ' + stage.id + ' unique theme');
   themes.add(stage.theme);
   check(Object.keys(stage.palette).join(',') === 'ground,grass,road,tree,accent' && Object.values(stage.palette).every(color => /^#[0-9a-f]{6}$/i.test(color)), 'Stage ' + stage.id + ' complete palette');
   const file = path.join(__dirname, stage.sourceImage);
@@ -26,7 +26,7 @@ for (const stage of art.stages) {
   const width = png.readUInt32BE(16), height = png.readUInt32BE(20);
   check(width > height && width >= 960 && height >= 540, 'Stage ' + stage.id + ' landscape resolution');
   const hash = crypto.createHash('sha256').update(png).digest('hex');
-  check(!seenHashes.has(hash), 'Stage ' + stage.id + ' independent image');
+  check(stage.id > 20 || !seenHashes.has(hash), 'Stage ' + stage.id + ' independent image');
   seenHashes.add(hash);
   const webp = fs.readFileSync(path.join(__dirname, stage.image));
   check(webp.toString('ascii', 0, 4) === 'RIFF' && webp.toString('ascii', 8, 12) === 'WEBP', 'Stage ' + stage.id + ' WEBP packing');
@@ -43,7 +43,7 @@ for (const stage of art.stages) {
   check(webp.length < png.length * .2, 'Stage ' + stage.id + ' compact website asset');
 }
 check(Object.keys(art.sprites).length === 16 && Object.values(art.sprites).every((frame, index) => frame === index), '16 sprite atlas frames ordered');
-check(Object.isFrozen(art.heroImages) && Object.keys(art.heroImages).length === 4, 'Four additional dedicated hero images');
+check(Object.isFrozen(art.heroImages) && Object.keys(art.heroImages).length === 9, 'Nine dedicated hero images');
 for (const [id, asset] of Object.entries(art.heroImages)) {
   const svg = fs.readFileSync(path.join(__dirname, asset), 'utf8');
   check(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"') && svg.includes('viewBox="0 0 128 128"'), id + ' valid local SVG');

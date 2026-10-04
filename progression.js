@@ -1,10 +1,10 @@
 /*
- * 果园远征：20 关独立配置。固定 398 普通虫、6→44 精英与前 N 位累计 Boss。
+ * 果园远征：100关、五个篇章。前20关保留原配置；后80关固定398普通虫、精英45→64、Boss短队列与渐进数值。
  * Boss 时间仅授予登场资格：首关 60 秒、第二关 65 / 110 秒，后期首位 60 秒。
  * 所有关卡同时最多 1 位 Boss；击败后额外 12 秒喘息，再按资格排程逐位放行。
  * 普通追击开局 20→36，每批 20→32，间隔 10→7 秒；精英首批 16→12 秒。
  * 普通、精英和 Boss 按不同压力曲线分别调校，飞虫始终慢于基础玩家 205 移速。
- * 表中 XP 字段仅是相对权重；每关精确分配 13,046 XP，完成 40 次关卡构筑选择。
+ * 表中 XP 字段仅是相对权重；每关精确分配 10,000 XP，完成 30 次关卡构筑选择。
  * 经验加成提前发放固定储备，不增关卡总量；动画、暂停与升级冻结战斗排程。
  */
 (() => {
@@ -231,10 +231,34 @@
       reward: { seeds: 405, cores: 15 }, firstClearGear: null
     }
   ];
+  const chapters = ['青叶启程', '月露群岛', '赤焰山林', '霜晶高原', '星辉王庭'];
+  for (let id = 21; id <= 100; id++) {
+    const base = stages[(id - 1) % 20], step = id - 20, chapter = Math.floor((id - 1) / 20);
+    const hpScale = 1 + step * .032, damageScale = 1 + step * .008;
+    const stats = (source, speed) => ({ ...source, hp: Math.round(source.hp * hpScale), damage: Math.round(source.damage * damageScale), speed });
+    const bossCount = id % 20 === 0 ? 10 : 5 + Math.floor((id - 21) / 20);
+    // A short procession ends with this stage's own boss; never demand 100 consecutive bosses.
+    const bossIds = Array.from({ length: bossCount - 1 }, (_, i) => Math.max(1, id - bossCount + 1 + i)).concat(id);
+    stages.push({
+      id, chapter: chapter + 1, name: chapters[chapter] + ' · ' + base.name,
+      description: chapters[chapter] + '第' + ((id - 1) % 20 + 1) + '站：' + (id % 20 === 0 ? '篇章决战，依次迎战10位虫王。' : '虫群逐步增强，搭配英雄训练与研究再出发。') + '击败虫王后有12秒喘息。',
+      fastCount: 236 + step % 5 * 4,
+      slow: stats(stages[19].slow, Math.min(144, 129 + step * .18)),
+      fast: stats(stages[19].fast, Math.min(194, 192 + step * .025)),
+      eliteStats: stats(stages[19].eliteStats, Math.min(174, 163 + step * .13)),
+      eliteCount: 44 + Math.ceil(step / 4), bossCount, bossIds,
+      initialPursuers: Math.min(44, 36 + Math.floor(step / 10)), batchSize: 32,
+      pursuitInterval: Math.max(6, 7 - step * .012), eliteFirstAt: 12,
+      eliteInterval: Math.max(5.8, 6.6 - step * .01), eliteBatchSize: 3,
+      bossFirstAt: 60, bossInterval: 28,
+      reward: { seeds: 405 + step * 20 + (id % 20 === 0 ? 200 : 0), cores: 15 + Math.floor(step / 4) + (id % 20 === 0 ? 5 : 0) },
+      firstClearGear: null
+    });
+  }
   window.ORCHARD_STAGES = Object.freeze(stages.map(stage => {
     const normalCount = 398;
-    const eliteCount = 4 + stage.id * 2;
-    const bossCount = stage.id;
+    const eliteCount = stage.eliteCount ?? (4 + stage.id * 2);
+    const bossCount = stage.bossCount ?? stage.id;
     const bossSchedule = Object.freeze(Array.from({ length: bossCount }, (_, index) =>
       Number((stage.bossFirstAt + index * stage.bossInterval).toFixed(1))
     ));
@@ -245,7 +269,7 @@
       eliteCount,
       elite: Object.freeze({ ...eliteStats, xp: stage.slow.xp * 4 }),
       bossCount,
-      bossIds: Object.freeze(Array.from({ length: bossCount }, (_, i) => i + 1)),
+      bossIds: Object.freeze(stage.bossIds || Array.from({ length: bossCount }, (_, i) => i + 1)),
       bossSchedule,
       bossActiveCap: 1,
       bossRecovery: 12,

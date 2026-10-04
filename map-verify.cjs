@@ -119,8 +119,8 @@ function run() {
   ];
   function check(name, callback) { callback(); checks++; console.log('PASS ' + name); }
   assert(maps && typeof maps.build === 'function', 'ORCHARD_MAPS.build must be shipped');
-  check('All twenty illustrated chapters have a matching playable world', () => {
-    assert.equal(art.stages.length, 20);
+  check('All one hundred chapters have a matching playable world', () => {
+    assert.equal(art.stages.length, 100);
     assert.equal(relics.length, 6, 'the chapter geometry keeps six slots independently of the 50-effect catalog');
     assert.deepEqual(Array.from(relics, point => point.id), Array.from({ length: 6 }, (_, index) => 'slot-' + (index + 1)));
     for (const chapter of art.stages) {
@@ -158,7 +158,7 @@ function run() {
     });
     check(label + ': the illustrated scene has its actual terrain and landmark anchors', () => {
       const kinds = new Set([...layout.areas, ...layout.landmarks, ...layout.obstacles].map(object => object.kind));
-      for (const kind of chapterFeatures[chapter.id - 1]) assert(kinds.has(kind), 'missing pictured scene feature: ' + kind);
+      for (const kind of chapterFeatures[(chapter.id - 1) % 20]) assert(kinds.has(kind), 'missing pictured scene feature: ' + kind);
       if (chapter.id === 5 || chapter.id === 17) {
         assert.equal(layout.landmarks.filter(landmark => landmark.kind === 'bridge').length, 3);
         assert(layout.landmarks.filter(landmark => landmark.kind === 'bridge').every(bridge => bridge.passable && bridge.clearWidth >= 180));

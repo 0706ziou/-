@@ -9,6 +9,7 @@ github-branch-backups/
 *.key
 *.log
 .*-result.txt
+.verify-*.txt
 .world-server-data/
 *.sqlite
 *.sqlite3

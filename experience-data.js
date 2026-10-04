@@ -1,13 +1,13 @@
 /*
- * 固定关卡经验账本。398 普通虫、精英、虫王共同分配完整 40 次升级。
- * XP 加成在关卡中提前释放储备，不改变 13,046 XP 的最终总额；无尽不使用账本。
+ * 固定关卡经验账本。398 普通虫、精英、虫王共同分配 30 次升级。
+ * XP 加成在关卡中提前释放储备，不改变 10,000 XP 的最终总额；无尽不使用账本。
  * 先加载本文件，再加载 progression.js。
  */
 (() => {
   'use strict';
-  const CHOICES = 40, LEVEL_CAP = CHOICES + 1;
-  // 放慢开局升级，保留每关既有经验总量。最大余数法消除 40 项取整误差。
-  const STAGE_BUDGET = 13046, FIRST_COST = 100, LINEAR_GROWTH = 2;
+  const CHOICES = 30, LEVEL_CAP = CHOICES + 1, CURVE_LEVELS = 40;
+  // 少发放经验并提高开局门槛；最大余数法保证通关恰好提供 30 次成长。
+  const STAGE_BUDGET = 10000, FIRST_COST = 180, LINEAR_GROWTH = 4;
   const sumIndices = CHOICES * (CHOICES - 1) / 2;
   const sumSquares = CHOICES * (CHOICES - 1) * (2 * CHOICES - 1) / 6;
   const quadraticGrowth = (STAGE_BUDGET - CHOICES * FIRST_COST - LINEAR_GROWTH * sumIndices) / sumSquares;
@@ -21,7 +21,8 @@
   const need = level => {
     const n = Math.max(0, Math.floor(Number(level) || 1) - 1);
     if (n < CHOICES) return costs[n];
-    // 第 41 级起延续原无尽成本，避免这次开局调整额外加快无尽成长。
+    // 无尽从 LV.31 接续同一条曲线，到 LV.40 后接回原来的后期成本。
+    if (n < CURVE_LEVELS) return Math.round(FIRST_COST + LINEAR_GROWTH * n + quadraticGrowth * n * n);
     return Math.round(10 + 7 * n + .35 * n * n);
   };
   function budget(choices = CHOICES) {

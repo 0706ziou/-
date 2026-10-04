@@ -208,3 +208,4 @@
   .hud { grid-template-columns: 80px minmax(0, 1fr) 54px; }
   .hud-help { min-width: 54px; font-size: 9px; }
 }
+.campaign-picker{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0;color:#b8cba5;font-size:12px}.campaign-picker label{display:flex;align-items:center;gap:8px}.campaign-picker select{background:#263e2d;color:#ecf3d1;border:1px solid #617b48;border-radius:8px;padding:8px;font:inherit;max-width:100%}.campaign-picker select:focus-visible{outline:2px solid #d0ed8b}

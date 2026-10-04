@@ -11,14 +11,14 @@ function plain(value) { return JSON.parse(JSON.stringify(value)); }
 function near(a, b) { assert(Math.abs(a - b) < 1e-9, a + ' != ' + b); }
 function profile(raw = {}, clearedStages = []) { return g.migrate(raw, { clearedStages, seeds: 321, cores: 9, version: 1 }); }
 
-test('eight unique, immutable heroes and four immutable talents', () => {
-  assert.equal(g.heroes.length, 8); assert.equal(new Set(g.heroes.map(h => h.id)).size, 8);
+test('thirteen unique, immutable heroes and four immutable talents', () => {
+  assert.equal(g.heroes.length, 13); assert.equal(new Set(g.heroes.map(h => h.id)).size, 13);
   assert.equal(g.talents.length, 4); assert(Object.isFrozen(g.heroes)); assert(Object.isFrozen(g.talents));
   assert(g.heroes.every(h => Object.isFrozen(h) && Object.isFrozen(h.active) && Object.isFrozen(h.runModifiers)));
 });
 test('old save receives neutral growth fields and preserves its resource fields', () => {
   const p = profile(); assert.equal(p.selectedHero, 'orange'); assert.equal(p.seeds, 321); assert.equal(p.cores, 9);
-  assert.deepEqual(plain(p.heroLevels), { orange: 0, berry: 0, pumpkin: 0, lime: 0, cherry: 0, pear: 0, blueberry: 0, pineapple: 0 });
+  assert.deepEqual(plain(p.heroLevels), { orange: 0, berry: 0, pumpkin: 0, lime: 0, cherry: 0, pear: 0, blueberry: 0, pineapple: 0, peach: 0, grape: 0, watermelon: 0, banana: 0, coconut: 0 });
   assert.deepEqual(plain(p.talents), { vitality: 0, damage: 0, rate: 0, insight: 0 });
 });
 test('migration returns the supplied profile object', () => { const p = { clearedStages: [] }; assert.equal(g.migrate(null, p), p); });
@@ -36,7 +36,7 @@ test('every hero can be selected and trained in a fresh profile without stage cl
     assert(g.isUnlocked(h, p)); assert(g.cost('hero', h.id, 0));
   }
 });
-test('all eight heroes are unlocked before entering the first stage', () => {
+test('all thirteen heroes are unlocked before entering the first stage', () => {
   assert(g.heroes.every(h => h.unlockStage === 0 && g.isUnlocked(h.id, {})));
 });
 test('hero lookup remains strict even though heroes are all initially unlocked', () => {
@@ -45,18 +45,18 @@ test('hero lookup remains strict even though heroes are all initially unlocked',
 });
 test('training levels sanitize NaN, strings, negatives, fractions and over-cap values', () => {
   const p = profile({ heroLevels: { orange: NaN, berry: '5', pumpkin: -10, lime: 99.9 } }, [20]);
-  assert.deepEqual(plain(p.heroLevels), { orange: 0, berry: 0, pumpkin: 0, lime: 5, cherry: 0, pear: 0, blueberry: 0, pineapple: 0 });
+  assert.deepEqual(plain(p.heroLevels), { orange: 0, berry: 0, pumpkin: 0, lime: 30, cherry: 0, pear: 0, blueberry: 0, pineapple: 0, peach: 0, grape: 0, watermelon: 0, banana: 0, coconut: 0 });
   assert.equal(profile({ heroLevels: { orange: 2.9 } }).heroLevels.orange, 2);
 });
 test('research levels are bounded and unknown fields are discarded', () => {
   const p = profile({ talents: { vitality: 99, damage: -2, rate: Infinity, insight: '5', invented: 10 } });
-  assert.deepEqual(plain(p.talents), { vitality: 8, damage: 0, rate: 0, insight: 0 });
+  assert.deepEqual(plain(p.talents), { vitality: 20, damage: 0, rate: 0, insight: 0 });
 });
 test('prototype-inherited growth values are ignored', () => {
   const inherited = Object.create({ selectedHero: 'lime', heroLevels: { orange: 5 }, talents: { vitality: 8 } });
   const p = profile(inherited, [20]); assert.equal(p.selectedHero, 'orange'); assert.equal(p.heroLevels.orange, 0); assert.equal(p.talents.vitality, 0);
 });
-test('hero training cost is positive and increases across all five levels', () => {
+test('hero training cost is positive and increases across all thirty levels', () => {
   let previous = 0;
   for (let level = 0; level < 5; level++) { const c = g.cost('hero', 'orange', level); assert(c.seeds > previous); assert(c.cores > 0); previous = c.seeds; }
   assert.deepEqual(plain(g.cost('hero', 'orange', 0)), { seeds: 60, cores: 1 });
@@ -70,15 +70,15 @@ test('every permanent research cost increases and reaches a true max-level stop'
   }
 });
 test('invalid and capped purchase requests never return a charge or credit', () => {
-  for (const level of [-1, .5, NaN, Infinity, '0', 5]) assert.equal(g.cost('hero', 'orange', level), null);
+  for (const level of [-1, .5, NaN, Infinity, '0', 30]) assert.equal(g.cost('hero', 'orange', level), null);
   assert.equal(g.cost('other', 'orange', 0), null); assert.equal(g.cost('talent', '__proto__', 0), null);
 });
 test('baseline orange retains neutral weapon/health/movement multipliers', () => {
   const s = g.makeRunStats(profile()); near(s.damageMult, 1); near(s.rateMult, 1); near(s.speedMult, 1);
   assert.equal(s.hp, 0); assert.equal(s.pickup, 0); assert.equal(s.standDamage, 0); near(s.skillCooldown, 1); near(s.xpMult, 1);
 });
-test('training cap contributes +12.5% damage, +25 health and -10% skill cooldown', () => {
-  const b = g.bonuses(profile({ heroLevels: { orange: 100 } })); near(b.damage, .125); near(b.hp, 25); near(b.skillCooldown, .9);
+test('training cap contributes +37.5% damage, +100 health and -30% cooldown', () => {
+  const b = g.bonuses(profile({ heroLevels: { orange: 100 } })); near(b.damage, .375); near(b.hp, 100); near(b.skillCooldown, .7);
   assert(Object.isFrozen(g.training)); near(g.training.damage, .025); near(g.training.hp, 5); near(g.training.cooldown, .02);
 });
 test('only the selected unlocked hero contributes training', () => {
@@ -87,7 +87,7 @@ test('only the selected unlocked hero contributes training', () => {
 });
 test('max permanent research stays within planned finite budgets', () => {
   const p = profile({ talents: { vitality: 999, damage: 999, rate: 999, insight: 999 } });
-  const b = g.bonuses(p); assert.equal(b.hp, 32); near(b.damage, .12); near(b.rate, .06); near(b.xpMult, 1.10);
+  const b = g.bonuses(p); assert.equal(b.hp, 80); near(b.damage, .40); near(b.rate, .20); near(b.xpMult, 1.30);
 });
 test('repeated stat assembly neither modifies save nor compounds permanent bonuses', () => {
   const p = profile({ heroLevels: { orange: 3 }, talents: { damage: 2, vitality: 3 } });
@@ -182,15 +182,15 @@ test('all fresh heroes stay within controlled starting damage, health and moveme
     assert(205 * s.speedMult + s.speed >= 190 && 205 * s.speedMult + s.speed <= 225, h.id + ': movement');
     assert(h.cooldown >= 14 && h.cooldown <= 20, h.id + ': cooldown');
     const spec = g.active(h, { damage: 22 * s.damageMult });
-    const totalTargets = spec.kind === 'volley' ? spec.count : spec.targets;
+    const totalTargets = ['volley', 'radialVolley'].includes(spec.kind) ? spec.count : spec.targets;
     assert(spec.damage * totalTargets * s.skillPower / spec.cooldown <= weaponDps, h.id + ': sustained max crowd skill damage');
   }
 });
-test('all eight heroes have the same attainable five-level training cost', () => {
+test('all thirteen heroes preserve the first five training costs and continue to level thirty', () => {
   for (const h of g.heroes) {
     let seeds = 0, cores = 0;
     for (let level = 0; level < 5; level++) { const c = g.cost('hero', h.id, level); seeds += c.seeds; cores += c.cores; }
-    assert.equal(seeds, 960); assert.equal(cores, 9); assert.equal(g.cost('hero', h.id, 5), null);
+    assert.equal(seeds, 960); assert.equal(cores, 9); assert(g.cost('hero', h.id, 5)); assert.equal(g.cost('hero', h.id, 30), null);
   }
 });
 test('maximum research and training are additive before hero multipliers, not repeatedly compounded', () => {

@@ -33,9 +33,9 @@ check('First boss survives at least ten seconds of naked standing weapon fire', 
   assert(bosses[0].hp / standingDps >= 10);
   assert(bosses[0].hp / standingDps <= 20);
 });
-for (const stage of stages) {
+for (const stage of stages.slice(0, 20)) {
   const boss = bosses[stage.id - 1];
-  check(`Chapter ${stage.id}: the fixed roster and exact forty-choice XP budget remain intact`, () => {
+  check(`Chapter ${stage.id}: the fixed roster and exact thirty-choice XP budget remain intact`, () => {
     assert.equal(stage.normalCount, 398);
     assert.equal(stage.eliteCount, 4 + stage.id * 2);
     assert.equal(stage.bossCount, stage.id);
@@ -43,9 +43,9 @@ for (const stage of stages) {
     assert.deepEqual(Array.from(stage.bossIds), Array.from({ length: stage.id }, (_, i) => i + 1));
     assert.equal(stage.xpRewards.length, stage.enemyCount);
     assert(stage.xpRewards.every(xp => Number.isInteger(xp) && xp > 0));
-    assert.equal(stage.xpRewards.reduce((sum, xp) => sum + xp, 0), 13046);
-    assert.equal(stage.experience.choices, 40);
-    assert.equal(stage.experience.levelCap, 41);
+    assert.equal(stage.xpRewards.reduce((sum, xp) => sum + xp, 0), 10000);
+    assert.equal(stage.experience.choices, 30);
+    assert.equal(stage.experience.levelCap, 31);
     assert(Object.isFrozen(stage));
   });
   check(`Chapter ${stage.id}: slower ordinary and elite enemies preserve a movement escape`, () => {

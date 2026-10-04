@@ -9,7 +9,7 @@
   const training = Object.freeze({ damage: .025, hp: 5, cooldown: .02 });
   const heroes = [
     {
-      id: 'orange', name: '橙橙', icon: '🍊', color: '#ffbb56', role: '站定爆发', unlockStage: 0, maxLevel: 5,
+      id: 'orange', name: '橙橙', icon: '🍊', color: '#ffbb56', role: '站定爆发', unlockStage: 0, maxLevel: 30,
       description: '均衡的橙子守卫，用日光冲击打开近身虫群。',
       statsText: '均衡基础属性',
       skillName: '日耀冲击', skillIcon: '☀', cooldown: 16,
@@ -20,7 +20,7 @@
       active: { kind: 'ring', radius: 220, power: 2.8, targets: 10, healOnHit: 5 }
     },
     {
-      id: 'berry', name: '莓莓', icon: '🍓', color: '#ff859c', role: '灵巧暴击', unlockStage: 0, maxLevel: 5,
+      id: 'berry', name: '莓莓', icon: '🍓', color: '#ff859c', role: '灵巧暴击', unlockStage: 0, maxLevel: 30,
       description: '穿过虫群的草莓游侠，擅长移动和连续齐射。',
       statsText: '基础伤害 −4% · 生命 −10 · 移速 +8%',
       skillName: '莓影齐射', skillIcon: '✦', cooldown: 14,
@@ -31,7 +31,7 @@
       active: { kind: 'volley', count: 7, spread: .95, speed: 520, life: 1.4, radius: 728, power: .8 }
     },
     {
-      id: 'pumpkin', name: '南瓜', icon: '🎃', color: '#ed9950', role: '坚韧控场', unlockStage: 0, maxLevel: 5,
+      id: 'pumpkin', name: '南瓜', icon: '🎃', color: '#ed9950', role: '坚韧控场', unlockStage: 0, maxLevel: 30,
       description: '厚实的南瓜卫士，用震地冲击创造安全距离。',
       statsText: '基础伤害 +3% · 生命 +28 · 移速 −4%',
       skillName: '震地重击', skillIcon: '◉', cooldown: 18,
@@ -42,7 +42,7 @@
       active: { kind: 'slam', radius: 240, power: 3.2, targets: 10, knockback: 80, slow: .35, bossSlow: .15, duration: 1.8 }
     },
     {
-      id: 'lime', name: '青柠', icon: '🍋', color: '#b5df72', role: '恢复采集', unlockStage: 0, maxLevel: 5,
+      id: 'lime', name: '青柠', icon: '🍋', color: '#b5df72', role: '恢复采集', unlockStage: 0, maxLevel: 30,
       description: '照顾同伴的青柠园丁，用回春脉冲维持长线探索。',
       statsText: '基础伤害 −6% · 生命 +5 · 拾取范围 +18 · 经验 +6%',
       skillName: '回春脉冲', skillIcon: '✚', cooldown: 20,
@@ -53,7 +53,7 @@
       active: { kind: 'healPulse', radius: 190, power: 1.2, targets: 10, healFlat: 5, healMaxHp: .07 }
     },
     {
-      id: 'cherry', name: '双双', icon: '🍒', color: '#f36c86', role: '双列穿透', unlockStage: 0, maxLevel: 5,
+      id: 'cherry', name: '双双', icon: '🍒', color: '#f36c86', role: '双列穿透', unlockStage: 0, maxLevel: 30,
       description: '总是结伴的樱桃姐妹，把成排的虫群变成齐射的靶场。',
       statsText: '基础伤害 −4% · 射速 +6% · 生命 −8',
       skillName: '双樱连珠', skillIcon: '⋈', cooldown: 16,
@@ -64,7 +64,7 @@
       active: { kind: 'volley', count: 12, rows: 2, rowOffset: 10, spread: .72, speed: 560, life: 1.35, radius: 756, power: .58 }
     },
     {
-      id: 'pear', name: '绒绒', icon: '🍐', color: '#d1df8a', role: '闪避护圈', unlockStage: 0, maxLevel: 5,
+      id: 'pear', name: '绒绒', icon: '🍐', color: '#d1df8a', role: '闪避护圈', unlockStage: 0, maxLevel: 30,
       description: '轻盈的梨子巡林者，以柔风切开包围，留出闪避的位置。',
       statsText: '基础伤害 −5% · 生命 +8 · 移速 +4%',
       skillName: '梨风旋环', skillIcon: '◎', cooldown: 16,
@@ -75,7 +75,7 @@
       active: { kind: 'ring', radius: 210, power: 2.4, targets: 10 }
     },
     {
-      id: 'blueberry', name: '墨墨', icon: '🫐', color: '#879aed', role: '连锁法术', unlockStage: 0, maxLevel: 5,
+      id: 'blueberry', name: '墨墨', icon: '🫐', color: '#879aed', role: '连锁法术', unlockStage: 0, maxLevel: 30,
       description: '收集月露的蓝莓术士，让一束电光沿虫群跳跃。',
       statsText: '基础伤害 −2% · 生命 −6 · 拾取范围 +12',
       skillName: '月露连锁', skillIcon: 'ϟ', cooldown: 18,
@@ -86,7 +86,7 @@
       active: { kind: 'chain', radius: 430, power: 1.45, targets: 5, jumpRadius: 190, falloff: .9 }
     },
     {
-      id: 'pineapple', name: '刺刺', icon: '🍍', color: '#e4c965', role: '荆棘坚守', unlockStage: 0, maxLevel: 5,
+      id: 'pineapple', name: '刺刺', icon: '🍍', color: '#e4c965', role: '荆棘坚守', unlockStage: 0, maxLevel: 30,
       description: '守在林间路口的菠萝卫兵，用果刺与短时护甲稳住阵脚。',
       statsText: '基础伤害 +2% · 生命 +18 · 移速 −4%',
       skillName: '金棘守阵', skillIcon: '▣', cooldown: 20,
@@ -97,14 +97,207 @@
       active: { kind: 'guardRing', radius: 220, power: 1.6, targets: 10, guardDefense: 3, guardDuration: 5 }
     }
   ];
+  heroes.push(...[
+  {
+    "id": "peach",
+    "name": "团团",
+    "icon": "🍑",
+    "color": "#f6b2bd",
+    "role": "治愈守护",
+    "description": "桃子医师撑起花瓣屏障，在危急时保护自己。",
+    "statsText": "生命 +16 · 基础伤害 −5%",
+    "skillName": "桃花庇护",
+    "skillIcon": "✚",
+    "cooldown": 20,
+    "skillDescription": "恢复生命上限8% + 6点生命，并获得固定减伤 +2，持续4秒。冷却20秒。",
+    "passiveName": "桃露回春",
+    "passiveDescription": "连续6秒未受生命伤害，每秒恢复0.4生命。",
+    "runModifiers": {
+      "damageMult": 0.95,
+      "rateMult": 1,
+      "hp": 16,
+      "speedMult": 1,
+      "speed": 0,
+      "pickup": 0,
+      "xpMult": 1,
+      "critChance": 0,
+      "defense": 0,
+      "regen": 0.4,
+      "regenDelay": 6,
+      "standDamage": 0
+    },
+    "active": {
+      "kind": "healGuard",
+      "radius": 180,
+      "power": 0,
+      "targets": 0,
+      "healFlat": 6,
+      "healMaxHp": 0.08,
+      "guardDefense": 2,
+      "guardDuration": 4
+    }
+  },
+  {
+    "id": "grape",
+    "name": "蹦蹦",
+    "icon": "🍇",
+    "color": "#bd95e5",
+    "role": "环射清群",
+    "description": "葡萄火炮手把一串葡萄籽洒向四面八方。",
+    "statsText": "射速 +8% · 生命 −8",
+    "skillName": "紫晶星雨",
+    "skillIcon": "✹",
+    "cooldown": 18,
+    "skillDescription": "朝四周均匀发射12枚葡萄弹，每枚造成当前伤害75%，各可穿透1只敌人；弹速480，持续1.5秒。冷却18秒。",
+    "passiveName": "连珠藤脉",
+    "passiveDescription": "基础武器射速 +8%，平均穿透 +0.2（每颗20%概率额外穿透一只）。",
+    "runModifiers": {
+      "damageMult": 1,
+      "rateMult": 1.08,
+      "hp": -8,
+      "speedMult": 1,
+      "speed": 0,
+      "pickup": 0,
+      "xpMult": 1,
+      "critChance": 0,
+      "defense": 0,
+      "regen": 0,
+      "regenDelay": 6,
+      "standDamage": 0,
+      "pierce": 0.2
+    },
+    "active": {
+      "kind": "radialVolley",
+      "radius": 720,
+      "power": 0.75,
+      "count": 12,
+      "speed": 480,
+      "life": 1.5,
+      "pierces": 1
+    }
+  },
+  {
+    "id": "watermelon",
+    "name": "盾盾",
+    "icon": "🍉",
+    "color": "#79d7a2",
+    "role": "冰霜壁垒",
+    "description": "西瓜重卫用冰凉瓜汁冻结身边的虫群。",
+    "statsText": "生命 +24 · 移速 −4% · 固定减伤 +1",
+    "skillName": "冰瓜护盾",
+    "skillIcon": "❄",
+    "cooldown": 20,
+    "skillDescription": "对230范围内最多12个敌人造成当前伤害180%，减速45%持续3秒（Boss减速20%）；同时获得1层护盾，已有护盾时不叠加。冷却20秒。",
+    "passiveName": "厚实瓜皮",
+    "passiveDescription": "初始固定减伤 +1；站定蓄力后的伤害倍率额外 +10%。",
+    "runModifiers": {
+      "damageMult": 1,
+      "rateMult": 1,
+      "hp": 24,
+      "speedMult": 0.96,
+      "speed": 0,
+      "pickup": 0,
+      "xpMult": 1,
+      "critChance": 0,
+      "defense": 1,
+      "regen": 0,
+      "regenDelay": 6,
+      "standDamage": 0.1
+    },
+    "active": {
+      "kind": "frostShield",
+      "radius": 230,
+      "power": 1.8,
+      "targets": 12,
+      "slow": 0.45,
+      "bossSlow": 0.2,
+      "duration": 3
+    }
+  },
+  {
+    "id": "banana",
+    "name": "弯弯",
+    "icon": "🍌",
+    "color": "#f3dc7e",
+    "role": "冲刺突围",
+    "description": "香蕉斥候沿着果皮滑步，在包围中穿出一条路。",
+    "statsText": "移速 +8% · 基础伤害 −3% · 生命 −6",
+    "skillName": "蕉影滑步",
+    "skillIcon": "➶",
+    "cooldown": 14,
+    "skillDescription": "朝移动方向（静止时朝最后朝向）冲刺210距离，冲刺时绕不过实体障碍；获得0.6秒无敌，并在落点对170范围内最多8个敌人造成当前伤害220%。冷却14秒。",
+    "passiveName": "轻步果皮",
+    "passiveDescription": "初始闪避率 +5%，移速 +8%。",
+    "runModifiers": {
+      "damageMult": 0.97,
+      "rateMult": 1,
+      "hp": -6,
+      "speedMult": 1.08,
+      "speed": 0,
+      "pickup": 0,
+      "xpMult": 1,
+      "critChance": 0,
+      "defense": 0,
+      "regen": 0,
+      "regenDelay": 6,
+      "standDamage": 0,
+      "dodge": 0.05
+    },
+    "active": {
+      "kind": "dashStrike",
+      "radius": 170,
+      "power": 2.2,
+      "targets": 8,
+      "distance": 210,
+      "invDuration": 0.6
+    }
+  },
+  {
+    "id": "coconut",
+    "name": "船船",
+    "icon": "🥥",
+    "color": "#d2b998",
+    "role": "远程斩杀",
+    "description": "椰子猎手瞄准负伤虫王，投出沉重的果核。",
+    "statsText": "基础伤害 +4% · 射速 −4% · 生命 +12",
+    "skillName": "椰核终击",
+    "skillIcon": "◆",
+    "cooldown": 18,
+    "skillDescription": "锁定600范围内生命比例最低的1个敌人，造成当前伤害400%；目标生命不高于30%时造成800%。冷却18秒。",
+    "passiveName": "坚壳猎手",
+    "passiveDescription": "初始固定减伤 +1，基础伤害 +4%。",
+    "runModifiers": {
+      "damageMult": 1.04,
+      "rateMult": 0.96,
+      "hp": 12,
+      "speedMult": 1,
+      "speed": 0,
+      "pickup": 0,
+      "xpMult": 1,
+      "critChance": 0,
+      "defense": 1,
+      "regen": 0,
+      "regenDelay": 6,
+      "standDamage": 0
+    },
+    "active": {
+      "kind": "execute",
+      "radius": 600,
+      "power": 4,
+      "targets": 1,
+      "threshold": 0.3,
+      "executePower": 8
+    }
+  }
+].map(item => ({ ...item, unlockStage: 0, maxLevel: 30 })));
   const talents = [
-    { id: 'vitality', name: '丰汁研究', icon: '♥', maxLevel: 8, description: '每级永久生命上限 +4，满级 +32。',
+    { id: 'vitality', name: '丰汁研究', icon: '♥', maxLevel: 20, description: '每级永久生命上限 +4，满级 +80。',
       bonus: { hp: 4 }, baseSeeds: 45, seedStep: 25, seedCurve: 6, baseCores: 1, coreStep: 3 },
-    { id: 'damage', name: '日光淬籽', icon: '☀', maxLevel: 6, description: '每级永久基础伤害 +2%，满级 +12%。',
+    { id: 'damage', name: '日光淬籽', icon: '☀', maxLevel: 20, description: '每级永久基础伤害 +2%，满级 +40%。',
       bonus: { damage: .02 }, baseSeeds: 65, seedStep: 35, seedCurve: 8, baseCores: 2, coreStep: 2 },
-    { id: 'rate', name: '枝脉传导', icon: '»', maxLevel: 6, description: '每级永久基础射速 +1%，满级 +6%。',
+    { id: 'rate', name: '枝脉传导', icon: '»', maxLevel: 20, description: '每级永久基础射速 +1%，满级 +20%。',
       bonus: { rate: .01 }, baseSeeds: 60, seedStep: 30, seedCurve: 8, baseCores: 2, coreStep: 2 },
-    { id: 'insight', name: '虫群研习', icon: '✧', maxLevel: 5, description: '每级经验倍率 +2%，满级 +10%；关卡提前领取固定经验预算，无尽增加经验收益，与装备倍率相乘。',
+    { id: 'insight', name: '虫群研习', icon: '✧', maxLevel: 15, description: '每级经验倍率 +2%，满级 +30%；关卡提前领取固定经验预算，无尽增加经验收益，与装备倍率相乘。',
       bonus: { xpBonus: .02 }, baseSeeds: 55, seedStep: 30, seedCurve: 7, baseCores: 1, coreStep: 2 }
   ];
   for (const item of heroes) { Object.freeze(item.runModifiers); Object.freeze(item.active); Object.freeze(item); }
@@ -120,7 +313,7 @@
     const item = typeof heroOrId === 'string' ? hero(heroOrId) : hero(heroOrId?.id);
     if (!item) return false;
     if (!item.unlockStage) return true;
-    return Array.isArray(profile?.clearedStages) && profile.clearedStages.some(stage => Number.isInteger(stage) && stage >= item.unlockStage && stage <= 20);
+    return Array.isArray(profile?.clearedStages) && profile.clearedStages.some(stage => Number.isInteger(stage) && stage >= item.unlockStage && stage <= 100);
   }
   function migrate(raw, resultProfile = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
@@ -138,14 +331,18 @@
   function cost(kind, id, level = 0) {
     const item = kind === 'hero' ? hero(id) : kind === 'talent' ? talent(id) : null;
     if (!item || !Number.isInteger(level) || level < 0 || level >= item.maxLevel) return null;
-    if (kind === 'hero') return { seeds: 60 + level * 30 + level * level * 12, cores: 1 + Math.floor(level / 2) };
+    if (kind === 'hero') {
+      if (level < 5) return { seeds: 60 + level * 30 + level * level * 12, cores: 1 + Math.floor(level / 2) };
+      const step = level - 5;
+      return { seeds: 510 + step * 60 + step * step * 4, cores: 3 + Math.floor(step / 3) };
+    }
     return { seeds: item.baseSeeds + level * item.seedStep + level * level * item.seedCurve, cores: item.baseCores + Math.floor(level / item.coreStep) };
   }
   function bonuses(profile = {}) {
     const selected = hero(profile.selectedHero);
     const current = selected && isUnlocked(selected, profile) ? selected : hero('orange');
     const level = integer(ownValue(profile.heroLevels, current.id), 0, current.maxLevel);
-    const result = { damage: level * training.damage, rate: 0, hp: level * training.hp, speed: 0, pickup: 0, xpMult: 1, skillCooldown: 1 - level * training.cooldown };
+    const result = { damage: Math.min(level, 5) * training.damage + Math.max(0, level - 5) * .01, rate: 0, hp: Math.min(level, 5) * training.hp + Math.max(0, level - 5) * 3, speed: 0, pickup: 0, xpMult: 1, skillCooldown: 1 - Math.min(level, 5) * training.cooldown - Math.max(0, level - 5) * .008 };
     for (const item of talents) {
       const level = integer(ownValue(profile.talents, item.id), 0, item.maxLevel);
       for (const [key, amount] of Object.entries(item.bonus)) {
@@ -171,7 +368,7 @@
     const spec = item.active, damage = Math.max(0, finite(player.damage));
     const result = { ...spec, heroId: item.id, name: item.skillName, color: item.color, damage: damage * spec.power,
       cooldown: item.cooldown * Math.max(.12, Math.min(1, finite(player.skillCooldown, 1))) };
-    if (spec.kind === 'healPulse') {
+    if (['healPulse', 'healGuard'].includes(spec.kind)) {
       const maxHp = Math.max(0, finite(player.maxHp)), hp = Math.max(0, finite(player.hp));
       result.heal = Math.max(0, Math.min(Math.max(0, maxHp - hp), spec.healFlat + maxHp * spec.healMaxHp));
     }

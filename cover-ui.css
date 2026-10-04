@@ -16,11 +16,12 @@ body.is-cover > .shell { visibility: hidden; pointer-events: none; }
 }
 .cover-vignette { background: linear-gradient(90deg, #071e1885, #0c231a05 58%, #0c251b75), linear-gradient(0deg, #102b1ada, #112b1c00 48%, #102b194f); }
 .cover-layout {
-  width: min(1160px, 100%); min-width: 0; min-height: 0;
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
-  align-items: center; gap: clamp(35px, 6vw, 94px);
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(380px, calc(100% - 60px)); min-width: 0; min-height: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  align-items: center;
 }
-.cover-story { min-width: 0; align-self: stretch; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; padding: 20px 0; }
+.cover-story { position: absolute; top: 50%; right: calc(100% + 35px); transform: translateY(-50%); width: min(380px, calc(50vw - 260px)); min-width: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; padding: 20px 0; }
 .cover-kicker { display: inline-block; margin-bottom: 18px; color: #e2efb7; font-size: 10px; font-weight: 600; letter-spacing: 5px; text-shadow: 0 2px 9px #10271b; }
 .cover-title { margin: 0; max-width: 620px; color: #fff0c6; font-size: clamp(42px, 5.5vw, 74px); font-weight: 900; letter-spacing: 3px; line-height: 1.2; text-shadow: 0 3px 0 #285333, 0 8px 24px #103723; }
 .cover-title > span { display: block; }
@@ -68,7 +69,8 @@ body.is-cover > .shell { visibility: hidden; pointer-events: none; }
 .login-panel .cover-submit:active:enabled { transform: translateY(2px); box-shadow: 0 2px 0 #31552b; }
 .login-panel .cover-submit:disabled { opacity: .65; cursor: wait; transform: none; }
 .login-storage-note { display: block; margin-top: 17px; color: #7b856e; font-size: 9px; line-height: 1.6; }
-.cover-footer { position: absolute; bottom: max(15px, env(safe-area-inset-bottom)); left: 25px; right: 25px; color: #e5edc0a6; font-size: 9px; letter-spacing: 2px; text-align: center; pointer-events: none; }
+.cover-footer { position: absolute; bottom: max(24px, env(safe-area-inset-bottom)); right: max(30px, env(safe-area-inset-right)); color: #fff3d2; font-size: 13px; line-height: 1.8; letter-spacing: .6px; text-align: right; text-shadow: 0 2px 6px #081e16, 0 0 12px #081e16; pointer-events: none; }
+.cover-footer > span { display: block; }
 
 /* A small account badge remains available after logging in. */
 .account-menu { display: inline-flex; align-items: center; justify-content: flex-end; gap: 9px; min-width: 0; padding: 7px 10px; border: 1px solid #68844c; border-radius: 11px; background: #233c2be6; }
@@ -81,17 +83,16 @@ body.is-cover > .shell { visibility: hidden; pointer-events: none; }
 
 @media (max-width: 1000px) {
   .cover-screen { padding: 27px 25px 30px; }
-  .cover-layout { grid-template-columns: minmax(0, 1fr) minmax(300px, 350px); gap: 27px; }
-  .cover-title { font-size: clamp(35px, 5.2vw, 57px); letter-spacing: 1px; }
-  .cover-tagline { font-size: 13px; }
-  .cover-kicker { letter-spacing: 3px; }
-  .cover-features { gap: 6px; }
-  .cover-feature-chip { font-size: 10px; padding: 6px 8px; }
+  .cover-story { top: auto; bottom: calc(100% + 18px); right: auto; left: 50%; transform: translateX(-50%); width: calc(100vw - 40px); padding: 0; align-items: center; text-align: center; }
+  .cover-title { font-size: 30px; letter-spacing: 1px; }
+  .cover-title > span { display: inline; }
+  .cover-kicker { margin-bottom: 7px; font-size: 8px; letter-spacing: 3px; }
+  .cover-tagline, .cover-features, .cover-note { display: none; }
   .login-panel { padding: 23px 25px 21px; }
+  .cover-footer { right: max(20px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); font-size: 11px; line-height: 1.65; letter-spacing: .4px; }
 }
 @media (max-height: 760px) and (min-width: 701px) {
   .cover-screen { padding-top: 15px; padding-bottom: 24px; }
-  .cover-story { padding: 12px 0; }
   .cover-note { padding-top: 50px; }
   .login-panel { padding: 19px 25px 17px; border-radius: 20px; }
   .login-emblem { width: 39px; height: 39px; margin-bottom: 10px; border-radius: 12px; font-size: 25px; }
@@ -101,16 +102,15 @@ body.is-cover > .shell { visibility: hidden; pointer-events: none; }
   .login-form input { height: 38px; padding-top: 9px; padding-bottom: 9px; }
   .login-panel .cover-submit { min-height: 38px; padding: 9px 12px; }
   .login-storage-note { margin-top: 12px; }
-  .cover-footer { bottom: 7px; }
 }
 @media (max-width: 700px) and (orientation: portrait) {
   .cover-screen { align-items: center; padding: max(18px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
   .cover-art { background-position: 33% center; }
   .cover-vignette { background: linear-gradient(180deg, #112d217a, #1d392937 40%, #132f25bd); }
-  .cover-layout { width: min(410px, 100%); grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .cover-layout { width: min(410px, calc(100% - 40px)); }
   .cover-story { padding: 0; align-items: center; text-align: center; }
   .cover-kicker { margin-bottom: 7px; font-size: 9px; letter-spacing: 3px; }
-  .cover-title { font-size: clamp(32px, 9vw, 45px); letter-spacing: 2px; line-height: 1.18; }
+  .cover-title { font-size: clamp(28px, 7vw, 34px); letter-spacing: 2px; line-height: 1.18; }
   .cover-title > span { display: inline; }
   .cover-tagline { margin-top: 8px; max-width: none; font-size: 11px; line-height: 1.6; }
   .cover-features { justify-content: center; margin-top: 11px; gap: 6px; }
@@ -124,12 +124,10 @@ body.is-cover > .shell { visibility: hidden; pointer-events: none; }
   .login-form { gap: 10px; }
   .login-form input { font-size: 16px; height: 42px; }
   .login-storage-note { margin-top: 13px; font-size: 9px; }
-  .cover-footer { bottom: max(7px, env(safe-area-inset-bottom)); font-size: 8px; letter-spacing: 1px; }
 }
 @media (max-width: 700px) and (orientation: portrait) and (max-height: 690px) {
-  .cover-layout { gap: 13px; }
   .cover-screen { padding-top: 13px; padding-bottom: 23px; }
-  .cover-title { font-size: 34px; }
+  .cover-title { font-size: 28px; }
   .cover-tagline { margin-top: 5px; }
   .cover-features { display: none; }
   .login-panel { padding: 17px 20px 15px; }
@@ -140,8 +138,8 @@ body.is-cover > .shell { visibility: hidden; pointer-events: none; }
 }
 @media (max-height: 490px) and (orientation: landscape) {
   .cover-screen { padding: 11px 23px 20px; }
-  .cover-layout { width: min(930px, 100%); grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); gap: 25px; }
-  .cover-story { align-self: center; padding: 0; }
+  .cover-layout { width: min(320px, calc(100% - 40px)); }
+  .cover-story { display: none; }
   .cover-title { font-size: clamp(28px, 5vw, 45px); }
   .cover-kicker { margin-bottom: 10px; font-size: 8px; letter-spacing: 2px; }
   .cover-tagline { margin-top: 11px; font-size: 11px; line-height: 1.6; }
@@ -161,7 +159,7 @@ body.is-cover > .shell { visibility: hidden; pointer-events: none; }
   .login-feedback:empty { min-height: 0; }
   .login-panel .cover-submit { min-height: 32px; padding: 7px 10px; font-size: 11px; box-shadow: 0 3px 0 #31552b; }
   .login-storage-note { margin-top: 9px; font-size: 8px; line-height: 1.45; }
-  .cover-footer { bottom: 5px; font-size: 8px; }
+  .cover-footer { bottom: max(8px, env(safe-area-inset-bottom)); font-size: 9px; line-height: 1.5; }
 }
 @media (max-width: 850px) {
   .account-menu { gap: 6px; padding: 5px 7px; border-radius: 8px; }
@@ -175,15 +173,12 @@ body.is-cover > .shell { visibility: hidden; pointer-events: none; }
 }
 /* Virtual keyboards and unusually short screens retain access to every field. */
 @media (max-height: 340px), (max-width: 700px) and (orientation: portrait) and (max-height: 540px) {
-  .cover-screen { display: block; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
-  .cover-layout { margin: 0 auto; }
   .cover-story { display: none; }
-  .cover-layout { grid-template-columns: minmax(0, 1fr); width: min(370px, 100%); }
-  .cover-footer { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .login-panel .cover-submit { transition: none; }
 }
 /* Form feedback and a virtual keyboard must not hide the submit action. */
 .login-panel { max-height: calc(100dvh - 56px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: #8ca56a #f0f1dc; }
-@media (max-height: 490px) and (orientation: landscape) { .login-panel { max-height: calc(100dvh - 31px); } }
+@media (max-width: 1000px) { .login-panel { max-height: calc(100dvh - 156px); } }
+@media (max-height: 490px) and (orientation: landscape) { .login-panel { max-height: calc(100dvh - 116px); } }

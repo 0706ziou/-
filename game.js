@@ -84,9 +84,9 @@
       const raw = JSON.parse(window.localStorage.getItem(currentSaveKey) || 'null');
       if (!raw || raw.version !== 1) return result;
       result.tutorialSeen = raw.tutorialSeen === true;
-      result.unlockedStage = integer(raw.unlockedStage, 1, 20);
+      result.unlockedStage = integer(raw.unlockedStage, 1, stages.length);
       result.seeds = integer(raw.seeds, 0, 999999); result.cores = integer(raw.cores, 0, 999999);
-      result.clearedStages = [...new Set((Array.isArray(raw.clearedStages) ? raw.clearedStages : []).filter(n => Number.isInteger(n) && n >= 1 && n <= 20))];
+      result.clearedStages = [...new Set((Array.isArray(raw.clearedStages) ? raw.clearedStages : []).filter(n => Number.isInteger(n) && n >= 1 && n <= stages.length))];
       result.orchard.level = integer(raw.orchard?.level, 0, 10);
       // Old saves already completed these rescues; preserve their earned residents on migration.
       const residents = Array.isArray(raw.rescuedSprites) ? raw.rescuedSprites : result.clearedStages;
@@ -99,7 +99,7 @@
         const id = raw.equipped?.[slot];
         if (result.inventory[id] && gearDefs[id]?.slot === slot) result.equipped[slot] = id;
       }
-      if (result.clearedStages.length) result.unlockedStage = Math.max(result.unlockedStage, Math.min(20, Math.max(...result.clearedStages) + 1));
+      if (result.clearedStages.length) result.unlockedStage = Math.max(result.unlockedStage, Math.min(stages.length, Math.max(...result.clearedStages) + 1));
       growth.migrate(raw, result);
     } catch { storageAvailable = false; }
     return result;
@@ -124,7 +124,7 @@
       xpMult: charm.xpMult * heroStats.xpMult, bulletColor: weapon.color, xp: 0, need: experienceNeed(1), level: 1, inv: 0, upgrades: {},
       heroId: heroStats.heroId, heroClock: 0, heroCasts: 0, skillCooldown: heroStats.skillCooldown, baseSkillCooldown: heroStats.skillCooldown, critChance: heroStats.critChance,
       critMultiplier: heroStats.critMultiplier, pierce: heroStats.pierce, regen: heroStats.regen, regenDelay: heroStats.regenDelay, sinceHit: 0,
-      dodge: heroStats.dodge || 0, thorns: heroStats.thorns || 0, skillPower: heroStats.skillPower || 1, standPower: heroStats.standPower || 0,
+      dodge: heroStats.dodge || 0, thorns: heroStats.thorns || 0, skillPower: heroStats.skillPower || 1, standPower: heroStats.standDamage || 0,
       guardUntil: 0, guardDefense: 0,
       skills: {}, skillTimers: {}, shield: 0, facingX: 1, facingY: 0, leechEvents: [], killHealEvents: [] };
     builds.init(result); return result;
@@ -199,7 +199,7 @@
   function showMenu(title, subtitle, body, actions, activeTab, note = '进度自动保存 · 所有操作无需滚轮') {
     if (!currentAccount) return false;
     const tabs = [['stages', '关卡挑战', 'navStages'], ['heroes', '英雄育成', 'navHeroes'], ['armory', '装备工坊', 'navArmory'], ['orchard', '我的果园', 'navOrchard'], ['map', '投放地图', 'navMap']];
-    show('<div class="menu-top"><div><div class="tag">' + subtitle + '</div><h2 class="menu-title">' + title + '</h2></div><div class="wallet">☀ 阳光籽 ' + profile.seeds + '　◆ 果核 ' + profile.cores + '<small>通关 ' + profile.clearedStages.length + ' / 20 · 精灵 ' + profile.rescuedSprites.length + ' / 20</small></div></div>' +
+    show('<div class="menu-top"><div><div class="tag">' + subtitle + '</div><h2 class="menu-title">' + title + '</h2></div><div class="wallet">☀ 阳光籽 ' + profile.seeds + '　◆ 果核 ' + profile.cores + '<small>通关 ' + profile.clearedStages.length + ' / ' + stages.length + ' · 精灵 ' + profile.rescuedSprites.length + ' / 20</small></div></div>' +
       '<nav class="menu-nav" aria-label="果园功能">' + tabs.map(([tab, name, id]) => '<button class="nav-button ' + (activeTab === tab ? 'active' : '') + '" id="' + id + '" aria-pressed="' + (activeTab === tab) + '">' + name + '</button>').join('') + '</nav>' +
       '<div class="menu-body">' + body + '</div><div class="menu-footer"><div class="menu-actions">' + actions + '</div><div class="micro">' + (!storageAvailable ? '浏览器存储不可用，进度仅在当前页面中保留' : note) + '</div></div>', true);
     el('navStages').onclick = startScreen; el('navHeroes').onclick = () => showHeroes(); el('navArmory').onclick = showArmory; el('navOrchard').onclick = showOrchard; el('navMap').onclick = showRelicMap;
@@ -373,8 +373,21 @@
   function activateHeroSkill() {
     if (state !== 'playing' || player.heroClock > 0) return false;
     const spec = growth.active(player.heroId, player); if (!spec) return false;
-    const targets = skillTargets(player.x, player.y, spec.radius).slice(0, spec.targets || 0);
-    if (spec.kind === 'volley') {
+    if (spec.kind === 'dashStrike') {
+      const direction = movementVector(), x = direction.moving ? direction.x : player.facingX, y = direction.moving ? direction.y : player.facingY;
+      world.move(player, x * spec.distance, y * spec.distance, obstacles, WORLD_W, WORLD_H);
+      player.inv = Math.max(player.inv, spec.invDuration); still = 0; updateCamera();
+    }
+    const candidates = skillTargets(player.x, player.y, spec.radius);
+    if (spec.kind === 'execute') candidates.sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
+    const targets = candidates.slice(0, spec.targets || 0);
+    if (spec.kind === 'radialVolley') {
+      for (let i = 0; i < spec.count; i++) {
+        const angle = i / spec.count * Math.PI * 2;
+        spawnSkillProjectile({ x: player.x, y: player.y, angle, speed: spec.speed, life: spec.life,
+          damage: spec.damage * player.skillPower, color: spec.color, pierce: spec.pierces });
+      }
+    } else if (spec.kind === 'volley') {
       const direction = movementVector(), x = direction.moving ? direction.x : player.facingX, y = direction.moving ? direction.y : player.facingY;
       const angle = Math.atan2(y, x);
       const rows = spec.rows || 1, perRow = Math.ceil(spec.count / rows);
@@ -394,16 +407,19 @@
       if (points.length > 1) relicEffect('hero-chain', { type: 'chain', points, color: spec.color, life: .6, max: .6 });
     } else {
       targets.forEach(enemy => {
-        skillHit(enemy, spec.damage * player.skillPower, spec.color);
+        const power = spec.kind === 'execute' && enemy.hp / enemy.maxHp <= spec.threshold ? spec.executePower / spec.power : 1;
+        skillHit(enemy, spec.damage * player.skillPower * power, spec.color);
+        if (spec.kind === 'frostShield') slowEnemy(enemy, enemy.boss ? spec.bossSlow : spec.slow, spec.duration);
         if (spec.kind === 'slam') {
           const dx = enemy.x - player.x, dy = enemy.y - player.y, length = Math.hypot(dx, dy) || 1;
           if (!enemy.boss) world.move(enemy, dx / length * spec.knockback, dy / length * spec.knockback, obstacles, WORLD_W, WORLD_H);
           slowEnemy(enemy, enemy.boss ? spec.bossSlow : spec.slow, spec.duration);
         }
       });
-      const heal = spec.kind === 'healPulse' ? spec.heal : targets.length ? spec.healOnHit || 0 : 0;
+      const heal = ['healPulse', 'healGuard'].includes(spec.kind) ? spec.heal : targets.length ? spec.healOnHit || 0 : 0;
       player.hp = Math.min(player.maxHp, player.hp + heal);
-      if (spec.kind === 'guardRing') { player.guardUntil = elapsed + spec.guardDuration; player.guardDefense = spec.guardDefense; }
+      if (spec.kind === 'frostShield') player.shield = Math.max(player.shield, 1);
+      if (['guardRing', 'healGuard'].includes(spec.kind)) { player.guardUntil = elapsed + spec.guardDuration; player.guardDefense = spec.guardDefense; }
       heroEffects.push({ x: player.x, y: player.y, radius: spec.radius, color: spec.color, life: .7, max: .7 });
     }
     player.heroClock = spec.cooldown; player.heroCasts++; sound(740, .18, .03);
@@ -443,7 +459,7 @@
   }
   function stage(id = selectedStage) { return stages[id - 1]; }
   function selectStage(id) {
-    if (!currentAccount || !Number.isInteger(id) || id < 1 || id > profile.unlockedStage || id > 20 || isRunActive()) return false;
+    if (!currentAccount || !Number.isInteger(id) || id < 1 || id > profile.unlockedStage || id > stages.length || isRunActive()) return false;
     selectedStage = id; setMap(id); resetRelics(true); challengeStarted = false; return true;
   }
   function renderLobby(id = selectedStage) {
@@ -451,23 +467,31 @@
     const s = stages[id - 1], unlocked = id <= profile.unlockedStage, cleared = profile.clearedStages.includes(id);
     const status = unlocked ? cleared ? '已通关 · 可以再次挑战' : '已解锁 · 等你守护' : '通关第 ' + (id - 1) + ' 关后解锁';
     const reward = s.firstClearGear ? ' · ' + gearDefs[s.firstClearGear].name : '';
-    show('<div class="lobby-heading"><div class="chapter-heading"><small class="chapter-eyebrow">ORCHARD GUARDIANS / 第 ' + String(id).padStart(2, '0') + ' 关</small><h2 class="chapter-name">' + s.name + '</h2><span class="chapter-status">' + status + '</span></div><div class="lobby-wallet">☀ ' + profile.seeds + '　◆ ' + profile.cores + '<small>通关 ' + profile.clearedStages.length + ' / 20 · 救援 ' + profile.rescuedSprites.length + ' / 20</small></div></div>' +
-      '<div class="menu-body lobby-body"><section class="chapter-showcase" aria-label="关卡图片"><img class="chapter-image" src="' + art.stages[id - 1].image + '" alt="' + s.name + '主题图"><div class="chapter-shade"></div><span class="chapter-ribbon">' + String(id).padStart(2, '0') + ' / 20 · ' + (unlocked ? cleared ? '已通关' : '可挑战' : '未解锁') + '</span>' +
-      '<button class="chapter-arrow previous" id="previousStage" aria-label="切换上一关" ' + (id === 1 ? 'disabled' : '') + '>‹</button><button class="chapter-arrow next" id="nextStagePreview" aria-label="切换下一关" ' + (id === 20 ? 'disabled' : '') + '>›</button>' +
+    show('<div class="lobby-heading"><div class="chapter-heading"><small class="chapter-eyebrow">ORCHARD GUARDIANS / 第 ' + String(id).padStart(2, '0') + ' 关</small><h2 class="chapter-name">' + s.name + '</h2><span class="chapter-status">' + status + '</span></div><div class="lobby-wallet">☀ ' + profile.seeds + '　◆ ' + profile.cores + '<small>通关 ' + profile.clearedStages.length + ' / ' + stages.length + ' · 救援 ' + profile.rescuedSprites.length + ' / 20</small></div></div>' +
+      '<div class="menu-body lobby-body"><section class="chapter-showcase" aria-label="关卡图片"><img class="chapter-image" style="filter:hue-rotate(' + (art.stages[id - 1].hue || 0) + 'deg)" src="' + art.stages[id - 1].image + '" alt="' + s.name + '主题图"><div class="chapter-shade"></div><span class="chapter-ribbon">' + String(id).padStart(2, '0') + ' / ' + stages.length + ' · ' + (unlocked ? cleared ? '已通关' : '可挑战' : '未解锁') + '</span>' +
+      '<button class="chapter-arrow previous" id="previousStage" aria-label="切换上一关" ' + (id === 1 ? 'disabled' : '') + '>‹</button><button class="chapter-arrow next" id="nextStagePreview" aria-label="切换下一关" ' + (id === stages.length ? 'disabled' : '') + '>›</button>' +
       '<div class="chapter-caption"><strong>守护这片果园</strong><span>' + s.description + '</span></div></section>' +
+      '<div class="campaign-picker"><label>篇章 <select id="chapterJump" aria-label="选择远征篇章">' + ['青叶启程', '月露群岛', '赤焰山林', '霜晶高原', '星辉王庭'].map((name, index) => '<option value="' + (index * 20 + 1) + '" ' + (Math.floor((id - 1) / 20) === index ? 'selected' : '') + '>' + (index + 1) + ' · ' + name + '</option>').join('') + '</select></label><label>关卡 <select id="stageJump" aria-label="选择篇章关卡">' + stages.slice(Math.floor((id - 1) / 20) * 20, Math.floor((id - 1) / 20) * 20 + 20).map(item => '<option value="' + item.id + '" ' + (item.id === id ? 'selected' : '') + '>第 ' + item.id + ' 关 · ' + (profile.clearedStages.includes(item.id) ? '✓' : item.id <= profile.unlockedStage ? '可挑战' : '未解锁') + '</option>').join('') + '</select></label></div>' +
       '<div class="chapter-brief"><span class="chapter-chip">普通 ' + s.normalCount + ' · 精英 ' + s.eliteCount + ' · Boss ' + s.bossCount + '</span><span class="chapter-chip">虫王 ' + s.bossSchedule[0] + ' 秒起 · 逐位登场</span><span class="chapter-chip">首通 ☀ ' + s.reward.seeds + ' · ◆ ' + s.reward.cores + reward + '</span></div></div>' +
       '<div class="menu-footer lobby-footer"><div class="lobby-actions"><button class="lobby-play primary" id="start" ' + (!unlocked ? 'disabled' : '') + '><span class="action-icon">▶</span><strong>' + (unlocked ? '进入游戏' : '关卡未解锁') + '</strong><small>' + (unlocked ? '挑战第 ' + id + ' 关' : '先通关第 ' + (id - 1) + ' 关') + '</small></button>' +
-      '<button class="lobby-feature secondary" id="navArmory"><span class="action-icon">⚒</span><strong>装备</strong><small>搭配与强化</small></button><button class="lobby-feature secondary" id="navHeroes"><span class="action-icon">✦</span><strong>英雄</strong><small>8 位初始解锁</small></button><button class="lobby-feature secondary" id="navOrchard"><span class="action-icon">♧</span><strong>果园</strong><small>精灵与养成</small></button></div>' +
+      '<button class="lobby-feature secondary" id="navArmory"><span class="action-icon">⚒</span><strong>装备</strong><small>搭配与强化</small></button><button class="lobby-feature secondary" id="navHeroes"><span class="action-icon">✦</span><strong>英雄</strong><small>13 位初始解锁</small></button><button class="lobby-feature secondary" id="navOrchard"><span class="action-icon">♧</span><strong>果园</strong><small>精灵与养成</small></button></div>' +
       '<div class="lobby-bottom"><span class="lobby-note">' + (!storageAvailable ? '浏览器存储不可用，进度仅在当前页面中保留' : escapeHTML(sessionGreeting) + (sessionGreeting ? ' · ' : '') + '出战：' + growth.hero(profile.selectedHero).name) + '</span><button class="chapter-map-link" id="navMap" ' + (!unlocked ? 'disabled' : '') + '>本关地形与饰品 ↗</button></div></div>', true);
     overlay.classList.add('lobby-overlay'); arena.classList.add('is-lobby');
     el('start').onclick = () => { if (unlocked && state === 'lobby') start(); };
     el('previousStage').onclick = () => browseStage(-1); el('nextStagePreview').onclick = () => browseStage(1);
+    for (const key of ['chapterJump', 'stageJump']) el(key).onchange = () => {
+      if (state !== 'lobby') return;
+      const target = Number(el(key).value);
+      if (!Number.isInteger(target) || target < 1 || target > stages.length) return;
+      if (target <= profile.unlockedStage) { selectStage(target); player = freshPlayer(); updateCamera(); updateHUD(); }
+      renderLobby(target);
+    };
     el('navArmory').onclick = showArmory; el('navHeroes').onclick = () => { inspectedHero = profile.selectedHero; showHeroes('heroes'); }; el('navOrchard').onclick = showOrchard;
     el('navMap').onclick = () => { if (unlocked && state === 'lobby') showRelicMap(); };
   }
   function browseStage(direction) {
     if (state !== 'lobby' || ![-1, 1].includes(direction)) return false;
-    const id = Math.max(1, Math.min(20, previewStage + direction));
+    const id = Math.max(1, Math.min(stages.length, previewStage + direction));
     if (id === previewStage) return false;
     if (id <= profile.unlockedStage) { selectStage(id); player = freshPlayer(); updateCamera(); updateHUD(); }
     renderLobby(id); return true;
@@ -517,7 +541,7 @@
     const owned = growth.isUnlocked(inspected, profile), level = profile.heroLevels[inspected.id] || 0;
     const cost = growth.cost('hero', inspected.id, level);
     const tabs = '<div class="hero-tabs"><button class="secondary ' + (heroTab === 'heroes' ? 'active' : '') + '" data-growth-tab="heroes">英雄与训练</button><button class="secondary ' + (heroTab === 'talents' ? 'active' : '') + '" data-growth-tab="talents">全队天赋研究</button><small>全部 ' + growth.heroes.length + ' 位初始解锁 · 出战：' + growth.hero(profile.selectedHero).name + '</small></div>';
-    const heroesHTML = '<div class="hero-layout"><div class="hero-grid">' + growth.heroes.map(hero => '<button class="hero-card ' + (hero.id === inspectedHero ? 'selected ' : '') + (!growth.isUnlocked(hero, profile) ? 'locked' : '') + '" data-inspect-hero="' + hero.id + '">' + heroPortrait(hero) + '<div><strong>' + hero.name + '</strong><span>' + hero.role + '</span><small>' + (growth.isUnlocked(hero, profile) ? hero.id === profile.selectedHero ? '正在出战 ✓' : '训练 ' + profile.heroLevels[hero.id] + ' / ' + hero.maxLevel : '通关第 ' + hero.unlockStage + ' 关解锁') + '</small></div></button>').join('') + '</div><article class="hero-detail"><strong>' + inspected.icon + ' ' + inspected.name + ' · ' + inspected.role + '</strong><p class="hero-description hero-lore">' + inspected.description + '</p><span>' + inspected.statsText + '</span><div class="hero-skill-copy"><div class="hero-skill-tabs"><button class="secondary ' + (heroSkillView === 'active' ? 'active' : '') + '" data-hero-view="active" aria-pressed="' + (heroSkillView === 'active') + '">主动技能</button><button class="secondary ' + (heroSkillView === 'passive' ? 'active' : '') + '" data-hero-view="passive" aria-pressed="' + (heroSkillView === 'passive') + '">专属被动</button></div><b>' + (heroSkillView === 'active' ? inspected.skillIcon + ' ' + inspected.skillName + ' · E' : inspected.passiveName) + '</b><p class="hero-full-description">' + (heroSkillView === 'active' ? inspected.skillDescription : inspected.passiveDescription) + '</p><p class="hero-compact-description">' + heroSummary(inspected) + '</p></div><small>训练 ' + level + ' / ' + inspected.maxLevel + '：每级伤害 +2.5%、生命 +5、英雄技能冷却 −2%。</small><div class="hero-actions"><button class="secondary" id="equipHero" ' + (!owned || inspected.id === profile.selectedHero ? 'disabled' : '') + '>' + (owned ? inspected.id === profile.selectedHero ? '已出战' : '选择出战' : '尚未解锁') + '</button><button class="secondary" id="trainHero" ' + (!owned || !cost || !canAfford(cost) ? 'disabled' : '') + '>' + (!cost ? '训练已满级' : '训练 · ☀' + cost.seeds + ' ◆' + cost.cores) + '</button></div></article></div>';
+    const heroesHTML = '<div class="hero-layout"><div class="hero-grid">' + growth.heroes.map(hero => '<button class="hero-card ' + (hero.id === inspectedHero ? 'selected ' : '') + (!growth.isUnlocked(hero, profile) ? 'locked' : '') + '" data-inspect-hero="' + hero.id + '">' + heroPortrait(hero) + '<div><strong>' + hero.name + '</strong><span>' + hero.role + '</span><small>' + (growth.isUnlocked(hero, profile) ? hero.id === profile.selectedHero ? '正在出战 ✓' : '训练 ' + profile.heroLevels[hero.id] + ' / ' + hero.maxLevel : '通关第 ' + hero.unlockStage + ' 关解锁') + '</small></div></button>').join('') + '</div><article class="hero-detail"><strong>' + inspected.icon + ' ' + inspected.name + ' · ' + inspected.role + '</strong><p class="hero-description hero-lore">' + inspected.description + '</p><span>' + inspected.statsText + '</span><div class="hero-skill-copy"><div class="hero-skill-tabs"><button class="secondary ' + (heroSkillView === 'active' ? 'active' : '') + '" data-hero-view="active" aria-pressed="' + (heroSkillView === 'active') + '">主动技能</button><button class="secondary ' + (heroSkillView === 'passive' ? 'active' : '') + '" data-hero-view="passive" aria-pressed="' + (heroSkillView === 'passive') + '">专属被动</button></div><b>' + (heroSkillView === 'active' ? inspected.skillIcon + ' ' + inspected.skillName + ' · E' : inspected.passiveName) + '</b><p class="hero-full-description">' + (heroSkillView === 'active' ? inspected.skillDescription : inspected.passiveDescription) + '</p><p class="hero-compact-description">' + heroSummary(inspected) + '</p></div><small>训练 ' + level + ' / ' + inspected.maxLevel + '：前5级每级伤害 +2.5%、生命 +5、冷却 −2%；6～30级每级伤害 +1%、生命 +3、冷却 −0.8%。</small><div class="hero-actions"><button class="secondary" id="equipHero" ' + (!owned || inspected.id === profile.selectedHero ? 'disabled' : '') + '>' + (owned ? inspected.id === profile.selectedHero ? '已出战' : '选择出战' : '尚未解锁') + '</button><button class="secondary" id="trainHero" ' + (!owned || !cost || !canAfford(cost) ? 'disabled' : '') + '>' + (!cost ? '训练已满级' : '训练 · ☀' + cost.seeds + ' ◆' + cost.cores) + '</button></div></article></div>';
     const talentsHTML = '<div class="growth-grid">' + growth.talents.map(talent => {
       const level = profile.talents[talent.id] || 0, cost = growth.cost('talent', talent.id, level);
       return '<article class="growth-card"><strong>' + talent.icon + ' ' + talent.name + '</strong><span>' + talent.description + '</span><small>永久研究 ' + level + ' / ' + talent.maxLevel + ' · 全英雄共享</small><button class="secondary" data-research="' + talent.id + '" ' + (!cost || !canAfford(cost) ? 'disabled' : '') + '>' + (!cost ? '已满级' : '研究 · ☀' + cost.seeds + ' ◆' + cost.cores) + '</button></article>';
@@ -749,7 +773,7 @@
       const cores = firstClear ? activeStage.reward.cores : Math.max(1, Math.floor(activeStage.reward.cores * .25));
       profile.seeds += seeds; profile.cores += cores;
       if (firstClear) profile.clearedStages.push(activeStage.id);
-      profile.unlockedStage = Math.max(profile.unlockedStage, Math.min(20, activeStage.id + 1));
+      profile.unlockedStage = Math.max(profile.unlockedStage, Math.min(stages.length, activeStage.id + 1));
       let gear = '';
       if (firstClear && activeStage.firstClearGear) {
         const id = activeStage.firstClearGear;
@@ -758,7 +782,7 @@
       }
       const newHeroes = firstClear ? growth.heroes.filter(hero => hero.unlockStage === activeStage.id).map(hero => hero.icon + ' ' + hero.name).join('、') : '';
       if (newHeroes) gear += '<br>新英雄：' + newHeroes + '（英雄育成中选择）';
-      const resident = rescueDefs[activeStage.id - 1], newResident = !profile.rescuedSprites.includes(resident.id);
+      const resident = rescueDefs[(activeStage.id - 1) % rescueDefs.length], newResident = !profile.rescuedSprites.includes(resident.id);
       if (newResident) { profile.rescuedSprites.push(resident.id); profile.spriteLevels[resident.id] = 0; }
       saveProfile();
       victoryRewardHTML = '<div class="reward-box">' + (firstClear ? '首通奖励' : '重复通关奖励（首通的 25%，至少 1）') + '<strong>☀ 阳光籽 +' + seeds + '　◆ 果核 +' + cores + '</strong>' + gear +
@@ -775,8 +799,8 @@
       (win ? '本关 ' + activeStage.bossCount + ' 位虫王已全部击败，精灵已经回家。' : '虫群暂时占了上风。培养精灵、强化装备后，再试一次。') + '</p>' + (win ? victoryRewardHTML : '') +
       '<div class="result-stats"><div><b>' + kills + ' / ' + activeStage.enemyCount + '</b><span>驱赶害虫</span></div><div><b>' + player.level + '</b><span>本关成长等级</span></div></div>' +
       '</div>' + (win ? '<div class="endless-offer"><strong>∞ 无尽虫潮 · 突破成长</strong><span>保留本关构筑，补满生命，放开种类与等级上限。<br>每 8 秒一波，材料获得即保存，可随时结束。</span></div>' : '<div class="endless-offer"><strong>🌱 下一次，带着成长出发。</strong><span>到果园培养伙伴，或在工坊强化装备。局外成长永久保留。</span></div>') + '</div>',
-      (win ? '<button class="primary" id="startEndless">进入无尽模式 ∞</button>' : '') + (win && activeStage.id < 20 ? '<button class="secondary" id="nextStage">挑战下一关</button>' : '<button class="secondary" id="restart">再挑战一次</button>') + '<button class="secondary" id="resultOrchard">看看果园</button><button class="secondary" id="resultArmory">装备与养成</button><button class="secondary" id="backLobby">选择关卡</button>', '奖励与关卡进度自动保存');
-    if (win && activeStage.id < 20) el('nextStage').onclick = () => { selectStage(activeStage.id + 1); start(); };
+      (win ? '<button class="primary" id="startEndless">进入无尽模式 ∞</button>' : '') + (win && activeStage.id < stages.length ? '<button class="secondary" id="nextStage">挑战下一关</button>' : '<button class="secondary" id="restart">再挑战一次</button>') + '<button class="secondary" id="resultOrchard">看看果园</button><button class="secondary" id="resultArmory">装备与养成</button><button class="secondary" id="backLobby">选择关卡</button>', '奖励与关卡进度自动保存');
+    if (win && activeStage.id < stages.length) el('nextStage').onclick = () => { selectStage(activeStage.id + 1); start(); };
     else el('restart').onclick = start;
     el('resultArmory').onclick = showArmory; el('backLobby').onclick = startScreen;
     el('resultOrchard').onclick = showOrchard; updateHUD();
@@ -787,7 +811,7 @@
     if (state !== 'ended' || runMode !== 'stage' || !stageVictoryReady || endlessEntered) return false;
     endlessEntered = true; runMode = 'endless'; state = 'playing'; enemies = []; bullets = []; particles = []; skillEffects = []; heroEffects = [];
     builds.setMode(player, 'endless');
-    // Keep all forty earned upgrades and unlock further growth for the next challenge.
+    // Keep the chapter's earned upgrades and unlock further growth for the next challenge.
     player.hp = player.maxHp; player.inv = 1.5; elapsed = 0; kills = 0; still = 0; shake = 0; shotClock = 0;
     player.guardUntil = 0; player.guardDefense = 0; player.leechEvents = []; player.killHealEvents = [];
     endlessWave = 0; endlessCreditedSeeds = 0; endlessCreditedCores = 0; waveClock = ENDLESS_INTERVAL;
@@ -835,9 +859,9 @@
     showPanel(voluntary ? '把收获带回果园。' : '虫潮暂时占了上风。', '第 ' + activeStage.id + ' 关 / 无尽虫潮结算', '<div class="result-layout"><div class="result-summary"><p>通关、救援与无尽材料都已保存。</p>' +
       '<div class="result-stats"><div><b>' + minutes + ':' + seconds + '</b><span>坚持时长</span></div><div><b>' + endlessWave + '</b><span>抵达波次</span></div><div><b>' + kills + '</b><span>无尽击杀</span></div></div>' +
       '</div><div class="reward-box">本次无尽额外收获<strong>☀ 阳光籽 +' + endlessCreditedSeeds + '　◆ 果核 +' + endlessCreditedCores + '</strong><small>材料获得时即保存，结算不重复发放</small></div></div>',
-      '<button class="primary" id="resultOrchard">返回果园</button>' + (activeStage.id < 20 ? '<button class="secondary" id="nextStage">挑战下一关</button>' : '<button class="secondary" id="restart">重玩本关</button>') + '<button class="secondary" id="backLobby">选择关卡</button>');
+      '<button class="primary" id="resultOrchard">返回果园</button>' + (activeStage.id < stages.length ? '<button class="secondary" id="nextStage">挑战下一关</button>' : '<button class="secondary" id="restart">重玩本关</button>') + '<button class="secondary" id="backLobby">选择关卡</button>');
     el('resultOrchard').onclick = showOrchard; el('backLobby').onclick = startScreen;
-    if (activeStage.id < 20) el('nextStage').onclick = () => { selectStage(activeStage.id + 1); start(); }; else el('restart').onclick = start;
+    if (activeStage.id < stages.length) el('nextStage').onclick = () => { selectStage(activeStage.id + 1); start(); }; else el('restart').onclick = start;
     updateHUD(); return true;
   }
   function readyBoss() {
@@ -865,7 +889,7 @@
   }
   function beginRescue() {
     if (state === 'rescue' || state === 'ended') return false;
-    const sprite = rescueDefs[activeStage.id - 1];
+    const sprite = rescueDefs[(activeStage.id - 1) % rescueDefs.length];
     state = 'rescue'; cinematicTime = 0; keys.clear(); pointer = null; bullets = []; still = 0;
     // Save the actual win immediately; closing during the rescue movie does not lose rewards.
     grantVictoryRewards(); updateHUD();
@@ -897,7 +921,7 @@
     showPanel(endless ? '继续突破成长' : '选择你的成长', 'LEVEL UP / LV. ' + (player.level + 1), '<div class="build-limit">' + rule + '<br>配对攻击与属性达到 5 级，自动合成。' + (endless ? '合成后继续升级攻击可强化超级技能。' : '已有词条与配方伙伴更容易出现。') + '</div><div class="cards" style="--choices:' + choices.length + '">' + choices.map((u, i) => {
       const level = b.levels[u.id] || 0, recipe = builds.recipes.find(r => r.id === u.recipe);
       return '<button class="card" data-choice="' + i + '" style="border-color:' + u.rarity.color + '"><div class="build-category" style="color:' + (u.category === 'attack' ? '#f6c18a' : '#aee3c0') + '">' + (u.category === 'attack' ? '攻击 · 火力技能' : '属性 · 生存成长') + '</div><div class="card-icon" style="color:' + u.rarity.color + '">' + u.icon + '</div><strong>' + u.name + '</strong><span>' + u.desc + '</span><small style="color:' + u.rarity.color + '">' + u.rarity.name + ' · ' + level + ' → ' + (level + 1) + (endless ? ' 级 · ' : ' / 5 级 · ') + (level ? '继续培养' : '学习新词条') + '<br>按 ' + (i + 1) + ' 选择</small>' + (recipe ? '<div class="recipe-progress">' + (b.superSkills.includes(recipe.id) ? '✓ 已合成 ' + recipe.icon + ' ' + recipe.name + (endless ? ' · 可继续强化' : '') : builds.get(recipe.attack).name + ' ' + (b.levels[recipe.attack] || 0) + '/5 ＋ ' + builds.get(recipe.attribute).name + ' ' + (b.levels[recipe.attribute] || 0) + '/5<br>→ ' + recipe.icon + ' ' + recipe.name) + '</div>' : '') + '</button>';
-    }).join('') + '</div>', '', (endless ? '无尽随机成长 · 等级持续提升' : '本关总经验 13,046 · 恰好 40 次升级' + (stageXP.settled ? ' · 完成成长后救援' : '')) + ' · 战斗已暂停 · 按 1 / 2 / 3 选择');
+    }).join('') + '</div>', '', (endless ? '无尽随机成长 · 等级持续提升' : '本关总经验 ' + stageXP.budget.toLocaleString('en-US') + ' · ' + experience.choices + ' 次升级' + (stageXP.settled ? ' · 完成成长后救援' : '')) + ' · 战斗已暂停 · 按 1 / 2 / 3 选择');
     overlay.classList.add('upgrade-overlay');
     overlay.querySelectorAll('[data-choice]').forEach(b => b.onclick = () => choose(Number(b.dataset.choice))); sound(620, .14);
   }
@@ -1162,14 +1186,14 @@
     el('populationLabel').textContent = runMode === 'endless' && inRun ? '无尽第 ' + endlessWave + ' 波' : '剩余害虫';
     el('pursuing').textContent = inRun ? enemies.filter(e => e.aggro && e.hp > 0).length : s.initialPursuers;
     el('enemyTypes').textContent = runMode === 'endless' && inRun ? '无尽虫潮 · 连续增援' : '普通 ' + (inRun ? enemies.filter(e => !e.boss && !e.elite).length : s.normalCount) + ' · 精英 ' + (inRun ? enemies.filter(e => e.elite).length : s.eliteCount) + ' · Boss ' + (inRun ? bossKills : 0) + ' / ' + s.bossCount;
-    el('level').textContent = 'LV. ' + player.level + (runMode === 'stage' && inRun ? ' / 41' : '');
+    el('level').textContent = 'LV. ' + player.level + (runMode === 'stage' && inRun ? ' / ' + experience.levelCap : '');
     el('xpFill').style.width = Math.min(100, player.xp / player.need * 100) + '%'; el('xpText').textContent = Number(player.xp.toFixed(1)) + ' / ' + player.need;
     const boost = still >= combat.standDelay;
     el('stance').textContent = boost && inRun ? '✦ 站定蓄力 · 伤害 +' + Math.round((combat.standDamage - 1 + player.standPower) * 100) + '% / 射速 +35%' : still > 0 && inRun ? '✧ 蓄力中…' : '移动保命 · 停下蓄力';
     el('stance').classList.toggle('active', boost && inRun);
     el('damageStat').textContent = seedDamage().toFixed(1); el('rateStat').textContent = player.rate.toFixed(1) + ' / 秒';
     el('speedStat').textContent = Math.round(player.speed); el('shotsStat').textContent = player.shots; el('pickupStat').textContent = Math.round(player.pickup); el('killsStat').textContent = inRun ? kills : 0;
-    el('stageName').textContent = '第 ' + s.id + ' / 20 关 · ' + (runMode === 'endless' && inRun ? '无尽虫潮' : s.name);
+    el('stageName').textContent = '第 ' + s.id + ' / ' + stages.length + ' 关 · ' + (runMode === 'endless' && inRun ? '无尽虫潮' : s.name);
     el('pursuitRule').innerHTML = runMode === 'endless' && inRun ? '每 8 秒一波，数量与强度持续增加<br>可随时结束，材料获得即保存' : '普通：开局 ' + s.initialPursuers + '，每 ' + s.pursuitInterval + ' 秒 +' + s.batchSize + '<br>精英：' + s.eliteFirstAt + ' 秒首批，每 ' + s.eliteInterval + ' 秒 +' + s.eliteBatchSize + '<br>Boss ' + s.bossSchedule[0] + ' 秒起与小怪混合登场 · 同时最多 ' + s.bossActiveCap + ' 位';
     el('loadout').textContent = gearDefs[profile.equipped.weapon].name + ' · ' + gearDefs[profile.equipped.armor].name + ' · ' + gearDefs[profile.equipped.charm].name;
     const hero = growth.hero(player.heroId);

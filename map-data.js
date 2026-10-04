@@ -1,4 +1,4 @@
-/* Twenty playable chapter layouts. All coordinates are world pixels; solid water and
+/* One hundred chapter layouts built from twenty terrain themes. Coordinates are world pixels; solid water and
  * cliffs have real collision, and bridges are genuine gaps in those solids. */
 (() => {
   'use strict';
@@ -40,9 +40,10 @@
   };
 
   function build(stageId, width, height, relicDefs = []) {
-    const id = clamp(Math.round(stageId) || 1, 1, 20);
+    const actualId = clamp(Math.round(stageId) || 1, 1, 100);
+    const id = (actualId - 1) % 20 + 1, chapter = Math.floor((actualId - 1) / 20);
     if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1200 || height < 1000) throw new RangeError('Chapter maps require a valid large world.');
-    let seed = (id * 2654435761 ^ Math.round(width) * 19349663 ^ Math.round(height)) >>> 0;
+    let seed = (actualId * 2654435761 ^ Math.round(width) * 19349663 ^ Math.round(height)) >>> 0;
     const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
     const roads = [], areas = [], landmarks = [], obstacles = [];
     const spawn = { x: width / 2, y: height / 2 };
@@ -133,6 +134,7 @@
         const angle = i / count * Math.PI * 2, x = spawn.x + Math.cos(angle) * a, y = spawn.y + Math.sin(angle) * b;
         if (protectedPoints.some(p => Math.hypot(x - p.x, y - p.y) < p.radius + radius + 35)) continue;
         if (roads.some(r => r.points.some((p, k) => k && segmentDistance(x, y, r.points[k - 1], p) < r.width / 2 + radius + 20))) continue;
+        if (actualId > 20 && obstacles.some(o => o.kind !== 'thorn' && obstacleDistance(x, y, o) < radius + 180)) continue;
         // Adjacent bushes overlap to make one honest curved barrier; the four
         // cross-roads and relic spurs cut genuine wide entrance gaps in the ring.
         rawSolid('thorn', 'circle', x, y, { r: radius });
@@ -373,7 +375,15 @@
         if (clear(p.x, p.y, size * .72)) rawSolid(kind, 'rect', p.x, p.y, { w: size, h: size });
       } else solid(kind, x, y, kind === 'rock' ? 32 + random() * 25 : 31 + random() * 13);
     }
-    return freeze({ id, name: NAMES[id - 1], theme: THEMES[id - 1], summary: SUMMARIES[id - 1], width, height,
+    // Mirroring whole layouts keeps bridges, roads and collision in agreement.
+    if (chapter > 0) {
+      const flipX = chapter === 1 || chapter === 3, flipY = chapter === 2 || chapter === 3;
+      const point = p => { if (flipX) p.x = width - p.x; if (flipY) p.y = height - p.y; };
+      [spawn, ...relics, ...obstacles, ...landmarks].forEach(point);
+      [...roads, ...areas].forEach(item => item.points.forEach(point));
+      for (const landmark of landmarks) if (landmark.rotation) landmark.rotation *= flipX !== flipY ? -1 : 1;
+    }
+    return freeze({ id: actualId, name: (window.ORCHARD_STAGES?.[actualId - 1]?.name || window.ORCHARD_ART?.stages[actualId - 1]?.name || NAMES[id - 1]), theme: THEMES[id - 1], summary: SUMMARIES[id - 1], width, height,
       spawn, roads, areas, landmarks, obstacles, relics });
   }
   window.ORCHARD_MAPS = Object.freeze({ build });

@@ -28,9 +28,15 @@
     sourceImage: 'assets/stages/stage-' + String(i + 1).padStart(2, '0') + '.png',
     palette: Object.freeze({ ground, grass, road, tree, accent })
   }));
+  for (let id = 21; id <= 100; id++) {
+    const base = stages[(id - 1) % 20], chapter = Math.floor((id - 1) / 20);
+    const accents = ['#ffe697', '#b8b3ff', '#ffb485', '#a4e6f1', '#f5d784'];
+    stages.push(Object.freeze({ ...base, id, name: ['青叶启程', '月露群岛', '赤焰山林', '霜晶高原', '星辉王庭'][chapter] + ' · ' + base.name,
+      palette: Object.freeze({ ...base.palette, accent: accents[chapter] }), hue: [0, 20, -18, 65, 325][chapter] }));
+  }
   window.ORCHARD_ART = Object.freeze({
     stages: Object.freeze(stages), atlas: 'assets/guardian-atlas.png',
-    heroImages: Object.freeze({ cherry: 'assets/heroes/cherry.svg', pear: 'assets/heroes/pear.svg', blueberry: 'assets/heroes/blueberry.svg', pineapple: 'assets/heroes/pineapple.svg' }),
+    heroImages: Object.freeze({ peach: 'assets/heroes/peach.svg', grape: 'assets/heroes/grape.svg', watermelon: 'assets/heroes/watermelon.svg', banana: 'assets/heroes/banana.svg', coconut: 'assets/heroes/coconut.svg', cherry: 'assets/heroes/cherry.svg', pear: 'assets/heroes/pear.svg', blueberry: 'assets/heroes/blueberry.svg', pineapple: 'assets/heroes/pineapple.svg' }),
     sprites: Object.freeze({ orange: 0, berry: 1, pumpkin: 2, lime: 3,
       beetle: 4, fly: 5, elite: 6, boss: 7, tree: 8, rock: 9,
       stump: 10, crate: 11, hedge: 12, xp: 13, relic: 14, flower: 15 })

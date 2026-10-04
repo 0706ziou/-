@@ -207,3 +207,7 @@
   .hero-card .hero-portrait { width: 25px; height: 25px; }
   .hero-card strong { font-size: 9px; }
 }
+
+/* Thirteen heroes remain accessible within the fixed menu height. */
+.hero-grid { grid-template-rows: none; grid-auto-rows: minmax(76px, 1fr); overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; scrollbar-width: thin; scrollbar-color: #779956 #1b3224; padding-right: 4px; }
+@media (max-width: 620px) { .hero-grid { grid-auto-rows: minmax(54px, 1fr); } }

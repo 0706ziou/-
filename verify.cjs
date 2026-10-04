@@ -174,7 +174,7 @@ function clearStage(t) {
     t.elapsed=Math.max(t.elapsed,t.activeStage.bossSchedule[i],t.nextBossAllowedAt);
     if(t.state==='playing')t.update(.001);
     assert.equal(t.state,'bossIntro');t.completeBossIntro();assert.equal(t.state,'playing');
-    const boss=t.enemies.find(e=>e.boss&&e.aggro);assert(boss);assert.equal(boss.stageId,i+1);boss.hp=0;
+    const boss=t.enemies.find(e=>e.boss&&e.aggro);assert(boss);assert.equal(boss.stageId,t.activeStage.bossIds[i]);boss.hp=0;
     t.update(.001);
   }
   drainUpgradeChoices(t);
@@ -253,7 +253,7 @@ test('External scripts are referenced in the correct load order',({t})=>{
   for(const file of ['world-data.js','growth-data.js','art-catalog.js']) {
     assert(html.includes('src="'+file+'"'));assert(html.indexOf('src="'+file+'"')<html.indexOf('src="game.js"'));
   }
-  assert.equal(t.stages.length,20);
+  assert.equal(t.stages.length,100);
 });
 test('Map area grows five times from the previous world and movement reaches all boundaries',({t})=>{
   assert.equal(t.W,960);assert.equal(t.H,680);
@@ -477,42 +477,44 @@ test('Upgrade descriptions state the rarity gain and selected cards match their 
   const damage=t.upgradeDefs.find(u=>u.id==='damage'),hp=t.upgradeDefs.find(u=>u.id==='hp');assert.notEqual(damage.describe(1,t.player),damage.describe(2,t.player));assert.notEqual(hp.describe(1,t.player),hp.describe(2,t.player));
   t.upgrade();for(const u of t.choices)assert.equal(u.desc,u.describe(u.rarity.mult,t.player));
 });
-test('Level costs increase smoothly and every chapter provides exactly the full forty-choice budget',({t})=>{
-  assert.equal(t.experienceNeed(1),100);assert.equal(t.experienceNeed(2),102);assert.equal(t.experienceNeed(3),106);
-  assert.equal(t.experienceNeed(10),148);assert.equal(t.experienceNeed(20),270);
-  assert.equal(t.experienceNeed(40),732);assert.equal(t.experienceNeed(41),850);assert.equal(t.experienceNeed(42),885);
+test('Level costs increase smoothly and every chapter provides exactly thirty upgrade choices',({t})=>{
+  assert.equal(t.experienceNeed(1),180);assert.equal(t.experienceNeed(2),184);assert.equal(t.experienceNeed(3),189);
+  assert.equal(t.experienceNeed(10),243);assert.equal(t.experienceNeed(20),377);
+  assert.equal(t.experienceNeed(30),577);assert.equal(t.experienceNeed(31),601);
+  assert.equal(t.experienceNeed(40),844);assert.equal(t.experienceNeed(41),850);assert.equal(t.experienceNeed(42),885);
   for(let level=2;level<=100;level++)assert(t.experienceNeed(level)>t.experienceNeed(level-1));
   for(const s of t.stages){
     assert.equal(s.xpRewards.length,s.enemyCount);let xp=s.xpRewards.reduce((sum,value)=>sum+value,0),level=1;
-    assert.equal(xp,13046);assert.equal(xp,t.experience.budget());
+    assert.equal(xp,10000);assert.equal(xp,t.experience.budget());
     while(xp>=t.experienceNeed(level)){xp-=t.experienceNeed(level);level++}
-    assert.equal(level,41);assert.equal(xp,0);
+    assert.equal(level,31);assert.equal(xp,0);
   }
 });
-test('Actual chapter kills and pickups slow the opening to four kills for the first choice and five choices across twenty kills',({t})=>{
+test('Actual chapter kills and pickups take eight kills for the first choice and offer only two choices across twenty kills',({t,element})=>{
   const victims=t.enemies.filter(e=>!e.boss&&!e.elite).slice(0,20);
-  assert.equal(victims.reduce((sum,e)=>sum+e.xp,0),611);assert.equal(t.player.xpMult,1);
+  assert.equal(victims.reduce((sum,e)=>sum+e.xp,0),470);assert.equal(t.player.xpMult,1);
   quietField(t);let selected=0;
   for(let i=0;i<victims.length;i++){
     const victim=victims[i];victim.hp=0;victim.x=t.player.x;victim.y=t.player.y;t.enemies.push(victim);t.update(.001);
     const collected=t.stageXP.collected,issued=t.stageXP.issued;
-    if(i<3){assert.equal(t.state,'playing');assert.equal(t.player.level,1)}
-    if(i===3){assert.equal(t.state,'upgrade');assert.equal(t.player.level,1)}
+    if(i<7){assert.equal(t.state,'playing');assert.equal(t.player.level,1)}
+    if(i===7){assert.equal(t.state,'upgrade');assert.equal(t.player.level,1);assert(element('overlay').innerHTML.includes('本关总经验 10,000 · 30 次升级'))}
     while(t.state==='upgrade'){
       const index=t.choices.findIndex(choice=>choice.id!=='xp');assert(index>=0);t.choose(index);selected++;
     }
     t.update(.001);assert.equal(t.stageXP.collected,collected);assert.equal(t.stageXP.issued,issued);
     assert.equal(t.gems.length,0);
   }
-  assert.equal(t.kills,20);assert.equal(t.stageXP.issued,611);assert.equal(t.stageXP.collected,611);
-  assert.equal(selected,5);assert.equal(t.player.level,6);assert.equal(t.player.xp,80);assert.equal(t.state,'playing');
+  assert.equal(t.kills,20);assert.equal(t.stageXP.issued,470);assert.equal(t.stageXP.collected,470);
+  assert.equal(selected,2);assert.equal(t.player.level,3);assert.equal(t.player.xp,106);assert.equal(t.state,'playing');
+  assert.equal(element('level').textContent,'LV. 3 / 31');assert.equal(element('xpText').textContent,'106 / 189');
 });
 test('Stacked experience bonuses on a real first fly kill cannot trigger an opening upgrade',({t})=>{
   const victim=t.enemies.find(e=>!e.boss&&!e.elite&&e.type===1);assert(victim);
   quietField(t);t.player.xpMult=1.06*1.10*1.15*1.5+.08;
   victim.hp=0;victim.x=t.player.x;victim.y=t.player.y;t.enemies.push(victim);t.update(.001);
   const award=Math.floor(victim.xp*t.player.xpMult);
-  assert.equal(t.player.xp,award);assert(award<100);assert.equal(t.player.level,1);assert.equal(t.state,'playing');
+  assert.equal(t.player.xp,award);assert(award<t.experienceNeed(1));assert.equal(t.player.level,1);assert.equal(t.state,'playing');
   const snapshot=JSON.stringify(t.stageXP.snapshot());t.update(.001);assert.equal(JSON.stringify(t.stageXP.snapshot()),snapshot);
 });
 test('Surplus XP offers a fresh choice for each earned level',({t})=>{
@@ -559,16 +561,16 @@ test('A timed boss encounter saves the rescued spirit only after the entire rost
   assert.equal(boss.xp,t.activeStage.xpRewards[t.activeStage.normalCount+t.activeStage.eliteCount]);
   boss.hp=0;t.update(.01);assert.equal(t.state,'upgrade');assert.equal(t.kills,t.activeStage.enemyCount);assert.equal(t.enemies.length,0);
   assert(t.profile.clearedStages.includes(1),'The actual victory is saved while final growth choices remain pending');
-  drainUpgradeChoices(t);assert.equal(t.state,'rescue');assert.equal(t.player.level,41);assert.equal(t.player.xp,0);assert.equal(t.gems.length,0);
+  drainUpgradeChoices(t);assert.equal(t.state,'rescue');assert.equal(t.player.level,31);assert.equal(t.player.xp,0);assert.equal(t.gems.length,0);
   assert(element('overlay').innerHTML.includes(rescues[0].name));
   assert.equal(t.profile.unlockedStage,2);assert(t.profile.clearedStages.includes(1));assert.equal(t.profile.rescuedSprites.length,1);
   const saved=JSON.stringify(t.profile),reloaded=createGame(storage);assert.equal(JSON.stringify(reloaded.t.profile),saved);
   t.completeRescue();assert.equal(t.state,'ended');assert.equal(JSON.stringify(t.profile),saved);t.draw();
 });
 
-test('Twenty stages have complete rising combat values, valid batches and rewards',({t})=>{
+test('First twenty stages have complete rising combat values, valid batches and rewards',({t})=>{
   const names=new Set();let previous=null;
-  for(const s of t.stages){
+  for(const s of t.stages.slice(0,20)){
     assert.equal(s.id,names.size+1);assert(s.name&&s.description);names.add(s.name);
     assert.equal(s.normalCount,398);assert.equal(s.eliteCount,4+2*s.id);assert.equal(s.bossCount,s.id);
     assert.equal(s.enemyCount,s.normalCount+s.eliteCount+s.bossCount);assert(Number.isInteger(s.fastCount)&&s.fastCount>0&&s.fastCount<s.normalCount);
@@ -591,7 +593,7 @@ test('Twenty stages have complete rising combat values, valid batches and reward
   assert.equal(names.size,20);assert(t.stages[19].slow.hp>t.stages[0].slow.hp);assert(t.stages[19].fast.hp>t.stages[0].fast.hp);
 });
 test('Every stage spawns the exact normal, elite and accumulated boss roster with independent schedules',({t,bosses})=>{
-  t.startScreen();t.profile.unlockedStage=20;
+  t.startScreen();t.profile.unlockedStage=100;
   for(const s of t.stages){
     t.startScreen();assert(t.selectStage(s.id));t.start();assert.equal(t.activeStage.id,s.id);assert.equal(t.enemies.length,s.enemyCount);
     assert.equal(t.enemies.filter(e=>e.type===1).length,s.fastCount);
@@ -601,7 +603,7 @@ test('Every stage spawns the exact normal, elite and accumulated boss roster wit
     for(let i=0;i<t.enemies.length;i++){
       const e=t.enemies[i];
       assert.equal(e.xp,s.xpRewards[i]);
-      if(e.boss){const order=i-s.normalCount-s.eliteCount,stats=bosses[order];assert.equal(e.type,2);assert.equal(e.hp,stats.hp);assert.equal(e.speed,stats.speed);assert.equal(e.damage,stats.damage);assert.equal(e.pursuitAt,Infinity);assert.equal(e.aggro,false);assert.equal(e.introduced,false);assert.equal(e.bossOrder,order);assert.equal(e.bossArrivalAt,s.bossSchedule[order]);continue}
+      if(e.boss){const order=i-s.normalCount-s.eliteCount,stats=bosses[s.bossIds[order]-1];assert.equal(e.type,2);assert.equal(e.hp,stats.hp);assert.equal(e.speed,stats.speed);assert.equal(e.damage,stats.damage);assert.equal(e.pursuitAt,Infinity);assert.equal(e.aggro,false);assert.equal(e.introduced,false);assert.equal(e.bossOrder,order);assert.equal(e.bossArrivalAt,s.bossSchedule[order]);continue}
       if(e.elite){
         for(const key of ['hp','speed','damage'])assert.equal(e[key],s.elite[key]);
         assert.equal(e.r,25);assert.equal(e.maxHp,s.elite.hp);assert.equal(e.type,0);
@@ -679,7 +681,7 @@ test('Stage two mixes sequential bosses with surviving bugs, respects recovery a
   assert.equal(t.enemies.filter(e=>e.boss&&e.aggro).length,1);assert.equal(t.readyBoss(),null);
   second.hp=0;t.update(.001);drainUpgradeChoices(t);assert.equal(t.bossKills,2);assert.equal(t.state,'playing');assert.equal(JSON.stringify(t.profile),before);
   killNonBossCount(t,s.normalCount+s.eliteCount);assert.equal(t.state,'upgrade');assert(t.profile.clearedStages.includes(2));
-  drainUpgradeChoices(t);assert.equal(t.state,'rescue');assert.equal(t.kills,s.enemyCount);assert.equal(t.player.level,41);assert.equal(t.player.xp,0);
+  drainUpgradeChoices(t);assert.equal(t.state,'rescue');assert.equal(t.kills,s.enemyCount);assert.equal(t.player.level,31);assert.equal(t.player.xp,0);
   assert.equal(t.profile.seeds,s.reward.seeds);assert.equal(t.profile.cores,s.reward.cores);
   assert.deepEqual(Array.from(t.profile.clearedStages),[2]);assert.deepEqual(Array.from(t.profile.rescuedSprites),[2]);
   const paid=JSON.stringify(t.profile);t.completeRescue();t.completeRescue();t.finish(true);t.finish(false);assert.equal(JSON.stringify(t.profile),paid);
@@ -696,10 +698,10 @@ test('Stage twenty encounters every earlier boss in order and pays only after th
     assert.equal(t.bossKills,i+1);
     assert.notEqual(t.state,'rescue');assert.equal(JSON.stringify(t.profile),before);assert.equal(t.nonBossKills,0);drainUpgradeChoices(t);
   }
-  assert.deepEqual(seen,Array.from(bosses.map(b=>b.name)));assert.equal(t.nonBossKills,0);
+  assert.deepEqual(seen,Array.from(bosses.slice(0,20).map(b=>b.name)));assert.equal(t.nonBossKills,0);
   killNonBossCount(t,s.normalCount+s.eliteCount);assert.equal(t.nonBossKills,s.normalCount+s.eliteCount);
   assert.equal(t.kills,s.enemyCount);assert.equal(t.enemies.length,0);assert.equal(t.state,'upgrade');assert(t.profile.clearedStages.includes(20));
-  drainUpgradeChoices(t);assert.equal(t.state,'rescue');assert.equal(t.player.level,41);assert.equal(t.player.xp,0);
+  drainUpgradeChoices(t);assert.equal(t.state,'rescue');assert.equal(t.player.level,31);assert.equal(t.player.xp,0);
   assert.equal(t.profile.seeds,s.reward.seeds);assert.equal(t.profile.cores,s.reward.cores);assert.deepEqual(Array.from(t.profile.rescuedSprites),[20]);
   t.completeRescue();assert.equal(t.state,'ended');assert(t.startEndless());assert(t.enemies.every(e=>!e.boss&&!e.elite));
 });
@@ -741,22 +743,22 @@ test('Later chapters serialize all time-ready bosses and keep the twelve-second 
   assert.equal(t.bossIndex,s.bossCount);assert.equal(t.readyBoss(),null);
   assert.equal(t.nonBossKills,0);assert.equal(JSON.stringify(t.profile),before);
 });
-test('All 20 victories unlock consecutive stages, pay rewards and award the intended gear',({t,element,rescues})=>{
+test('All 100 victories unlock consecutive stages, pay rewards and award the intended gear',({t,element,rescues})=>{
   let seeds=0,cores=0;
   for(const s of t.stages){
     if(s.id>1){assert(t.selectStage(s.id));t.start()}
     clearStage(t);
     assert.equal(t.state,'ended');seeds+=s.reward.seeds;cores+=s.reward.cores;
     assert.equal(t.profile.seeds,seeds);assert.equal(t.profile.cores,cores);
-    assert.equal(t.profile.unlockedStage,Math.min(20,s.id+1));assert.equal(t.profile.clearedStages.length,s.id);
-    assert.equal(t.profile.rescuedSprites.length,s.id);
+    assert.equal(t.profile.unlockedStage,Math.min(100,s.id+1));assert.equal(t.profile.clearedStages.length,s.id);
+    assert.equal(t.profile.rescuedSprites.length,Math.min(20,s.id));
     assert(element('overlay').innerHTML.includes('id="startEndless"'));
-    assert(t.profile.rescuedSprites.includes(rescues[s.id-1].id));
+    assert(t.profile.rescuedSprites.includes(rescues[(s.id-1)%20].id));
     if(s.firstClearGear)assert.equal(t.profile.inventory[s.firstClearGear].level,0);
     const rewarded=JSON.stringify(t.profile);t.finish(true);assert.equal(JSON.stringify(t.profile),rewarded);
   }
   assert.equal(Object.keys(t.profile.inventory).length,Object.keys(t.gearDefs).length);
-  assert(!element('overlay').innerHTML.includes('id="nextStage"'));assert(!t.selectStage(21));
+  assert(!element('overlay').innerHTML.includes('id="nextStage"'));assert(!t.selectStage(101));
 });
 test('Replaying a cleared stage pays reduced currency without duplicate gear or stage records',({t})=>{
   clearStage(t);const s=t.activeStage,firstSeeds=t.profile.seeds,firstCores=t.profile.cores;
@@ -821,8 +823,8 @@ test('Invalid or stale saves fall back safely and numeric fields are bounded',()
   }
   const raw={version:1,unlockedStage:99,seeds:-200,cores:1e30,clearedStages:[1,1,-2,21,'3'],inventory:{weapon_seed:{level:99},armor_leaf:{level:-3},charm_sprout:{level:2.7},fake:{level:10}},equipped:{weapon:'fake',armor:'weapon_seed',charm:'charm_sprout'}};
   const {t}=createGame(new Map([['orchard-save-v1',JSON.stringify(raw)]]));
-  assert.equal(t.profile.unlockedStage,20);assert.equal(t.profile.seeds,0);assert.equal(t.profile.cores,999999);
-  assert.equal(JSON.stringify(t.profile.clearedStages),'[1]');assert.equal(t.profile.inventory.weapon_seed.level,10);assert.equal(t.profile.inventory.armor_leaf.level,0);
+  assert.equal(t.profile.unlockedStage,99);assert.equal(t.profile.seeds,0);assert.equal(t.profile.cores,999999);
+  assert.equal(JSON.stringify(t.profile.clearedStages),'[1,21]');assert.equal(t.profile.inventory.weapon_seed.level,10);assert.equal(t.profile.inventory.armor_leaf.level,0);
   assert.equal(t.profile.inventory.charm_sprout.level,2);assert(!t.profile.inventory.fake);assert.equal(t.profile.equipped.weapon,'weapon_seed');assert.equal(t.profile.equipped.armor,'armor_leaf');t.start();
 });
 test('Unavailable browser storage keeps the game and its current-page rewards usable',()=>{
@@ -852,15 +854,15 @@ test('The single-page navigation retains the chosen stage and starts it from eve
     click(game,open);menuControls(game);click(game,'start');assert.equal(t.activeStage.id,20);assert.equal(t.state,'playing');t.startScreen();
   }
 });
-test('All twenty carousel previews remain accessible while locked stages cannot be entered',(game)=>{
+test('All hundred carousel previews remain accessible while locked stages cannot be entered',(game)=>{
   const {t,element}=game;t.startScreen();assert(element('previousStage').disabled);assert(!element('start').disabled);
-  for(let id=2;id<=20;id++){
+  for(let id=2;id<=100;id++){
     click(game,'nextStagePreview');assert.equal(t.previewStage,id);assert.equal(t.selectedStage,1);assert(element('start').disabled);
     element('start').onclick();assert.equal(t.state,'lobby');assert.equal(t.selectedStage,1);
     assert(element('overlay').innerHTML.includes(t.art.stages[id-1].image));assert(element('overlay').innerHTML.includes(t.stages[id-1].name));
   }
   assert(element('nextStagePreview').disabled);assert(!t.browseStage(1));
-  click(game,'previousStage');assert.equal(t.previewStage,19);assert(!t.selectStage(19));
+  click(game,'previousStage');assert.equal(t.previewStage,99);assert(!t.selectStage(99));
   t.profile.unlockedStage=20;t.startScreen();
   for(let id=1;id<=20;id++){assert.equal(t.selectedStage,id);assert(!element('start').disabled);menuControls(game);if(id<20)click(game,'nextStagePreview')}
 });
@@ -911,8 +913,8 @@ test('All twenty orchard residents select one training panel and keep their sele
 function rescueCopy(rescues) { return Array.from(rescues,sprite=>sprite.id); }
 
 test('Twenty unique bosses and rescue spirits cover every stage with valid combat values',({bosses,rescues})=>{
-  assert.equal(bosses.length,20);assert.equal(rescues.length,20);
-  assert.equal(new Set(rescues.map(s=>s.id)).size,20);assert.equal(new Set(bosses.map(b=>b.name)).size,20);
+  assert.equal(bosses.length,100);assert.equal(rescues.length,20);
+  assert.equal(new Set(rescues.map(s=>s.id)).size,20);assert.equal(new Set(bosses.map(b=>b.name)).size,100);
   let previous=null;
   for(let i=0;i<20;i++){
     const boss=bosses[i],spirit=rescues[i];assert(boss.name);assert(spirit.id&&spirit.name);
@@ -1072,8 +1074,8 @@ test('Endless entry keeps the current build and experience, heals health and res
   assert.equal(t.gems[0],gem);assert.equal(t.elapsed,0);assert.equal(t.kills,0);assert.equal(t.endlessWave,1);
   assert.equal(JSON.stringify(t.profile),saved);assert(t.enemies.length>0);assert(t.enemies.every(e=>e.aggro&&!e.boss));
 });
-test('All 20 cleared stages enter endless using their own enemy stats without new bosses or rescues',({t})=>{
-  t.startScreen();t.profile.unlockedStage=20;
+test('All 100 cleared stages enter endless using their own enemy stats without new bosses or rescues',({t})=>{
+  t.startScreen();t.profile.unlockedStage=100;
   for(const s of t.stages){
     t.startScreen();assert(t.selectStage(s.id));t.start();enterEndless(t);
     assert.equal(t.activeStage.id,s.id);assert.equal(t.endlessWave,1);assert.equal(t.enemies.length,Math.min(90,s.initialPursuers+16));
@@ -1083,7 +1085,7 @@ test('All 20 cleared stages enter endless using their own enemy stats without ne
       assert.equal(e.hp,Math.round(base.hp*1.122));assert.equal(e.damage,Math.round(base.damage*1.045));
       assert.equal(e.speed,base.speed*1.012);assert.equal(e.xp,s.experience.typical[e.type?'fast':'slow']);
     }
-    t.enemies=[];t.update(.001);assert.equal(t.state,'playing');assert.equal(t.profile.rescuedSprites.length,s.id);
+    t.enemies=[];t.update(.001);assert.equal(t.state,'playing');assert.equal(t.profile.rescuedSprites.length,Math.min(20,s.id));
     assert(t.finishEndless(true));assert.equal(t.state,'ended');
   }
 });
@@ -1354,8 +1356,8 @@ test('Skill collection survives endless entry but resets for a new attempt or th
   claimSkill(t,t.runRelicDefs[0].key);t.start();assert.equal(Object.keys(t.player.skills).length,0);assert(t.relicDrops.every(r=>!r.claimed));
 });
 
-test('Eight heroes are unlocked without a cleared stage and orange has the rebalanced starter loadout',({t})=>{
-  assert.equal(t.growth.heroes.length,8);assert.equal(new Set(t.growth.heroes.map(h=>h.id)).size,8);
+test('Thirteen heroes are unlocked without a cleared stage and orange has the rebalanced starter loadout',({t})=>{
+  assert.equal(t.growth.heroes.length,13);assert.equal(new Set(t.growth.heroes.map(h=>h.id)).size,13);
   assert.equal(t.player.heroId,'orange');assert.equal(t.player.damage,22);assert.equal(t.player.rate,3);
   assert.equal(t.player.hp,110);assert.equal(t.player.speed,205);assert.equal(t.player.pickup,85);
   t.startScreen();assert.equal(t.selectHero('missing'),false);assert.equal(t.trainHero('berry'),false);
@@ -1364,16 +1366,16 @@ test('Eight heroes are unlocked without a cleared stage and orange has the rebal
     assert.equal(t.player.heroId,hero.id);assert.equal(t.profile.clearedStages.length,0);
   }
 });
-test('Hero training debits exact costs, changes the next run once and stops at five levels',({t})=>{
+test('Hero training debits exact costs, changes the next run once and stops at thirty levels',({t})=>{
   t.startScreen();assert(!t.trainHero('orange'));t.profile.seeds=999999;t.profile.cores=9999;
-  for(let level=0;level<5;level++){
+  for(let level=0;level<30;level++){
     const cost=t.growth.cost('hero','orange',level),seeds=t.profile.seeds,cores=t.profile.cores;
     assert(t.trainHero('orange'));assert.equal(t.profile.heroLevels.orange,level+1);
     assert.equal(t.profile.seeds,seeds-cost.seeds);assert.equal(t.profile.cores,cores-cost.cores);
   }
   const saved=JSON.stringify(t.profile);assert(!t.trainHero('orange'));assert.equal(JSON.stringify(t.profile),saved);
-  t.start();assert(Math.abs(t.player.damage-22*1.125)<1e-8);assert.equal(t.player.hp,135);
-  assert.equal(t.player.skillCooldown,.9);const damage=t.player.damage;t.start();assert.equal(t.player.damage,damage);
+  t.start();assert(Math.abs(t.player.damage-22*1.375)<1e-8);assert.equal(t.player.hp,210);
+  assert(Math.abs(t.player.skillCooldown-.7)<1e-8);const damage=t.player.damage;t.start();assert.equal(t.player.damage,damage);
 });
 test('Four permanent research trees debit their costs and cap their shared next-run benefits',({t})=>{
   t.startScreen();assert(!t.researchTalent('vitality'));assert(!t.researchTalent('missing'));
@@ -1386,8 +1388,8 @@ test('Four permanent research trees debit their costs and cap their shared next-
     }
     const saved=JSON.stringify(t.profile);assert(!t.researchTalent(item.id));assert.equal(JSON.stringify(t.profile),saved);
   }
-  t.start();assert.equal(t.player.maxHp,142);assert(Math.abs(t.player.damage-22*1.12)<1e-8);
-  assert(Math.abs(t.player.rate-3*1.06)<1e-8);assert(Math.abs(t.player.xpMult-1.1)<1e-8);
+  t.start();assert.equal(t.player.maxHp,190);assert(Math.abs(t.player.damage-22*1.40)<1e-8);
+  assert(Math.abs(t.player.rate-3*1.20)<1e-8);assert(Math.abs(t.player.xpMult-1.3)<1e-8);
 });
 test('Hero selection, training and research survive reload and stale saves receive safe growth defaults',({t,storage})=>{
   t.startScreen();t.profile.clearedStages=[2,5,8];t.profile.unlockedStage=9;t.profile.seeds=5000;t.profile.cores=1000;
@@ -1395,8 +1397,8 @@ test('Hero selection, training and research survive reload and stale saves recei
   const loaded=createGame(storage);assert.equal(JSON.stringify(loaded.t.profile),JSON.stringify(t.profile));loaded.t.start();
   assert.equal(loaded.t.player.heroId,'lime');assert.equal(loaded.t.profile.heroLevels.lime,1);assert.equal(loaded.t.profile.talents.insight,1);
   const invalid=createGame(new Map([['orchard-save-v1',JSON.stringify({version:1,selectedHero:'lime',heroLevels:{orange:900,lime:900,fake:4},talents:{vitality:900,damage:-1,fake:4}})]]));
-  assert.equal(invalid.t.profile.selectedHero,'lime');assert.equal(invalid.t.profile.heroLevels.orange,5);assert.equal(invalid.t.profile.heroLevels.lime,5);
-  assert.equal(invalid.t.profile.talents.vitality,8);assert.equal(invalid.t.profile.talents.damage,0);assert(!Object.hasOwn(invalid.t.profile.talents,'fake'));
+  assert.equal(invalid.t.profile.selectedHero,'lime');assert.equal(invalid.t.profile.heroLevels.orange,30);assert.equal(invalid.t.profile.heroLevels.lime,30);
+  assert.equal(invalid.t.profile.talents.vitality,20);assert.equal(invalid.t.profile.talents.damage,0);assert(!Object.hasOwn(invalid.t.profile.talents,'fake'));
 });
 test('Battle, pause and exploration map protect the active hero and permanent growth',({t})=>{
   t.profile.clearedStages=[2,5,8];t.profile.seeds=999999;t.profile.cores=9999;
@@ -1406,10 +1408,10 @@ test('Battle, pause and exploration map protect the active hero and permanent gr
   }
   reject();t.pause();reject();t.showRelicMap();reject();t.closeRelicMap();assert.equal(t.state,'paused');
 });
-test('Hero menu presents eight portraits, passive and active skills, training and all research actions',(game)=>{
+test('Hero menu presents thirteen portraits, passive and active skills, training and all research actions',(game)=>{
   const {t,element}=game;t.startScreen();t.profile.clearedStages=[2,5,8];t.profile.seeds=999999;t.profile.cores=9999;
   click(game,'navHeroes');assert.equal(t.state,'heroes');menuControls(game);
-  assert.equal(element('overlay').querySelectorAll('[data-inspect-hero]').length,8);
+  assert.equal(element('overlay').querySelectorAll('[data-inspect-hero]').length,13);
   dataButton(game,'data-inspect-hero','berry').onclick();assert(element('overlay').innerHTML.includes('莓影齐射'));
   dataButton(game,'data-hero-view','passive').onclick();assert(element('overlay').innerHTML.includes('莓心敏锐'));
   click(game,'equipHero');assert.equal(t.profile.selectedHero,'berry');
@@ -1554,10 +1556,10 @@ test('Endless spawns also avoid solids and retain hero, research bonuses and ear
   for(const e of t.enemies)assert(t.world.isFree(e.x,e.y,e.r,t.obstacles,t.WORLD_W,t.WORLD_H));
   t.spawnEndlessWave();for(const e of t.enemies)assert(t.world.isFree(e.x,e.y,e.r,t.obstacles,t.WORLD_W,t.WORLD_H));
 });
-test('Twenty distinct stage names and local preview images are connected to the carousel',({t,element})=>{
-  assert.equal(t.art.stages.length,20);assert.equal(new Set(t.stages.map(s=>s.name)).size,20);
+test('One hundred stage names and local preview images are connected to the carousel',({t,element})=>{
+  assert.equal(t.art.stages.length,100);assert.equal(new Set(t.stages.map(s=>s.name)).size,100);
   assert.equal(new Set(t.art.stages.map(s=>s.image)).size,20);assert(fs.existsSync(__dirname+'/'+t.art.atlas));
-  t.startScreen();t.profile.unlockedStage=20;
+  t.startScreen();t.profile.unlockedStage=100;
   for(const s of t.stages){
     const stage=t.art.stages[s.id-1];assert.equal(stage.id??stage.stageId,s.id);assert.equal(stage.name,s.name);assert(fs.existsSync(__dirname+'/'+stage.image));
     assert(t.selectStage(s.id));t.startScreen();const markup=element('overlay').innerHTML;
@@ -1747,7 +1749,7 @@ test('A completed super and all its ranks survive endless entry while a fresh ch
   // The ten fixture-supplied choices consume chapter XP instead of granting ten free ranks above the real budget.
   const spent=t.experience.budget(10);assert.equal(t.stageXP.collect(t.stageXP.grant(spent)),spent);
   clearStage(t);const build=t.player.build,levels=JSON.stringify(build.levels);assert(t.startEndless());
-  assert.equal(t.player.level,41);
+  assert.equal(t.player.level,31);
   assert.equal(t.player.build,build);assert.equal(JSON.stringify(t.player.build.levels),levels);assert(t.player.build.superSkills.includes('skyweb'));
   t.finishEndless(true);t.start();assert.equal(t.player.build.attackSlots.length,0);assert.equal(t.player.build.attributeSlots.length,0);assert.equal(t.player.build.superSkills.length,0);
 });
@@ -1757,14 +1759,17 @@ test('Passive relic map descriptions show a lasting buff without undefined coold
   assert.equal(element('relicSlots').querySelectorAll('[data-owned-relic]')[0],button);assert.equal(typeof button.onclick,'function');button.onclick();
   assert.equal(t.state,'relicMap');assert(element('overlay').innerHTML.includes('本局持续属性增益'));assert(!element('overlay').innerHTML.includes('undefined'));
 });
-test('All twenty real chapter clears reconcile exactly 13046 XP into forty complete ranks before rescue under varying XP bonuses',({t})=>{
-  for(let id=1;id<=20;id++){
+test('All shipped real chapter clears reconcile exactly 10000 XP into thirty ranks before rescue under varying XP bonuses',({t})=>{
+  for(const stage of t.stages){
+    const id=stage.id;
     prepareStage(t,id);t.player.xpMult=[1,1.2,1.65,2.8][(id-1)%4];clearStage(t);
-    assert.equal(t.player.level,41);assert.equal(t.player.xp,0);assert.equal(t.player.need,850);
-    assert.equal(t.stageXP.budget,13046);assert.equal(t.stageXP.issued,13046);assert.equal(t.stageXP.collected,13046);assert(t.stageXP.settled);
-    assert.equal(t.gems.length,0);assert.equal(t.player.build.mode,'stage');assert.equal(t.player.build.attackChoices,20);assert.equal(t.player.build.attributeChoices,20);
-    assert.equal(t.player.build.attackSlots.length,4);assert.equal(t.player.build.attributeSlots.length,4);
-    assert(Object.values(t.player.build.levels).every(level=>level===5));
+    assert.equal(t.player.level,31);assert.equal(t.player.xp,0);assert.equal(t.player.need,601);
+    assert.equal(t.stageXP.budget,10000);assert.equal(t.stageXP.issued,10000);assert.equal(t.stageXP.collected,10000);assert(t.stageXP.settled);
+    const build=t.player.build,summary=t.builds.summary(t.player);
+    assert.equal(t.gems.length,0);assert.equal(build.mode,'stage');assert.equal(build.attackChoices+build.attributeChoices,30);
+    assert(build.attackChoices<=20&&build.attributeChoices<=20);assert(build.attackSlots.length<=4&&build.attributeSlots.length<=4);
+    assert(Object.values(build.levels).every(level=>level>=1&&level<=5));assert(Object.values(build.levels).some(level=>level<5));
+    assert.equal(summary.limits.totalChoices,40);assert.equal(summary.exhausted,false);
   }
 });
 test('Stage XP bonuses release more of the same reserve early without fractional gems or an extra final upgrade',()=>{
@@ -1772,7 +1777,7 @@ test('Stage XP bonuses release more of the same reserve early without fractional
     const {t}=createGame();t.start();t.player.xpMult=multiplier;t.shotClock=Infinity;
     const victim=t.enemies.find(e=>!e.boss&&!e.elite);victim.hp=0;t.update(.001);
     assert(t.stageXP.issued>0);assert(Number.isInteger(t.stageXP.issued));
-    const early=t.stageXP.issued;clearStage(t);assert.equal(t.stageXP.collected,13046);assert.equal(t.player.level,41);assert.equal(t.player.xp,0);return early;
+    const early=t.stageXP.issued;clearStage(t);assert.equal(t.stageXP.collected,10000);assert.equal(t.player.level,31);assert.equal(t.player.xp,0);return early;
   });
   assert(trials[1]>trials[0]);
 },{start:false});
@@ -1782,21 +1787,21 @@ test('Endless combat XP bypasses the settled chapter budget and funds a real six
   t.shotClock=Infinity;t.enemies=[enemy(t.player.x,t.player.y,{hp:0,xp:t.player.need})];t.update(.001);
   assert.equal(t.state,'upgrade');assert(element('overlay').innerHTML.includes('无尽突破'));assert(!element('overlay').innerHTML.includes('每种最高 5 级'));
   t.choices.splice(0,t.choices.length,{...t.builds.get(source),rarity:{mult:1,name:'普通',color:'#abc'}});t.choose(0);
-  assert.equal(t.player.level,42);assert.equal(t.player.build.levels[source],6);assert(t.player.build.powers[source]>previousPower);
-  assert.equal(t.player.build.attackChoices+t.player.build.attributeChoices,41);assert.equal(JSON.stringify(t.stageXP.snapshot()),ledger);
+  assert.equal(t.player.level,32);assert.equal(t.player.build.levels[source],6);assert(t.player.build.powers[source]>previousPower);
+  assert.equal(t.player.build.attackChoices+t.player.build.attributeChoices,31);assert.equal(JSON.stringify(t.stageXP.snapshot()),ledger);
   assert(element('buildSlots').innerHTML.includes('Lv.6'));assert(!element('buildSlots').innerHTML.includes('/20 次'));
 });
 test('A fifth distinct skill is learnable in endless and new challenges restore the four-slot five-rank rules',({t})=>{
   clearStage(t);assert(t.startEndless());const newAttack=t.builds.defs.find(def=>def.category==='attack'&&!t.player.build.attackSlots.includes(def.id)&&t.builds.available(t.player,def.id));assert(newAttack);
   pickBuild(t,newAttack.id);assert.equal(t.player.build.attackSlots.length,5);assert.equal(t.player.build.levels[newAttack.id],1);
-  const existing=t.player.build.attributeSlots[0];pickBuild(t,existing);assert.equal(t.player.build.levels[existing],6);
+  const existing=t.player.build.attributeSlots[0],previousLevel=t.player.build.levels[existing];pickBuild(t,existing);assert.equal(t.player.build.levels[existing],previousLevel+1);
   t.finishEndless(true);t.start();assert.equal(t.player.build.mode,'stage');assert.equal(t.player.level,1);assert.equal(t.player.xp,0);
   assert.equal(t.player.build.attackSlots.length,0);assert.equal(t.builds.getLimits(t.player).maxLevel,5);assert.equal(t.stageXP.issued,0);
 });
-test('Hero roster integration: all eight heroes are selectable before the first clear',({t,element})=>{
-  assert.equal(t.profile.clearedStages.length,0);assert.equal(t.growth.heroes.length,8);
+test('Hero roster integration: all thirteen heroes are selectable before the first clear',({t,element})=>{
+  assert.equal(t.profile.clearedStages.length,0);assert.equal(t.growth.heroes.length,13);
   for(const hero of t.growth.heroes){assert.equal(hero.unlockStage,0);assert(t.selectHero(hero.id));assert.equal(t.profile.selectedHero,hero.id);assert.equal(t.player.heroId,hero.id)}
-  t.showHeroes();assert.equal(element('overlay').querySelectorAll('[data-inspect-hero]').length,8);
+  t.showHeroes();assert.equal(element('overlay').querySelectorAll('[data-inspect-hero]').length,13);
   assert(!element('overlay').innerHTML.includes('尚未解锁'));assert(!element('overlay').innerHTML.includes('关解锁'));
 },{start:false});
 test('Hero roster integration: cherry fires two real rows of twelve matching projectiles',({t})=>{
@@ -1963,6 +1968,82 @@ test('New UI: help isolates keyboard focus and cannot activate the background en
   click(game,'viewTutorial');assert.equal(document.activeElement,element('nextTutorial'));
   listeners.keydown({key:'Tab',preventDefault(){}});assert.equal(document.activeElement,element('viewConversation'));
   t.closeGameHelp();assert.equal(t.state,'playing');assert(!element('endEndless').disabled);element('endEndless').onclick();assert.equal(t.state,'ended');
+});
+test('Campaign: later eighty chapters have bounded encounters, rising stats and their own final boss',({t,bosses})=>{
+  let previous=t.stages[19];
+  for(const s of t.stages.slice(20)){
+    assert.equal(s.chapter,Math.floor((s.id-1)/20)+1);
+    assert.equal(s.normalCount,398);assert.equal(s.eliteCount,44+Math.ceil((s.id-20)/4));
+    assert(s.bossCount>=5&&s.bossCount<=10);assert.equal(s.bossIds.length,s.bossCount);
+    assert.equal(new Set(s.bossIds).size,s.bossCount);assert.equal(s.bossIds.at(-1),s.id);
+    assert.equal(s.bossActiveCap,1);assert.equal(s.bossRecovery,12);
+    assert(s.bossIds.every(id=>bosses[id-1]?.stageId===id));
+    for(const type of ['slow','fast','elite']){
+      assert(s[type].hp>=previous[type].hp);assert(s[type].damage>=previous[type].damage);
+      assert(s[type].speed<205);
+    }
+    assert.equal(s.xpRewards.reduce((a,b)=>a+b,0),10000);assert.equal(s.experience.choices,30);
+    previous=s;
+  }
+});
+test('Campaign: the old level-five save stays earned and level-thirty training is affordable across the campaign',({t})=>{
+  const p=t.growth.migrate({selectedHero:'orange',heroLevels:{orange:5},talents:{damage:6}},{clearedStages:[20]});
+  assert.equal(p.heroLevels.orange,5);assert.equal(p.talents.damage,6);
+  const b=t.growth.bonuses(p);assert(Math.abs(b.damage-.245)<1e-8);assert.equal(b.hp,25);
+  const budget=t.stages.reduce((sum,s)=>sum+s.reward.seeds,0);
+  let total=0,previous=0;
+  for(let level=0;level<30;level++) {const cost=t.growth.cost('hero','orange',level);assert(cost.seeds>previous);previous=cost.seeds;total+=cost.seeds;}
+  assert(total>960&&total<budget);assert.equal(t.growth.cost('hero','orange',30),null);
+});
+test('Campaign: later saves preserve clears, selected new hero and extended training levels',()=>{
+  const raw={version:1,unlockedStage:100,clearedStages:[20,21,40,99,100,101],selectedHero:'coconut',heroLevels:{coconut:29,orange:5},talents:{damage:18},rescuedSprites:[1,20]};
+  const {t}=createGame(new Map([['orchard-save-v1',JSON.stringify(raw)]]));
+  assert.equal(t.profile.unlockedStage,100);assert.deepEqual(Array.from(t.profile.clearedStages),[20,21,40,99,100]);
+  assert.equal(t.profile.selectedHero,'coconut');assert.equal(t.profile.heroLevels.coconut,29);assert.equal(t.profile.talents.damage,18);
+  t.startScreen();assert(t.selectStage(100));t.start();assert.equal(t.activeStage.id,100);assert.equal(t.mapLayout.id,100);
+});
+test('Campaign: chapter and stage selectors preview locked content and start unlocked content',(game)=>{
+  const {t,element}=game;t.startScreen();element('chapterJump').value='81';element('chapterJump').onchange();
+  assert.equal(t.previewStage,81);assert.equal(t.selectedStage,1);assert(element('start').disabled);
+  t.profile.unlockedStage=100;element('stageJump').value='100';element('stageJump').onchange();
+  assert.equal(t.selectedStage,100);assert.equal(t.previewStage,100);assert(!element('start').disabled);
+  element('start').onclick();assert.equal(t.activeStage.id,100);assert.equal(t.state,'playing');
+});
+test('Campaign: peach heals within the health cap and its timed defense expires',({t})=>{
+  t.startScreen();assert(t.selectHero('peach'));t.start();quietField(t);t.player.hp=t.player.maxHp-30;
+  const hp=t.player.hp;t.activateHeroSkill();assert(Math.abs(t.player.hp-hp-(t.player.maxHp*.08+6))<1e-8);
+  assert.equal(t.player.guardDefense,2);assert.equal(t.player.guardUntil,t.elapsed+4);assert(!t.activateHeroSkill());
+  t.update(4.1);assert(t.player.guardUntil<t.elapsed);
+});
+test('Campaign: grape launches twelve finite projectiles covering the full circle with penetration',({t})=>{
+  t.startScreen();assert(t.selectHero('grape'));t.start();quietField(t);assert(t.activateHeroSkill());
+  assert.equal(t.bullets.length,12);assert(t.bullets.every(b=>b.pierces===1&&Number.isFinite(b.damage)&&b.life===1.5));
+  assert(t.bullets.some(b=>b.vx>470)&&t.bullets.some(b=>b.vx< -470));assert(t.bullets.some(b=>b.vy>470)&&t.bullets.some(b=>b.vy< -470));
+});
+test('Campaign: watermelon slows ordinary enemies and bosses differently and grants a single shield',({t})=>{
+  t.startScreen();assert(t.selectHero('watermelon'));t.start();quietField(t);
+  const normal=enemy(t.player.x+50,t.player.y,{hp:1000}),boss=enemy(t.player.x+100,t.player.y,{hp:1000,boss:true});
+  t.enemies=[normal,boss];assert(t.activateHeroSkill());assert.equal(normal.slowAmount,.45);assert.equal(boss.slowAmount,.2);
+  assert.equal(t.player.shield,1);assert.equal(t.player.standPower,.1);
+  t.player.heroClock=0;assert(t.activateHeroSkill());assert.equal(t.player.shield,1);
+});
+test('Campaign: banana strikes at the dash destination and collisions keep it outside solids',({t})=>{
+  t.startScreen();assert(t.selectHero('banana'));t.start();quietField(t);
+  const start=t.player.x,point=t.world.safePoint(t.player.x+210,t.player.y,44,t.obstacles,t.WORLD_W,t.WORLD_H);
+  const victim=enemy(point.x-40,point.y,{hp:1000});t.enemies=[victim];assert(t.activateHeroSkill());
+  assert(t.player.x>start);assert(t.player.x<=start+210+1e-7);assert.equal(t.player.inv,.6);
+  assert(t.world.isFree(t.player.x,t.player.y,t.player.r||17,t.obstacles,t.WORLD_W,t.WORLD_H));assert(victim.hp<1000);
+  const solid=t.obstacles.find(o=>o.shape==='circle'&&t.world.isFree(o.x-o.r-40,o.y,17,t.obstacles,t.WORLD_W,t.WORLD_H));
+  assert(solid);t.player.x=solid.x-solid.r-40;t.player.y=solid.y;t.player.heroClock=0;
+  assert(t.activateHeroSkill());assert(t.player.x<solid.x-solid.r);
+  assert(t.world.isFree(t.player.x,t.player.y,17,t.obstacles,t.WORLD_W,t.WORLD_H));
+});
+test('Campaign: coconut targets the weakest health ratio and applies its execute threshold',({t})=>{
+  t.startScreen();assert(t.selectHero('coconut'));t.start();quietField(t);
+  const healthy=enemy(t.player.x+50,t.player.y,{hp:1000,maxHp:1000}),wounded=enemy(t.player.x+100,t.player.y,{hp:300,maxHp:1000});
+  t.enemies=[healthy,wounded];const damage=t.player.damage;assert(t.activateHeroSkill());assert.equal(healthy.hp,1000);
+  assert(Math.abs(wounded.hp-(300-damage*8*t.player.skillPower))<1e-8);
+  t.player.heroClock=0;t.enemies=[healthy];assert(t.activateHeroSkill());assert(Math.abs(healthy.hp-(1000-damage*4*t.player.skillPower))<1e-8);
 });
 if(require.main===module){
   console.log(`${count} gameplay checks passed.`);

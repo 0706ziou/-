@@ -1,4 +1,4 @@
-// Exact forty-choice chapter XP and front-loaded XP bonus checks; no browser needed.
+// Exact thirty-choice chapter XP and front-loaded XP bonus checks; no browser needed.
 const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
@@ -14,16 +14,16 @@ function levels(total) {
   while (remainder >= xp.need(level)) { remainder -= xp.need(level); level++; }
   return { level, remainder };
 }
-check('The shipped forty-choice curve costs exactly 13,046 integer XP', () => {
-  assert.equal(xp.choices, 40); assert.equal(xp.levelCap, 41); assert.equal(xp.budget(), 13046);
-  assert(Object.isFrozen(xp.costs)); assert.equal(xp.costs.length, 40);
-  assert.equal(sum(xp.costs), 13046);
-  assert.deepEqual(Array.from(xp.costs.slice(0, 6)), [100, 102, 106, 109, 114, 119]);
-  assert.deepEqual(levels(13046), { level: 41, remainder: 0 });
-  assert.deepEqual(levels(13045), { level: 40, remainder: xp.need(40) - 1 });
-  assert.equal(xp.budget(0), 0); assert.equal(xp.budget(1), 100); assert.equal(xp.need(41), 850);
+check('The shipped thirty-choice curve costs exactly 10,000 integer XP', () => {
+  assert.equal(xp.choices, 30); assert.equal(xp.levelCap, 31); assert.equal(xp.budget(), 10000);
+  assert(Object.isFrozen(xp.costs)); assert.equal(xp.costs.length, 30);
+  assert.equal(sum(xp.costs), 10000);
+  assert.deepEqual(Array.from(xp.costs.slice(0, 6)), [180, 184, 189, 195, 201, 208]);
+  assert.deepEqual(levels(10000), { level: 31, remainder: 0 });
+  assert.deepEqual(levels(9999), { level: 30, remainder: xp.need(30) - 1 });
+  assert.equal(xp.budget(0), 0); assert.equal(xp.budget(1), 180); assert.equal(xp.need(31), 601);
 });
-check('Stage curve grows monotonically and retains the prior endless costs', () => {
+check('Endless continues smoothly from level 31 and retains the prior costs from level 41', () => {
   let previous = 0;
   for (let level = 1; level <= 200; level++) {
     const cost = xp.need(level);
@@ -31,21 +31,20 @@ check('Stage curve grows monotonically and retains the prior endless costs', () 
     if (level >= 41) assert.equal(cost, Math.round(10 + 7 * (level - 1) + .35 * (level - 1) ** 2));
     previous = cost;
   }
-  assert.equal(xp.need(40), 732); assert.equal(xp.need(41), 850); assert.equal(xp.need(42), 885);
-  assert.equal(xp.budget(10), 1194); assert.equal(xp.budget(20), 3280);
+  assert.equal(xp.need(30), 577); assert.equal(xp.need(31), 601); assert.equal(xp.need(40), 844);
+  assert.equal(xp.need(41), 850); assert.equal(xp.need(42), 885);
+  assert.equal(xp.budget(10), 2073); assert.equal(xp.budget(20), 5185);
 });
-check('Chapter one grants the first choice at four ordinary kills and five choices by twenty', () => {
+check('Chapter one grants the first choice at eight ordinary kills, two by twenty, four by forty and nine by eighty', () => {
   const rewards = stages[0].xpRewards;
-  assert.equal(sum(rewards.slice(0, 3)), 91);
-  assert.equal(levels(sum(rewards.slice(0, 3))).level, 1);
-  assert.equal(levels(sum(rewards.slice(0, 4))).level, 2);
-  assert.equal(sum(rewards.slice(0, 20)), 611);
-  assert.deepEqual([1, 5, 10, 20, 40].map(count => levels(sum(rewards.slice(0, count))).level - 1), [0, 1, 2, 5, 10]);
-  assert.equal(levels(sum(rewards.slice(0, 20)) + rewards[stages[0].normalCount]).level - 1, 6);
-  const oldNeed = level => Math.round(10 + 7 * (level - 1) + .35 * (level - 1) ** 2);
-  let oldChoices = 0, oldRemaining = 611;
-  while (oldRemaining >= oldNeed(oldChoices + 1)) oldRemaining -= oldNeed(++oldChoices);
-  assert.equal(oldChoices, 10);
+  assert.equal(sum(rewards.slice(0, 7)), 160);
+  assert.equal(levels(sum(rewards.slice(0, 7))).level, 1);
+  assert.deepEqual(levels(sum(rewards.slice(0, 8))), { level: 2, remainder: 0 });
+  assert.equal(sum(rewards.slice(0, 20)), 470);
+  assert.deepEqual([1, 5, 10, 20, 40, 80].map(count => levels(sum(rewards.slice(0, count))).level - 1), [0, 0, 1, 2, 4, 9]);
+  assert.equal(levels(sum(rewards.slice(0, 20)) + rewards[stages[0].normalCount]).level - 1, 2);
+  assert.equal(stages[0].experience.ranges.slow.min, 20); assert.equal(stages[0].experience.ranges.slow.max, 20);
+  assert.equal(stages[0].experience.ranges.fast.min, 29); assert.equal(stages[0].experience.ranges.fast.max, 30);
 });
 for (const stage of stages) {
   check(`Chapter ${stage.id}: normal opening pacing and stacked bonuses cannot multi-level on a first kill`, () => {
@@ -55,7 +54,7 @@ for (const stage of stages) {
       total += normalRewards[index];
       if (total >= xp.need(1)) { firstChoiceAt = index + 1; break; }
     }
-    assert(firstChoiceAt >= 4 && firstChoiceAt <= 6);
+    assert(firstChoiceAt >= 8 && firstChoiceAt <= 14);
     const initialBonus = 1.06 * 1.10 * 1.15 + .08;
     const fullyStackedBonus = 1.06 * 1.10 * 1.15 * 1.5 + .08;
     for (const bonus of [1, initialBonus, fullyStackedBonus]) {
@@ -70,11 +69,11 @@ for (const stage of stages) {
   check(`Chapter ${stage.id}: complete roster has deterministic integer XP summing to the cap`, () => {
     const rewards = xp.assign(stage);
     assert(Object.isFrozen(rewards)); assert.equal(rewards.length, stage.enemyCount);
-    assert.equal(sum(rewards), 13046); assert(rewards.every(value => Number.isInteger(value) && value > 0));
+    assert.equal(sum(rewards), 10000); assert(rewards.every(value => Number.isInteger(value) && value > 0));
     assert.deepEqual(Array.from(rewards), Array.from(stage.xpRewards));
     assert.deepEqual(Array.from(xp.assign(stage)), Array.from(rewards));
     assert(Object.isFrozen(stage.xpRewards)); assert(Object.isFrozen(stage.experience));
-    assert.deepEqual(levels(sum(rewards)), { level: 41, remainder: 0 });
+    assert.deepEqual(levels(sum(rewards)), { level: 31, remainder: 0 });
   });
   check(`Chapter ${stage.id}: fly, elite and boss rewards remain successively larger`, () => {
     const groups = { slow: [], fast: [], elite: [], boss: [] };
@@ -107,9 +106,9 @@ for (const stage of stages) {
         assert(ledger.issued <= ledger.budget); assert(ledger.collected <= ledger.issued);
       });
       if (multiplier === 1) assert.equal(first, stage.xpRewards[0]); else assert(first > stage.xpRewards[0]);
-      assert.equal(ledger.issued, 13046); assert.equal(ledger.collected, 13046); assert.equal(ledger.baseGranted, 13046);
+      assert.equal(ledger.issued, 10000); assert.equal(ledger.collected, 10000); assert.equal(ledger.baseGranted, 10000);
       assert.equal(ledger.finish(), 0); assert.equal(ledger.finish(), 0); assert.equal(ledger.carry, 0);
-      assert.deepEqual(levels(ledger.collected), { level: 41, remainder: 0 });
+      assert.deepEqual(levels(ledger.collected), { level: 31, remainder: 0 });
     });
   }
 }
@@ -119,9 +118,9 @@ check('Fractional XP bonus carries between kills instead of silently rounding ev
   assert.equal(ledger.issued, 6); assert(ledger.carry < 1e-8);
 });
 check('Changing bonuses halfway through a chapter still settles to exactly the same cap', () => {
-  const stage = stages[19], ledger = xp.create(stage);
+  const stage = stages[stages.length - 1], ledger = xp.create(stage);
   for (let index = 0; index < stage.xpRewards.length; index++) ledger.collect(ledger.grant(stage.xpRewards[index], index < 100 ? 1 : 1.56));
-  assert.equal(ledger.collected, 13046); assert.equal(ledger.finish(), 0);
+  assert.equal(ledger.collected, 10000); assert.equal(ledger.finish(), 0);
 });
 check('Dropped XP, direct Boss XP and remaining reserves reconcile without double credit', () => {
   const ledger = xp.create(stages[0]);
@@ -129,14 +128,14 @@ check('Dropped XP, direct Boss XP and remaining reserves reconcile without doubl
   assert.equal(ground, 30); assert.equal(boss, 360); assert.equal(ledger.collect(boss, 'boss-claim'), 360);
   assert.equal(ledger.grant(25, 1.2, 'bug-1'), 0); assert.equal(ledger.collect(boss, 'boss-claim'), 0);
   assert.equal(ledger.snapshot().uncollected, ground); assert.equal(ledger.collect(ground, 'gem-1'), ground);
-  const remainder = ledger.finish(); assert.equal(remainder, 13046 - ground - boss);
-  assert.equal(ledger.collect(remainder), remainder); assert.equal(ledger.collected, 13046);
+  const remainder = ledger.finish(); assert.equal(remainder, 10000 - ground - boss);
+  assert.equal(ledger.collect(remainder), remainder); assert.equal(ledger.collected, 10000);
   assert.equal(ledger.finish(), 0); assert.equal(ledger.grant(400, 2, 'late'), 0); assert.equal(ledger.collect(999999), 0);
 });
 check('Oversized bonuses use only the existing reserve and never create infinite XP', () => {
   const ledger = xp.create(stages[0]);
-  assert.equal(ledger.grant(50, 1e100), 13046); assert.equal(ledger.grant(50, 2), 0);
-  assert.equal(ledger.collect(1e100), 13046); assert.equal(ledger.carry, 0); assert.equal(ledger.finish(), 0);
+  assert.equal(ledger.grant(50, 1e100), 10000); assert.equal(ledger.grant(50, 2), 0);
+  assert.equal(ledger.collect(1e100), 10000); assert.equal(ledger.carry, 0); assert.equal(ledger.finish(), 0);
 });
 check('Invalid input cannot reduce already released or collected experience', () => {
   const ledger = xp.create(stages[0]);

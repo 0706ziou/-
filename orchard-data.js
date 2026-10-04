@@ -1,8 +1,8 @@
 /*
- * 果园伙伴与 20 位关底首领。
+ * 20位果园伙伴与100位关底首领；后80关循环守护伙伴家园。
  * 每位伙伴在对应关卡首通后获救；刚入住为 0 级，最高培养至 5 级。
  * damage / rate 为比例加成，其余为数值加成，均按培养等级累加。
- * 第 N 关包含前 N 位首领；普通怪和精英数量、出场节奏由 progression.js 配置。
+ * 前20关第N关包含前N位首领；后80关采用5～10位短队列。数量、出场节奏由 progression.js 配置。
  * 首领按战斗时间逐次登场，所有关卡同时最多 1 位，击败后留 12 秒喘息。
  * 首领生命以 10～30 秒的中等成型输出窗口为纸面目标，仍需完整试玩校准；0.9 秒冲刺预警保留。
  */
@@ -55,6 +55,14 @@
     { stageId: 20, name: '黑冠虫群领主', hp: 8500, speed: 126, damage: 48, radius: 44, color: '#a7a0c4', chargeInterval: 4.8, chargeSpeed: 326 }
   ];
 
+  const regions = ['月露', '赤焰', '霜晶', '星辉'];
+  for (let id = 21; id <= 100; id++) {
+    const source = bosses[(id - 1) % 20], step = id - 20;
+    bosses.push({ ...source, stageId: id, name: regions[Math.floor((id - 21) / 20)] + ' · ' + source.name,
+      hp: Math.round(8500 * (1 + step * .024)), speed: Math.min(145, 126 + step * .22),
+      damage: Math.round(48 * (1 + step * .006)), radius: 44,
+      chargeInterval: Math.max(4, 4.8 - step * .01), chargeSpeed: Math.min(350, 326 + step * .3) });
+  }
   window.ORCHARD_RESCUES = Object.freeze(rescues.map(Object.freeze));
   window.ORCHARD_BOSSES = Object.freeze(bosses.map(Object.freeze));
 })();
