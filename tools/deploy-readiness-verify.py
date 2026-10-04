@@ -149,7 +149,11 @@ fi
     script = directory / "exercise.sh"
     script.write_text(stub, encoding="utf-8", newline="\n")
     result = subprocess.run([BASH, script.as_posix(), directory.as_posix()],
-                            text=True, encoding="utf-8", capture_output=True, timeout=15)
+                            text=True, encoding="utf-8", capture_output=True,
+                            # Git Bash starts Windows subprocesses for each cat/cp/cmp.
+                            # Allow their startup cost; the helper's 15-request bound,
+                            # retry interval and exact-byte/TLS checks stay unchanged.
+                            timeout=60 if os.name == "nt" else 15)
     assert result.returncode == (0 if success else 23), result.stderr or result.stdout
     assert int((directory / "count").read_text()) == attempts, "Unexpected attempt count"
     sleep_file = directory / "sleeps"
