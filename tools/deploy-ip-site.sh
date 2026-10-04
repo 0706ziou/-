@@ -304,6 +304,7 @@ git -C "$task_source" sparse-checkout set --no-cone --stdin <<'SPARSE'
 /assets/heroes/*.svg
 /assets/stages/*.webp
 /assets/skills/*.svg
+/assets/equipment/*.png
 SPARSE
 if [[ -n ${resolved_old:-} ]]; then
   if python3 - "$resolved_old" <<'PY'
