@@ -6,6 +6,7 @@
   const stages = window.ORCHARD_STAGES;
   const experience = window.ORCHARD_EXPERIENCE;
   const rescueDefs = window.ORCHARD_RESCUES, bossDefs = window.ORCHARD_BOSSES;
+  const gardenDefs = window.ORCHARD_GARDENS;
   const relicDefs = window.ORCHARD_RELICS;
   const relicPoints = window.ORCHARD_RELIC_POINTS;
   const relicEffects = window.ORCHARD_RELIC_EFFECTS, builds = window.ORCHARD_BUILDS;
@@ -54,7 +55,7 @@
   let runMode = 'stage', stageVictoryReady = false, endlessEntered = false;
   let training = null;
   let stageXP = experience.create(stages[0]);
-  let selectedGearSlot = 'weapon', selectedSprite = 0;
+  let selectedGearSlot = 'weapon', selectedSprite = 0, selectedGarden = 1;
   let endlessWave = 0, waveClock = 0, endlessCreditedSeeds = 0, endlessCreditedCores = 0;
   let relicDrops = [], skillEffects = [], selectedRelic = relicDefs[0].id, mapReturnState = 'lobby';
   let runRelicDefs = [], challengeStarted = false, noticeQueue = [], currentNotice = null, noticeClock = 0;
@@ -74,8 +75,33 @@
     armor_rind: { slot: 'armor', name: '金橙果壳', icon: '🍊', desc: '生命 170，减伤 4，移速 -5%', hp: 170, defense: 4, speedMult: .95 },
     charm_sprout: { slot: 'charm', name: '萌芽护符', icon: '🌿', desc: '初始移速 205，拾取范围 85', speed: 205, pickup: 85, xpMult: 1 },
     charm_bloom: { slot: 'charm', name: '春花吊坠', icon: '🌸', desc: '移速 215，拾取范围 115', speed: 215, pickup: 115, xpMult: 1 },
-    charm_harvest: { slot: 'charm', name: '丰收徽记', icon: '🌻', desc: '移速 220，拾取范围 140，经验提前释放 +15%', speed: 220, pickup: 140, xpMult: 1.15 }
+    charm_harvest: { slot: 'charm', name: '丰收徽记', icon: '🌻', desc: '移速 220，拾取范围 140，经验提前释放 +15%', speed: 220, pickup: 140, xpMult: 1.15 },
+    weapon_grape: { slot: 'weapon', name: '紫藤连珠弩', icon: '🍇', desc: '双籽连射，适合快速清群', damage: 14, rate: 3.4, shots: 2, color: '#c9a3ed', range: 540 },
+    weapon_blueberry: { slot: 'weapon', name: '月露法杖', icon: '🫐', desc: '双发月露弹，50%概率额外穿透一只', damage: 30, rate: 1.4, shots: 2, color: '#a5beff', range: 620, pierce: .5 },
+    weapon_sunbow: { slot: 'weapon', name: '日耀长弓', icon: '☀', desc: '远距离重箭，每箭额外穿透一只', damage: 46, rate: 1.85, shots: 1, color: '#ffe09a', range: 720, pierce: 1 },
+    weapon_coconut: { slot: 'weapon', name: '星核椰炮', icon: '🥥', desc: '三籽齐射，百关远征的终章重炮', damage: 38, rate: 1.15, shots: 3, color: '#d8c9ff', range: 600 },
+    armor_moon: { slot: 'armor', name: '月叶游侠衣', icon: '🌙', desc: '轻装游侠 · 移速 +6%', hp: 130, defense: 1, speedMult: 1.06 },
+    armor_thorn: { slot: 'armor', name: '赤棘重甲', icon: '🌹', desc: '坚韧重甲 · 移速 −6%', hp: 185, defense: 5, speedMult: .94 },
+    armor_frost: { slot: 'armor', name: '霜瓜壁垒', icon: '❄', desc: '高生命护甲 · 移速 −8%', hp: 220, defense: 6, speedMult: .92 },
+    charm_moon: { slot: 'charm', name: '月露坠饰', icon: '💧', desc: '扩大拾取 · 经验提前释放 +12%', speed: 218, pickup: 165, xpMult: 1.12 },
+    charm_gale: { slot: 'charm', name: '疾风叶环', icon: '🍃', desc: '高速走位 · 轻盈突围', speed: 245, pickup: 120, xpMult: 1 },
+    charm_star: { slot: 'charm', name: '星辉罗盘', icon: '✦', desc: '远距离采集 · 经验提前释放 +25%', speed: 230, pickup: 185, xpMult: 1.25 }
   };
+  const gearAtlases = { weapon: 'assets/equipment/weapons.png', armor: 'assets/equipment/armor.png', charm: 'assets/equipment/charms.png' };
+  const gearArtOrder = {
+    weapon: ['weapon_seed', 'weapon_pea', 'weapon_cherry', 'weapon_pumpkin', 'weapon_grape', 'weapon_blueberry', 'weapon_sunbow', 'weapon_coconut'],
+    armor: ['armor_leaf', 'armor_bark', 'armor_rind', 'armor_moon', 'armor_thorn', 'armor_frost'],
+    charm: ['charm_sprout', 'charm_bloom', 'charm_harvest', 'charm_moon', 'charm_gale', 'charm_star']
+  };
+  function gearPortrait(id, extraClass = '') {
+    const g = gearDefs[id], cols = g.slot === 'weapon' ? 4 : 3, index = gearArtOrder[g.slot].indexOf(id);
+    const weaponViews = ['10 60 305 450', '314 50 314 450', '627 100 314 430', '940 130 314 390', '0 660 314 500', '314 620 314 565', '627 580 314 605', '940 700 314 485'];
+    const armorViews = ['0 0 512 490', '512 0 512 490', '1024 0 512 490', '0 490 512 534', '512 512 512 512', '1024 512 512 512'];
+    const viewBox = g.slot === 'weapon' ? weaponViews[index] : g.slot === 'armor' ? armorViews[index] : index % cols * 512 + ' ' + Math.floor(index / cols) * 512 + ' 512 512';
+    const size = g.slot === 'weapon' ? 'width="1254" height="1254"' : 'width="1536" height="1024"';
+    const [x, y, width, height] = viewBox.split(' '), clip = 'equipment-clip-' + id + '-' + (extraClass || 'card');
+    return '<svg class="equipment-art ' + extraClass + '" role="img" aria-label="' + g.name + '装备图" viewBox="' + viewBox + '" preserveAspectRatio="xMidYMid meet"><defs><clipPath id="' + clip + '" clipPathUnits="userSpaceOnUse"><rect x="' + x + '" y="' + y + '" width="' + width + '" height="' + height + '"/></clipPath></defs><image href="' + gearAtlases[g.slot] + '" ' + size + ' clip-path="url(#' + clip + ')"/></svg>';
+  }
   function freshProfile() {
     const base = { version: 1, unlockedStage: 1, clearedStages: [], seeds: 0, cores: 0, tutorialSeen: false, trainingComplete: false, trainingSkipped: false,
       rescuedSprites: [], spriteLevels: {}, orchard: { level: 0 },
@@ -99,11 +125,14 @@
       result.clearedStages = [...new Set((Array.isArray(raw.clearedStages) ? raw.clearedStages : []).filter(n => Number.isInteger(n) && n >= 1 && n <= stages.length))];
       result.orchard.level = integer(raw.orchard?.level, 0, 10);
       // Old saves already completed these rescues; preserve their earned residents on migration.
-      const residents = Array.isArray(raw.rescuedSprites) ? raw.rescuedSprites : result.clearedStages;
-      result.rescuedSprites = [...new Set(residents.filter(n => Number.isInteger(n) && n >= 1 && n <= 20))];
+      const residents = [...(Array.isArray(raw.rescuedSprites) ? raw.rescuedSprites : []), ...result.clearedStages];
+      result.rescuedSprites = [...new Set(residents.filter(n => Number.isInteger(n) && n >= 1 && n <= rescueDefs.length))].sort((a, b) => a - b);
       for (const id of result.rescuedSprites) result.spriteLevels[id] = integer(raw.spriteLevels?.[id], 0, 5);
       for (const id of Object.keys(gearDefs)) {
         if (raw.inventory && Object.hasOwn(raw.inventory, id)) result.inventory[id] = { level: integer(raw.inventory[id]?.level, 0, 10) };
+      }
+      for (const stage of stages) {
+        if (stage.firstClearGear && result.clearedStages.includes(stage.id)) result.inventory[stage.firstClearGear] ??= { level: 0 };
       }
       for (const slot of ['weapon', 'armor', 'charm']) {
         const id = raw.equipped?.[slot];
@@ -133,7 +162,7 @@
       ...baseStats, baseStats, volleyBonus: 0,
       xpMult: charm.xpMult * heroStats.xpMult, bulletColor: weapon.color, xp: 0, need: experienceNeed(1), level: 1, inv: 0, upgrades: {},
       heroId: heroStats.heroId, heroClock: 0, heroCasts: 0, skillCooldown: heroStats.skillCooldown, baseSkillCooldown: heroStats.skillCooldown, critChance: heroStats.critChance,
-      critMultiplier: heroStats.critMultiplier, pierce: heroStats.pierce, regen: heroStats.regen, regenDelay: heroStats.regenDelay, sinceHit: 0,
+      critMultiplier: heroStats.critMultiplier, pierce: (heroStats.pierce || 0) + (weapon.pierce || 0), weaponRange: weapon.range || 540, regen: heroStats.regen, regenDelay: heroStats.regenDelay, sinceHit: 0,
       dodge: heroStats.dodge || 0, thorns: heroStats.thorns || 0, skillPower: heroStats.skillPower || 1, standPower: heroStats.standDamage || 0,
       guardUntil: 0, guardDefense: 0,
       skills: {}, skillTimers: {}, shield: 0, facingX: 1, facingY: 0, leechEvents: [], killHealEvents: [] };
@@ -159,12 +188,12 @@
     elapsed = 0; kills = 0; shotClock = 0; still = 0; shake = 0; cinematicTime = 0; bossIndex = 0; bossKills = 0; nonBossKills = 0; nextBossAllowedAt = 0; bossArrivalUntil = 0;
     runRewarded = false; victoryRewardHTML = ''; runMode = 'stage'; stageVictoryReady = false; endlessEntered = false;
     endlessWave = 0; waveClock = 0; endlessCreditedSeeds = 0; endlessCreditedCores = 0;
-    selectedGearSlot = 'weapon'; selectedSprite = profile.rescuedSprites[0] || 0; inspectedHero = profile.selectedHero; heroTab = 'heroes'; heroSkillView = 'active';
+    selectedGearSlot = 'weapon'; selectedSprite = profile.rescuedSprites[0] || 0; selectedGarden = selectedSprite ? Math.ceil(selectedSprite / 10) : 1; inspectedHero = profile.selectedHero; heroTab = 'heroes'; heroSkillView = 'active';
     mapReturnState = 'lobby'; helpReturnState = 'playing'; helpTab = 'conversation'; tutorialStep = 0; tutorialIsFirstRun = false; helpFocusReturn = null;
     relicHudSignature = ''; buildHudSignature = ''; runRelicDefs = []; challengeStarted = false;
     setMap(selectedStage); player = freshPlayer(); stageXP = experience.create(activeStage); resetRelics(true); updateCamera();
   }
-  function acceptAccount(user, created = false, legacyClaimed = false) {
+  function acceptAccount(user, created = false, legacyClaimed = false, gamePassword = '') {
     currentAccount = user; currentSaveKey = authService.profileKey(user.id); storageAvailable = true;
     profile = loadProfile(); resetAccountSession();
     sessionGreeting = (created ? '注册成功，欢迎 ' : '欢迎回来，') + user.nickname + (legacyClaimed ? ' · 已保留原有进度' : '');
@@ -172,12 +201,14 @@
     document.body.classList.remove('is-cover'); el('coverScreen').classList.add('hidden'); el('loginPassword').value = '';
     startScreen();
     if (needsFirstTraining()) startTraining(true);
-    prepareWorldSession(); return true;
+    prepareWorldSession(gamePassword); return true;
   }
-  function prepareWorldSession() {
+  function prepareWorldSession(gamePassword = '') {
     if (!currentAccount || !window.ORCHARD_FRONTIER) return;
     const name = currentAccount.nickname;
-    window.ORCHARD_FRONTIER.prepareSession?.(name)?.then(() => {
+    const frontier = window.ORCHARD_FRONTIER;
+    const pending = gamePassword && frontier.enterGame ? frontier.enterGame(name, gamePassword) : frontier.prepareSession?.(name);
+    return pending?.then(() => {
       if (currentAccount?.nickname === name) frontierRewards?.retry();
     }).catch(() => {});
   }
@@ -192,7 +223,7 @@
       if (!authService) throw new Error('当前浏览器无法保存账号，请允许本地存储后再试。');
       const result = await authService.login(info);
       if (attempt !== loginAttempt || state !== 'cover') return false;
-      return acceptAccount(result.user, result.created, result.legacyClaimed);
+      return acceptAccount(result.user, result.created, result.legacyClaimed, info.password);
     } catch (error) {
       if (attempt === loginAttempt && state === 'cover') {
         el('loginFeedback').textContent = error.message || '暂时无法登录，请稍后重试。'; el('loginFeedback').classList.add('error');
@@ -200,6 +231,7 @@
       }
       return false;
     } finally {
+      info.password = '';
       loginBusy = false;
       for (const id of ['loginAccount', 'loginPassword', 'togglePassword', 'loginSubmit']) el(id).disabled = false;
       el('loginSubmit').textContent = '登录 / 首次注册';
@@ -208,12 +240,14 @@
   function logoutAccount() {
     if (!currentAccount || isRunActive() || loginBusy) return false;
     if (!saveProfile()) { el('logoutAccount').title = '进度保存失败，请稍后重试'; return false; }
+    if (window.ORCHARD_FRONTIER?.leaveGame) window.ORCHARD_FRONTIER.leaveGame().catch(() => {});
+    else window.ORCHARD_FRONTIER?.setPlayerName?.('');
     loginAttempt++; currentAccount = null; currentSaveKey = SAVE_KEY; profile = freshProfile(); sessionGreeting = '';
     resetAccountSession(); showCover(); return true;
   }
   function show(html, menu = false) {
     window.ORCHARD_FRONTIER?.close();
-    overlay.classList.remove('upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay');
+    overlay.classList.remove('upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay', 'armory-overlay');
     arena.classList.remove('is-lobby');
     for (const attribute of ['role', 'aria-modal', 'aria-label']) overlay.removeAttribute?.(attribute);
     overlay.innerHTML = '<div class="dialog' + (menu ? ' menu-dialog' : '') + '">' + html + '</div>';
@@ -222,20 +256,20 @@
   function showMenu(title, subtitle, body, actions, activeTab, note = '进度自动保存 · 所有操作无需滚轮') {
     if (!currentAccount) return false;
     const tabs = [['stages', '关卡挑战', 'navStages'], ['armory', '装备工坊', 'navArmory'], ['heroes', '英雄育成', 'navHeroes'], ['orchard', '我的果园', 'navOrchard'], ['world', '共享世界', 'navWorld'], ['map', '投放地图', 'navMap']];
-    show('<div class="menu-top"><div><div class="tag">' + subtitle + '</div><h2 class="menu-title">' + title + '</h2></div><div class="wallet">☀ 阳光籽 ' + profile.seeds + '　◆ 果核 ' + profile.cores + '<small>通关 ' + profile.clearedStages.length + ' / ' + stages.length + ' · 精灵 ' + profile.rescuedSprites.length + ' / 20</small></div></div>' +
+    show('<div class="menu-top"><div><div class="tag">' + subtitle + '</div><h2 class="menu-title">' + title + '</h2></div><div class="wallet">☀ 阳光籽 ' + profile.seeds + '　◆ 果核 ' + profile.cores + '<small>通关 ' + profile.clearedStages.length + ' / ' + stages.length + ' · 精灵 ' + profile.rescuedSprites.length + ' / ' + rescueDefs.length + '</small></div></div>' +
       '<div class="menu-body">' + body + '</div><div class="menu-footer"><div class="menu-actions">' + actions + '</div>' +
       '<nav class="menu-nav" aria-label="果园功能">' + tabs.map(([tab, name, id]) => '<button class="nav-button ' + (activeTab === tab ? 'active' : '') + '" id="' + id + '" aria-pressed="' + (activeTab === tab) + '">' + name + '</button>').join('') + '</nav>' +
       '<div class="micro">' + (!storageAvailable ? '浏览器存储不可用，进度仅在当前页面中保留' : note) + '</div></div>', true);
     el('navStages').onclick = startScreen; el('navHeroes').onclick = () => showHeroes(); el('navArmory').onclick = showArmory; el('navOrchard').onclick = showOrchard; el('navWorld').onclick = showWorld; el('navMap').onclick = showRelicMap;
   }
-  function showWorld() {
+  function showWorld(initialTab = 'map') {
     if (!currentAccount || isRunActive()) return false;
     state = 'world'; keys.clear(); pointer = null;
     if (!window.ORCHARD_FRONTIER) {
       showPanel('世界暂未载入', '共享世界 / 家园与公会', '<p>请刷新游戏后再次进入世界。</p>', '<button class="secondary" id="worldBackLobby">返回关卡</button>');
       el('worldBackLobby').onclick = startScreen;
     } else {
-      window.ORCHARD_FRONTIER.open({ overlay, name: currentAccount.nickname, onExit: startScreen, onAuthenticated: () => frontierRewards?.retry() });
+      window.ORCHARD_FRONTIER.open({ overlay, name: currentAccount.nickname, initialTab: typeof initialTab === 'string' ? initialTab : 'map', onExit: startScreen, onAuthenticated: () => frontierRewards?.retry() });
     }
     updateHUD(); return true;
   }
@@ -503,7 +537,7 @@
     const s = stages[id - 1], unlocked = id <= profile.unlockedStage, cleared = profile.clearedStages.includes(id);
     const status = unlocked ? cleared ? '已通关 · 可以再次挑战' : '已解锁 · 等你守护' : '通关第 ' + (id - 1) + ' 关后解锁';
     const reward = s.firstClearGear ? ' · ' + gearDefs[s.firstClearGear].name : '';
-    show('<div class="lobby-heading"><div class="chapter-heading"><small class="chapter-eyebrow">ORCHARD GUARDIANS / 第 ' + String(id).padStart(2, '0') + ' 关</small><h2 class="chapter-name">' + s.name + '</h2><span class="chapter-status">' + status + '</span></div><div class="lobby-wallet">☀ ' + profile.seeds + '　◆ ' + profile.cores + '<small>通关 ' + profile.clearedStages.length + ' / ' + stages.length + ' · 救援 ' + profile.rescuedSprites.length + ' / 20</small></div></div>' +
+    show('<div class="lobby-heading"><div class="chapter-heading"><small class="chapter-eyebrow">ORCHARD GUARDIANS / 第 ' + String(id).padStart(2, '0') + ' 关</small><h2 class="chapter-name">' + s.name + '</h2><span class="chapter-status">' + status + '</span></div><div class="lobby-wallet">☀ ' + profile.seeds + '　◆ ' + profile.cores + '<small>通关 ' + profile.clearedStages.length + ' / ' + stages.length + ' · 救援 ' + profile.rescuedSprites.length + ' / ' + rescueDefs.length + '</small></div></div>' +
       '<div class="menu-body lobby-body"><section class="chapter-showcase" aria-label="关卡图片"><img class="chapter-image" style="filter:hue-rotate(' + (art.stages[id - 1].hue || 0) + 'deg)" src="' + art.stages[id - 1].image + '" alt="' + s.name + '主题图"><div class="chapter-shade"></div><span class="chapter-ribbon">' + String(id).padStart(2, '0') + ' / ' + stages.length + ' · ' + (unlocked ? cleared ? '已通关' : '可挑战' : '未解锁') + '</span>' +
       '<button class="chapter-arrow previous" id="previousStage" aria-label="切换上一关" ' + (id === 1 ? 'disabled' : '') + '>‹</button><button class="chapter-arrow next" id="nextStagePreview" aria-label="切换下一关" ' + (id === stages.length ? 'disabled' : '') + '>›</button>' +
       '<div class="chapter-caption"><strong>守护这片果园</strong><span>' + s.description + '</span></div></section>' +
@@ -620,24 +654,39 @@
     if (g.slot === 'armor') return '生命 ' + (g.hp + level * gearGrowth.hp) + ' · 每次减伤 ' + (g.defense + level * gearGrowth.defense) + ' · 移速 ' + Math.round(g.speedMult * 100) + '%';
     return '移速 ' + (g.speed + level * gearGrowth.speed) + ' · 拾取 ' + (g.pickup + level * gearGrowth.pickup) + ' · 经验 ' + Math.round(g.xpMult * 100) + '%';
   }
+  function gearStatChips(id) {
+    const g = gearDefs[id], level = profile.inventory[id]?.level || 0;
+    const stats = g.slot === 'weapon' ? [['每籽伤害', statText(g.damage * (1 + level * gearGrowth.damage))], ['每秒齐射', Number((g.rate * (1 + level * gearGrowth.rate)).toFixed(2))], ['每轮种子', g.shots]] :
+      g.slot === 'armor' ? [['生命', g.hp + level * gearGrowth.hp], ['固定减伤', g.defense + level * gearGrowth.defense], ['移速倍率', Math.round(g.speedMult * 100) + '%']] :
+      [['移速', g.speed + level * gearGrowth.speed], ['拾取距离', g.pickup + level * gearGrowth.pickup], ['经验倍率', Math.round(g.xpMult * 100) + '%']];
+    return '<div class="equipment-stats">' + stats.map(([label, value]) => '<div><small>' + label + '</small><b>' + value + '</b></div>').join('') + '</div>';
+  }
   function showArmory(slot = selectedGearSlot) {
     if (!currentAccount || isRunActive()) return false;
+    const listScroll = el('equipmentGrid')?.scrollTop || 0, sameSlot = slot === selectedGearSlot;
     if (['weapon', 'armor', 'charm'].includes(slot)) selectedGearSlot = slot;
     state = 'armory';
     const groups = [['weapon', '武器', '每级：伤害 +6% 基础值，射速 +2% 基础值'], ['armor', '护甲', '每级：生命 +8，减伤 +0.5'], ['charm', '饰品', '每级：移速 +3，拾取范围 +6']];
     const note = groups.find(([slot]) => slot === selectedGearSlot)[2];
     showMenu('装备工坊', '更换装备 / 永久强化', '<div class="gear-toolbar"><div class="gear-tabs">' + groups.map(([slot, title]) => '<button class="secondary ' + (slot === selectedGearSlot ? 'active' : '') + '" data-gear-slot="' + slot + '">' + title + '</button>').join('') + '</div><span class="gear-note">' + note + '</span></div>' +
-      '<div class="gear-grid">' + Object.entries(gearDefs).filter(([, g]) => g.slot === selectedGearSlot).map(([id, g]) => {
+      '<div class="armory-loadout" aria-label="当前穿戴">' + groups.map(([slot, title]) => {
+        const id = profile.equipped[slot];
+        return '<button type="button" class="loadout-item" data-gear-slot="' + slot + '">' + gearPortrait(id, 'loadout-art') + '<div><small>' + title + ' · 当前穿戴</small><strong>' + gearDefs[id].name + '</strong><span>强化 +' + profile.inventory[id].level + '</span></div></button>';
+      }).join('') + '</div><div id="equipmentGrid" class="gear-grid equipment-grid">' + Object.entries(gearDefs).filter(([, g]) => g.slot === selectedGearSlot).map(([id, g]) => {
         const owned = !!profile.inventory[id], level = profile.inventory[id]?.level || 0, equipped = profile.equipped[selectedGearSlot] === id, cost = gearCost(id);
         const unlock = stages.find(s => s.firstClearGear === id)?.id;
-        return '<article class="gear-card ' + (owned ? '' : 'locked') + '"><strong>' + g.icon + ' ' + g.name + '</strong><span>' + g.desc + '</span><span>' + gearStats(id) + '</span>' +
-          (owned ? '<small>强化 +' + level + ' / 10</small><div class="gear-actions"><button class="secondary" data-equip="' + id + '" ' + (equipped ? 'disabled' : '') + '>' + (equipped ? '已装备' : '装备') + '</button>' +
-            '<button class="secondary" data-enhance="' + id + '" ' + (level >= 10 || profile.seeds < cost.seeds || profile.cores < cost.cores ? 'disabled' : '') + '>' + (level >= 10 ? '已满级' : '强化 · ☀' + cost.seeds + ' ◆' + cost.cores) + '</button></div>' : '<small>第 ' + unlock + ' 关首通获得</small>') + '</article>';
+        const tier = !unlock ? '初始' : unlock <= 20 ? '青叶' : unlock <= 40 ? '月露' : unlock <= 60 ? '赤焰' : unlock <= 80 ? '霜晶' : '星辉';
+        const role = { weapon_seed: '均衡起步', weapon_pea: '高速单发', weapon_cherry: '双籽覆盖', weapon_pumpkin: '三籽重击', armor_leaf: '轻巧自在', armor_bark: '坚韧守护', armor_rind: '厚甲生存', charm_sprout: '基础采集', charm_bloom: '灵活采集', charm_harvest: '加快成长' }[id] || g.desc;
+        return '<article class="gear-card equipment-card ' + (owned ? '' : 'locked ') + (equipped ? 'equipped' : '') + '"><div class="equipment-picture"><span class="equipment-tier">' + tier + '</span>' + (equipped ? '<b class="equipment-equipped">✓ 穿戴中</b>' : !owned ? '<b class="equipment-locked">待解锁</b>' : '') + gearPortrait(id) + '</div><div class="equipment-copy"><strong>' + g.name + '</strong><p>' + role + '</p></div>' + gearStatChips(id) +
+          (owned ? '<div class="equipment-level"><span>强化 +' + level + ' / 10</span><div><i style="width:' + level * 10 + '%"></i></div></div><div class="gear-actions"><button class="secondary" data-equip="' + id + '" ' + (equipped ? 'disabled' : '') + '>' + (equipped ? '已装备' : '穿戴') + '</button>' +
+            '<button class="secondary enhance-gear" data-enhance="' + id + '" ' + (level >= 10 || profile.seeds < cost.seeds || profile.cores < cost.cores ? 'disabled' : '') + '>' + (level >= 10 ? '已满级' : '强化 · ☀' + cost.seeds + ' ◆' + cost.cores) + '</button></div>' : '<div class="equipment-unlock">首通第 <b>' + unlock + '</b> 关获得</div>') + '</article>';
       }).join('') + '</div>', '<button class="primary" id="start">挑战第 ' + selectedStage + ' 关</button><button class="secondary" id="backLobby">返回关卡</button>', 'armory', '切换上方武器 / 护甲 / 饰品按钮查看全部装备 · 强化永久保留');
     el('backLobby').onclick = startScreen; el('start').onclick = start;
     overlay.querySelectorAll('[data-gear-slot]').forEach(b => b.onclick = () => showArmory(b.dataset.gearSlot));
     overlay.querySelectorAll('[data-equip]').forEach(b => b.onclick = () => { if (equipGear(b.dataset.equip)) showArmory(); });
     overlay.querySelectorAll('[data-enhance]').forEach(b => b.onclick = () => { if (upgradeGear(b.dataset.enhance)) showArmory(); });
+    overlay.classList.add('armory-overlay');
+    el('equipmentGrid').scrollTop = sameSlot ? listScroll : 0;
     updateHUD(); return true;
   }
   function orchardBonuses() {
@@ -667,21 +716,26 @@
     const labels = { damage: '伤害', rate: '射速', hp: '生命', speed: '移速', pickup: '拾取范围' };
     return labels[type] + ' +' + (type === 'damage' || type === 'rate' ? Number((amount * 100).toFixed(1)) + '%' : Number(amount.toFixed(1)));
   }
-  function showOrchard() {
+  function showOrchard(gardenId = selectedGarden) {
     if (!currentAccount) return false;
     if (isRunActive()) return false;
     state = 'orchard'; player = freshPlayer(); updateHUD();
+    if (Number.isInteger(gardenId) && gardenId >= 1 && gardenId <= gardenDefs.length) selectedGarden = gardenId;
+    const garden = gardenDefs[selectedGarden - 1], residents = rescueDefs.filter(s => s.gardenId === selectedGarden);
+    const rescued = residents.filter(s => profile.rescuedSprites.includes(s.id));
     const cost = orchardCost(), bonus = orchardBonuses(), level = profile.orchard.level;
-    const gardenName = level >= 8 ? '丰收乐园' : level >= 5 ? '繁花果园' : level >= 2 ? '嫩芽果园' : '青叶小院';
-    if (!profile.rescuedSprites.includes(selectedSprite)) selectedSprite = profile.rescuedSprites[0] || 0;
+    const gardenName = garden.name;
+    if (!rescued.some(s => s.id === selectedSprite)) selectedSprite = rescued[0]?.id || 0;
     const sprite = rescueDefs[selectedSprite - 1], spriteLevel = profile.spriteLevels[selectedSprite] || 0, trainingCost = spriteCost(selectedSprite);
     const detail = sprite ? '<article class="gear-card sprite-detail"><strong>' + sprite.icon + ' ' + sprite.name + ' · +' + spriteLevel + ' / 5</strong><span class="sprite-personality">' + sprite.personality + '</span><span>当前祝福：' + bonusText(sprite.bonusType, sprite.bonusPerLevel * (1 + spriteLevel)) + '</span><small>每次培养：' + bonusText(sprite.bonusType, sprite.bonusPerLevel) + '</small><div class="gear-actions"><button class="secondary" id="growSelectedSprite" data-grow-sprite="' + selectedSprite + '" ' + (spriteLevel >= 5 || !canAfford(trainingCost) ? 'disabled' : '') + '>' + (spriteLevel >= 5 ? '已满级' : '培养 · ☀' + trainingCost.seeds + ' ◆' + trainingCost.cores) + '</button></div></article>' : '<article class="gear-card sprite-detail"><strong>🌱 等待第一位伙伴</strong><span>通关救出精灵后，它们会住进这里。点击园中的精灵，就能查看和培养。</span></article>';
-    showMenu(gardenName + ' · LV. ' + level, '我的果园 / 点击居民培养', '<div class="orchard-layout"><div class="orchard-visual"><div class="orchard-scene garden-level-' + Math.floor(level / 3) + '"><div class="garden-sun">☀</div><div class="garden-cloud">☁</div><div class="garden-trees">🌳　🌳　' + (level >= 2 ? '🌸　🌳' : '🌱') + (level >= 5 ? '　🌻　🌳' : '') + '</div><div class="garden-path"></div>' +
-      (profile.rescuedSprites.length ? profile.rescuedSprites.map((id, i) => { const sprite = rescueDefs[id - 1], x = 9 + (i % 7) * 13, y = 29 + Math.floor(i / 7) * 24; return '<button class="garden-resident ' + (id === selectedSprite ? 'selected' : '') + '" data-select-sprite="' + id + '" style="left:' + x + '%;top:' + y + '%;--delay:' + (i % 5) * -.35 + 's" title="' + sprite.name + '" aria-label="选择' + sprite.name + '"><span>' + sprite.icon + '</span><small>' + sprite.name + '</small></button>'; }).join('') : '<div class="garden-empty">小院准备好了。<br>击败第 1 关 Boss，带第一位精灵回家。</div>') + '</div>' +
+    const gardenPicker = '<nav class="garden-picker" aria-label="十座果园">' + gardenDefs.map(g => '<button class="secondary ' + (g.id === selectedGarden ? 'active' : '') + '" data-garden-id="' + g.id + '" aria-pressed="' + (g.id === selectedGarden) + '"><strong>' + g.name + '</strong><small>' + profile.rescuedSprites.filter(id => Math.ceil(id / 10) === g.id).length + ' / 10</small></button>').join('') + '</nav>';
+    showMenu(gardenName + ' · LV. ' + level, '我的果园 / 10 座果园 · 100 位精灵', gardenPicker + '<div class="orchard-layout"><div class="orchard-visual"><div class="orchard-scene garden-level-' + Math.floor(level / 3) + ' garden-region-' + selectedGarden + '"><div class="garden-sun">☀</div><div class="garden-cloud">☁</div><div class="garden-trees">🌳　🌳　' + (level >= 2 ? '🌸　🌳' : '🌱') + (level >= 5 ? '　🌻　🌳' : '') + '</div><div class="garden-path"></div><div class="garden-range">第 ' + garden.firstStage + '–' + garden.lastStage + ' 关 · 已入住 ' + rescued.length + ' / 10</div><div class="garden-residents">' +
+      residents.map(sprite => { const owned = profile.rescuedSprites.includes(sprite.id); return owned ? '<button class="garden-resident ' + (sprite.id === selectedSprite ? 'selected' : '') + '" data-select-sprite="' + sprite.id + '" style="--delay:' + (sprite.id % 5) * -.35 + 's" title="' + sprite.name + '" aria-label="选择' + sprite.name + '"><span>' + sprite.icon + '</span><small>' + sprite.name + '</small></button>' : '<div class="garden-missing"><span>?</span><small>第 ' + sprite.id + ' 关救援</small></div>'; }).join('') + '</div></div>' +
       '<div class="garden-summary"><strong>全队永久加成</strong><span>' + Object.entries(bonus).map(([type, value]) => bonusText(type, value)).join(' · ') + '</span></div></div><div class="orchard-controls">' +
-      '<div class="stage-detail"><strong>扩建果园 · ' + level + ' / 10</strong><span>每级全队：伤害 +1%、生命 +4、拾取范围 +2。扩建也会让小院长出更多花草。</span><div class="menu-actions"><button class="secondary" id="growOrchard" ' + (level >= 10 || !canAfford(cost) ? 'disabled' : '') + '>' + (level >= 10 ? '果园已满级' : '扩建 · ☀' + cost.seeds + ' ◆' + cost.cores) + '</button></div></div>' +
+      '<div class="stage-detail"><strong>扩建全部果园 · ' + level + ' / 10</strong><span>10 座果园共享扩建等级。每级全队：伤害 +1%、生命 +4、拾取范围 +2。每关首通救援一位精灵，每座住10位。</span><div class="menu-actions"><button class="secondary" id="growOrchard" ' + (level >= 10 || !canAfford(cost) ? 'disabled' : '') + '>' + (level >= 10 ? '果园已满级' : '扩建 · ☀' + cost.seeds + ' ◆' + cost.cores) + '</button></div></div>' +
       detail + '</div></div>', '<button class="primary" id="start">挑战第 ' + selectedStage + ' 关</button><button class="secondary" id="backLobby">返回关卡</button>', 'orchard', '点击园中的精灵切换培养对象 · 果园与精灵祝福全队共享');
     el('growOrchard').onclick = () => { if (upgradeOrchard()) showOrchard(); };
+    overlay.querySelectorAll('[data-garden-id]').forEach(b => b.onclick = () => showOrchard(Number(b.dataset.gardenId)));
     overlay.querySelectorAll('[data-select-sprite]').forEach(b => b.onclick = () => { selectedSprite = Number(b.dataset.selectSprite); showOrchard(); });
     overlay.querySelectorAll('[data-grow-sprite]').forEach(b => b.onclick = () => { if (upgradeSprite(Number(b.dataset.growSprite))) showOrchard(); });
     el('backLobby').onclick = startScreen; el('start').onclick = start; return true;
@@ -953,7 +1007,7 @@
       updateHUD();
     } else if (state === 'paused') resume();
   }
-  function resume() { state = 'playing'; overlay.classList.add('hidden'); updateHUD(); }
+  function resume() { state = 'playing'; overlay.classList.add('hidden');  updateHUD(); }
   function grantVictoryRewards() {
     if (runMode === 'training') return;
     if (!runRewarded) {
@@ -974,15 +1028,18 @@
       }
       const newHeroes = firstClear ? growth.heroes.filter(hero => hero.unlockStage === activeStage.id).map(hero => hero.icon + ' ' + hero.name).join('、') : '';
       if (newHeroes) gear += '<br>新英雄：' + newHeroes + '（英雄育成中选择）';
-      const resident = rescueDefs[(activeStage.id - 1) % rescueDefs.length], newResident = !profile.rescuedSprites.includes(resident.id);
-      if (newResident) { profile.rescuedSprites.push(resident.id); profile.spriteLevels[resident.id] = 0; }
+      const resident = rescueDefs[activeStage.id - 1], newResident = !profile.rescuedSprites.includes(resident.id);
+      if (newResident) {
+        profile.rescuedSprites.push(resident.id); profile.spriteLevels[resident.id] = 0;
+        selectedSprite = resident.id; selectedGarden = resident.gardenId;
+      }
       saveProfile();
       victoryRewardHTML = '<div class="reward-box">' + (firstClear ? '首通奖励' : '重复通关奖励（首通的 25%，至少 1）') + '<strong>☀ 阳光籽 +' + seeds + '　◆ 果核 +' + cores + '</strong>' + gear +
         '<br>' + resident.icon + ' ' + resident.name + (newResident ? '已安置到果园' : '的家园再次得到守护') + '<small>' + (storageAvailable ? '奖励、精灵和关卡进度已保存' : '存储不可用，请保持本页面打开') + '</small></div>';
     }
   }
   function worldRewardHTML() {
-    const info = frontierRewards?.status() || { text: '先进入世界登录，再挑战关卡即可领取世界专属物资。', canRetry: false };
+    const info = frontierRewards?.status() || { text: '游戏账号会自动连接世界，通关后领取世界专属物资。', canRetry: false };
     return '<div class="world-reward-box"><strong>⚑ 世界专属物资</strong><p id="worldRewardStatus">' + escapeHTML(info.text) + '</p><button class="secondary" id="retryWorldReward" ' + (!info.canRetry ? 'hidden' : '') + '>重试入库</button></div>';
   }
   function updateWorldRewardMessage(info) {
@@ -1088,7 +1145,7 @@
   }
   function beginRescue() {
     if (state === 'rescue' || state === 'ended') return false;
-    const sprite = rescueDefs[(activeStage.id - 1) % rescueDefs.length];
+    const sprite = rescueDefs[activeStage.id - 1];
     state = 'rescue'; cinematicTime = 0; keys.clear(); pointer = null; bullets = []; still = 0;
     // Save the actual win immediately; closing during the rescue movie does not lose rewards.
     grantVictoryRewards(); updateHUD();

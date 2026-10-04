@@ -764,9 +764,9 @@ test('All 100 victories unlock consecutive stages, pay rewards and award the int
     assert.equal(t.state,'ended');seeds+=s.reward.seeds;cores+=s.reward.cores;
     assert.equal(t.profile.seeds,seeds);assert.equal(t.profile.cores,cores);
     assert.equal(t.profile.unlockedStage,Math.min(100,s.id+1));assert.equal(t.profile.clearedStages.length,s.id);
-    assert.equal(t.profile.rescuedSprites.length,Math.min(20,s.id));
+    assert.equal(t.profile.rescuedSprites.length,s.id);
     assert(element('overlay').innerHTML.includes('id="startEndless"'));
-    assert(t.profile.rescuedSprites.includes(rescues[(s.id-1)%20].id));
+    assert(t.profile.rescuedSprites.includes(rescues[s.id-1].id));
     if(s.firstClearGear)assert.equal(t.profile.inventory[s.firstClearGear].level,0);
     const rewarded=JSON.stringify(t.profile);t.finish(true);assert.equal(JSON.stringify(t.profile),rewarded);
   }
@@ -879,10 +879,10 @@ test('All hundred carousel previews remain accessible while locked stages cannot
   t.profile.unlockedStage=20;t.startScreen();
   for(let id=1;id<=20;id++){assert.equal(t.selectedStage,id);assert(!element('start').disabled);menuControls(game);if(id<20)click(game,'nextStagePreview')}
 });
-test('Workshop category buttons show four weapons or three items and preserve equipment actions',(game)=>{
+test('Workshop category buttons show all illustrated equipment and preserve equipment actions',(game)=>{
   const {t,element}=game;t.startScreen();t.profile.seeds=10000;t.profile.cores=1000;
   for(const id of Object.keys(t.gearDefs))t.profile.inventory[id]={level:0};click(game,'navArmory');
-  for(const [slot,count]of [['weapon',4],['armor',3],['charm',3]]){
+  for(const [slot,count]of [['weapon',8],['armor',6],['charm',6]]){
     dataButton(game,'data-gear-slot',slot).onclick();assert.equal(t.selectedGearSlot,slot);menuControls(game);
     const markup=element('overlay').innerHTML;assert.equal((markup.match(/<article class="gear-card/g)||[]).length,count);
     const equipment=element('overlay').querySelectorAll('[data-equip]');assert.equal(equipment.length,count);
@@ -906,28 +906,30 @@ test('Locked equipment stays visible in its category without equip or strengthen
     const upgrades=element('overlay').querySelectorAll('[data-enhance]');assert.equal(upgrades.length,1);assert.equal(upgrades[0].disabled,true);
   }
 });
-test('All twenty orchard residents select one training panel and keep their selection during growth',(game)=>{
+test('All hundred orchard residents select one training panel across ten gardens and keep selection during growth',(game)=>{
   const {t,element,rescues}=game;t.startScreen();t.profile.rescuedSprites=rescueCopy(rescues);t.profile.seeds=10000;t.profile.cores=1000;
   for(const id of t.profile.rescuedSprites)t.profile.spriteLevels[id]=0;click(game,'navOrchard');
-  assert.equal(element('overlay').querySelectorAll('[data-select-sprite]').length,20);
+  assert.equal(element('overlay').querySelectorAll('[data-select-sprite]').length,10);
+  assert.equal(element('overlay').querySelectorAll('[data-garden-id]').length,10);
   for(const sprite of rescues){
+    dataButton(game,'data-garden-id',sprite.gardenId).onclick();
     dataButton(game,'data-select-sprite',sprite.id).onclick();assert.equal(t.selectedSprite,sprite.id);menuControls(game);
     assert.equal(element('overlay').querySelectorAll('[data-grow-sprite]').length,1);
     assert.equal(element('growSelectedSprite').dataset.growSprite,String(sprite.id));
     assert.equal((element('overlay').innerHTML.match(/sprite-detail/g)||[]).length,1);
   }
-  const id=rescues[19].id,cost=t.spriteCost(id),seeds=t.profile.seeds,cores=t.profile.cores;
+  const id=rescues[99].id,cost=t.spriteCost(id),seeds=t.profile.seeds,cores=t.profile.cores;
   click(game,'growSelectedSprite');assert.equal(t.profile.spriteLevels[id],1);assert.equal(t.profile.seeds,seeds-cost.seeds);assert.equal(t.profile.cores,cores-cost.cores);
   click(game,'growOrchard');assert.equal(t.profile.orchard.level,1);assert.equal(t.selectedSprite,id);menuControls(game);
   click(game,'navArmory');click(game,'navOrchard');assert.equal(t.selectedSprite,id);
   for(let i=1;i<5;i++)click(game,'growSelectedSprite');assert.equal(t.profile.spriteLevels[id],5);assert.equal(element('growSelectedSprite').disabled,true);
-  click(game,'backLobby');assert.equal(t.state,'lobby');assert.equal(t.profile.rescuedSprites.length,20);
+  click(game,'backLobby');assert.equal(t.state,'lobby');assert.equal(t.profile.rescuedSprites.length,100);
 });
 function rescueCopy(rescues) { return Array.from(rescues,sprite=>sprite.id); }
 
-test('Twenty unique bosses and rescue spirits cover every stage with valid combat values',({bosses,rescues})=>{
-  assert.equal(bosses.length,100);assert.equal(rescues.length,20);
-  assert.equal(new Set(rescues.map(s=>s.id)).size,20);assert.equal(new Set(bosses.map(b=>b.name)).size,100);
+test('Hundred unique bosses and rescue spirits cover every stage with valid combat values',({bosses,rescues})=>{
+  assert.equal(bosses.length,100);assert.equal(rescues.length,100);
+  assert.equal(new Set(rescues.map(s=>s.id)).size,100);assert.equal(new Set(rescues.map(s=>s.name)).size,100);assert.equal(new Set(bosses.map(b=>b.name)).size,100);
   let previous=null;
   for(let i=0;i<20;i++){
     const boss=bosses[i],spirit=rescues[i];assert(boss.name);assert(spirit.id&&spirit.name);
@@ -1025,7 +1027,7 @@ test('Defeat or abandoned boss encounters never rescue a spirit or pay clear rew
 test('The orchard starts empty and exposes rescued residents through the lobby and results',(game)=>{
   const {t,element,rescues}=game;
   t.startScreen();assert.deepEqual(Array.from(t.profile.rescuedSprites),[]);assert.equal(t.profile.orchard.level,0);
-  click(game,'navOrchard');assert.equal(t.state,'orchard');assert(element('overlay').innerHTML.includes('0 / 20'));menuControls(game);
+  click(game,'navOrchard');assert.equal(t.state,'orchard');assert(element('overlay').innerHTML.includes('0 / 100'));menuControls(game);
   assert.equal(element('overlay').querySelectorAll('[data-select-sprite]').length,0);assert.equal(element('overlay').querySelectorAll('[data-grow-sprite]').length,0);
   click(game,'backLobby');t.start();clearStage(t);
   click(game,'resultOrchard');assert.equal(t.state,'orchard');assert(element('overlay').innerHTML.includes(rescues[0].name));menuControls(game);
@@ -1067,6 +1069,20 @@ test('Orchard and spirit growth survive reload and repeated clears preserve trai
   assert.equal(JSON.stringify(reloaded.t.profile),saved);reloaded.t.start();
   for(const stat of ['damage','rate','maxHp','defense','speed','pickup','xpMult'])assert.equal(reloaded.t.player[stat],expected[stat]);
 });
+test('Later orchard saves backfill each earned resident once without changing materials or training',()=>{
+  const raw={version:1,unlockedStage:100,clearedStages:[1,20,21,30,100],rescuedSprites:[1,20,20,101,-1],spriteLevels:{1:4,20:2},seeds:123,cores:45,orchard:{level:6}};
+  const {t,element}=createGame(new Map([['orchard-save-v1',JSON.stringify(raw)]]));
+  assert.deepEqual(Array.from(t.profile.rescuedSprites),[1,20,21,30,100]);
+  assert.equal(t.profile.spriteLevels[1],4);assert.equal(t.profile.spriteLevels[20],2);assert.equal(t.profile.spriteLevels[100],0);
+  assert.equal(t.profile.seeds,123);assert.equal(t.profile.cores,45);assert.equal(t.profile.orchard.level,6);
+  for(let id=1;id<=10;id++){
+    t.showOrchard(id);assert.equal(element('overlay').querySelectorAll('[data-garden-id]').length,10);
+    assert.equal(element('overlay').querySelectorAll('[data-select-sprite]').length,t.profile.rescuedSprites.filter(s=>Math.ceil(s/10)===id).length);
+    assert(!element('overlay').innerHTML.includes('undefined'));
+  }
+  assert(element('overlay').innerHTML.includes('第 91–100 关'));
+});
+
 test('Legacy saves migrate their cleared stages into residents and bound new growth fields',({rescues})=>{
   const legacy={version:1,unlockedStage:4,clearedStages:[1,2,3],seeds:100,cores:10};
   const migrated=createGame(new Map([['orchard-save-v1',JSON.stringify(legacy)]]));
@@ -1113,7 +1129,7 @@ test('All 100 cleared stages enter endless using their own enemy stats without n
       assert.equal(e.hp,Math.round(base.hp*1.122));assert.equal(e.damage,Math.round(base.damage*1.045));
       assert.equal(e.speed,base.speed*1.012);assert.equal(e.xp,s.experience.typical[e.type?'fast':'slow']);
     }
-    t.enemies=[];t.update(.001);assert.equal(t.state,'playing');assert.equal(t.profile.rescuedSprites.length,Math.min(20,s.id));
+    t.enemies=[];t.update(.001);assert.equal(t.state,'playing');assert.equal(t.profile.rescuedSprites.length,s.id);
     assert(t.finishEndless(true));assert.equal(t.state,'ended');
   }
 });

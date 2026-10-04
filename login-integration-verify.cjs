@@ -110,5 +110,25 @@ function skipFirstTraining(g){
     assert(field.includes('aria-describedby="loginNameHint"'));assert(html.includes('1–7'));assert(html.includes('已有账号可输入原账号登录'));
     assert(html.includes('首次使用这个名字'));assert(html.includes('账号与进度保存在当前浏览器'));
   });
+  await test('Successful game login alone connects the world, while failed local credentials never reach it',async()=>{
+    const calls=[],storage=new Map();let leaves=0,opened=null;
+    const client={close(){},open(options){opened=options;},isAuthenticated(){return true},enterGame:async(name,password)=>{calls.push({name,password});return {ok:true};},leaveGame:async()=>{leaves++;}};
+    const g=createGame(storage,{auth:true,tutorial:true,frontierClient:client});
+    assert(await login(g,'同账','unified-demo-123'));await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(calls.length,1);assert.equal(calls[0].name,'同账');assert.equal(calls[0].password,'unified-demo-123');
+    assert.equal(g.element('loginPassword').value,'');assert(!JSON.stringify([...storage]).includes('unified-demo-123'));
+    skipFirstTraining(g);
+    assert(g.t.logoutAccount());assert.equal(leaves,1);
+    assert(!(await login(g,'同账','incorrect-demo')));assert.equal(calls.length,1);
+    assert(await login(g,'同账','unified-demo-123'));assert.equal(calls.length,2);
+    assert(g.t.showWorld('home'));assert.equal(opened.initialTab,'home');
+  });
+  await test('Unavailable world service preserves verified local account and campaign progress',async()=>{
+    const storage=new Map(),client={close(){},isAuthenticated(){return false},enterGame:async()=>{throw new Error('Offline world');},open(){}};
+    const g=createGame(storage,{auth:true,tutorial:true,frontierClient:client});
+    assert(await login(g,'离线果'));await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(g.t.state,'playing');assert.equal(g.t.runMode,'training');assert.equal(g.t.currentAccount.nickname,'离线果');
+    assert.equal(g.t.profile.unlockedStage,1);assert.equal(JSON.parse(storage.get('orchard-accounts-v1')).accounts.length,1);
+  });
   console.log(count+' real login/game integration checks passed.');
 })().catch(error=>{console.error(error);process.exitCode=1});

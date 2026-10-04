@@ -7,11 +7,12 @@ const { createGame } = require('./verify.cjs');
 const tick = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
 let count = 0;
 async function check(name, fn) { await fn(); count++; console.log('PASS ' + name); }
-function fixture({ authenticated = true, store = new Map(), begin, claim } = {}) {
+function fixture({ authenticated = true, gameLogin = false, store = new Map(), begin, claim } = {}) {
   let owner = 'alpha', name = '甲甲';
   const calls = { begin: [], claim: [] };
   const client = {
     isAuthenticated: value => authenticated && value === name,
+    hasGameLogin: value => gameLogin && value === name,
     beginCampaign: async (stage, player) => { calls.begin.push({ stage, player }); return begin ? begin(stage, player) : { ticket: 'ticket-' + stage }; },
     claimCampaign: async (ticket, player) => { calls.claim.push({ ticket, player }); return claim ? claim(ticket, player) : { rewards: { wood: 48, stone: 37, grain: 64, iron: 9, token: 1 } }; }
   };
@@ -30,6 +31,15 @@ function fixture({ authenticated = true, store = new Map(), begin, claim } = {})
     release({ ticket: 'delayed-ticket' }); await win;
     assert.deepEqual(f.calls.claim, [{ ticket: 'delayed-ticket', player: '甲甲' }]);
     assert(f.bridge.status().text.includes('木材 +48')); assert.equal(f.bridge.status().canRetry, false);
+  });
+  await check('Immediate campaign entry waits for automatic world login instead of dropping the whole reward', async () => {
+    let release;
+    const f = fixture({ authenticated: false, gameLogin: true, begin: () => new Promise(resolve => { release = resolve; }) });
+    const start = f.bridge.begin(1), victory = f.bridge.victory();await tick();
+    assert.equal(f.calls.begin.length,1);assert.equal(f.calls.claim.length,0);
+    release({ticket:'automatic-login-ticket'});await start;await victory;
+    assert.equal(f.calls.claim.length,1);assert.equal(f.calls.claim[0].ticket,'automatic-login-ticket');
+    assert(f.bridge.status().text.includes('世界物资已入库'));assert.equal(f.store.get('orchard-world-pending-v1:alpha'),'[]');
   });
   await check('Network failure survives reload and retries without touching campaign saves', async () => {
     const store = new Map([['orchard-save-v1', '{"seeds":123,"cores":9}']]);

@@ -255,6 +255,8 @@
       firstClearGear: null
     });
   }
+  const chapterEquipment = { 25: 'weapon_grape', 30: 'armor_moon', 35: 'charm_moon', 40: 'weapon_blueberry', 45: 'charm_gale', 50: 'armor_thorn', 60: 'weapon_sunbow', 70: 'charm_star', 85: 'armor_frost', 100: 'weapon_coconut' };
+  for (const stage of stages) if (chapterEquipment[stage.id]) stage.firstClearGear = chapterEquipment[stage.id];
   window.ORCHARD_STAGES = Object.freeze(stages.map(stage => {
     const normalCount = 398;
     const eliteCount = stage.eliteCount ?? (4 + stage.id * 2);

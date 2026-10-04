@@ -1,5 +1,5 @@
 /*
- * 20位果园伙伴与100位关底首领；后80关循环守护伙伴家园。
+ * 100位果园伙伴与100位关底首领；每关救援一位，十座果园各住十位。
  * 每位伙伴在对应关卡首通后获救；刚入住为 0 级，最高培养至 5 级。
  * damage / rate 为比例加成，其余为数值加成，均按培养等级累加。
  * 前20关第N关包含前N位首领；后80关采用5～10位短队列。数量、出场节奏由 progression.js 配置。
@@ -31,6 +31,17 @@
     { id: 19, name: '芒果晃晃', icon: '🥭', color: '#f2c879', personality: '在树枝间荡秋千，把每次冒险都当旅行。', bonusType: 'speed', bonusPerLevel: 1 },
     { id: 20, name: '椰子船船', icon: '🥥', color: '#d4baa0', personality: '驾着果壳小船守住溪口，梦想让整座果园安宁。', bonusType: 'damage', bonusPerLevel: .006 }
   ];
+
+  const gardens = ['青叶小院', '溪畔果园', '月露花园', '潮汐果园', '赤焰果园', '藤影果园', '霜晶果园', '雪芽果园', '星辉果园', '天穹果园'];
+  const rescueRegions = ['月露', '赤焰', '霜晶', '星辉'];
+  const regionStories = ['喜欢收集月光，替晚归的伙伴点灯。', '喜欢照顾暖阳下的花苗，每天给大家准备果茶。', '擅长保护雪里的嫩芽，盼着朋友一起看春天。', '把星星画成地图，带伙伴寻找新的果树。'];
+  for (let id = 21; id <= 100; id++) {
+    const base = rescues[(id - 1) % 20], region = Math.floor((id - 21) / 20);
+    rescues.push({ ...base, id, name: rescueRegions[region] + base.name,
+      personality: regionStories[region], bonusPerLevel: base.bonusPerLevel / 2 });
+  }
+  for (const sprite of rescues) sprite.gardenId = Math.ceil(sprite.id / 10);
+  window.ORCHARD_GARDENS = Object.freeze(gardens.map((name, index) => Object.freeze({ id: index + 1, name, firstStage: index * 10 + 1, lastStage: index * 10 + 10 })));
 
   const bosses = [
     { stageId: 1, name: '铁壳拦路虫', hp: 1600, speed: 76, damage: 22, radius: 32, color: '#9fa970', chargeInterval: 7, chargeSpeed: 250 },

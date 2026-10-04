@@ -487,3 +487,16 @@ body.run-hud-active .arena > .hud {
 @media (max-height: 500px) and (orientation: landscape) {
   body.training-active .arena .training-hud { top: 62px; }
 }
+/* Ten gardens keep the hundred residents in small, readable groups. */
+.garden-picker{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;flex:0 0 auto}
+.garden-picker .secondary{padding:6px 8px;min-height:37px;text-align:left;border-radius:9px;display:flex;align-items:center;justify-content:space-between;gap:4px}
+.garden-picker strong{font-size:11px}.garden-picker small{font-size:10px;opacity:.75;white-space:nowrap}.garden-picker .active{background:#526d3b;border-color:#d8e99f}
+.menu-dialog .orchard-scene .garden-range{position:absolute;left:12px;right:12px;top:65px;text-align:center;font-size:11px;color:#31513c;background:#f3f7cb9c;padding:5px;border-radius:8px}
+.menu-dialog .garden-residents{position:absolute;inset:105px 12px 16px;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:10px 5px;align-items:center}
+.menu-dialog .garden-residents .garden-resident{position:static;transform:none;width:100%;min-height:58px;padding:5px 0}
+.menu-dialog .garden-residents .garden-resident>small{display:block;font-size:9px;white-space:normal;line-height:1.4}
+.garden-missing{text-align:center;color:#e4edcc;background:#34533140;border:1px dashed #d3e5b353;border-radius:10px;padding:6px 2px}
+.garden-missing span{display:block;font-size:23px;opacity:.65}.garden-missing small{display:block;font-size:9px;line-height:1.4}
+.garden-region-3,.garden-region-4{filter:hue-rotate(28deg)}.garden-region-5,.garden-region-6{filter:hue-rotate(-25deg)}.garden-region-7,.garden-region-8{filter:hue-rotate(55deg)}.garden-region-9,.garden-region-10{filter:hue-rotate(90deg)}
+@media(max-width:620px){.garden-picker .secondary{padding:5px 3px;display:block;text-align:center;min-height:39px}.garden-picker strong{font-size:9px}.garden-picker small{display:block;font-size:9px}.menu-dialog .orchard-scene .garden-range{top:43px;font-size:10px;padding:3px}.menu-dialog .garden-residents{inset:72px 7px 8px;gap:4px}.menu-dialog .garden-residents .garden-resident{min-height:40px;padding:2px 0}.menu-dialog .garden-residents .garden-resident>span{font-size:24px}.menu-dialog .garden-residents .garden-resident>small{font-size:8px}.garden-missing{padding:2px}.garden-missing span{font-size:18px}.garden-missing small{font-size:8px}}
+@media(max-height:580px){.menu-dialog .orchard-layout{overflow-y:auto;flex:1;min-height:0}.menu-dialog .orchard-scene{min-height:220px;display:block}.menu-dialog .garden-residents{inset:72px 8px 8px}.menu-dialog .orchard-scene .garden-range{top:43px}.garden-picker .secondary{min-height:28px;padding:3px}.garden-picker strong,.garden-picker small{font-size:8px}}

@@ -1,4 +1,4 @@
-/* Shared, server-authoritative world. It never reads local game passwords or saves. */
+/* Shared, server-authoritative world. Game credentials stay only in memory. */
 (() => {
   'use strict';
   const API = '/api/world';
@@ -10,17 +10,20 @@
   const BUILDINGS = {
     keep: { name: '主城', icon: '🏡', detail: '家园核心，提升城池等级。' },
     farm: { name: '农田', icon: '🌾', detail: '持续积攒粮草，供应军队。' },
+    lumbermill: { name: '伐木场', icon: '🌲', detail: '持续生产木材，用于城池建设。' },
+    quarry: { name: '采石场', icon: '🪨', detail: '持续生产石料，巩固家园。' },
+    ironworks: { name: '铁矿场', icon: '⛏', detail: '持续生产铁矿，用于训练与升级。' },
     warehouse: { name: '仓库', icon: '🪵', detail: '提升物资储存上限。' },
     wall: { name: '城墙', icon: '🧱', detail: '加强家园防守，减少被袭击的风险。' },
     barracks: { name: '兵营', icon: '⚔', detail: '训练军队，提升驻防能力。' }
   };
   const UNITS = { infantry: { name: '步兵', icon: '🛡' }, archer: { name: '弓兵', icon: '🏹' }, cavalry: { name: '骑兵', icon: '🐎' } };
-  const TABS = [['map', '🗺', '世界地图'], ['home', '🏡', '我的城池'], ['army', '⚔', '军营战报'], ['guild', '⚑', '公会']];
+  const TABS = [['map', '🗺', '世界地图'], ['home', '🏡', '主城'], ['army', '⚔', '小队军营'], ['guild', '⚑', '公会']];
   let host = null, exitCallback = null, authenticatedCallback = null, worldState = null, expectedName = '', authenticatedName = '';
-  let activeTab = 'map', selectedTile = null, selectedTarget = null, authMode = 'login';
+  let activeTab = 'map', selectedTile = null, selectedTarget = null, editingSquadId = null, attackSquadId = '';
   let connected = false, connecting = false, busy = false, message = null, retryRequest = null;
   let refreshTimer = null, countdownTimer = null, generation = 0, refreshing = null, serverOffset = 0;
-  let authPromptOpen = false, requestSequence = 0;
+  let requestSequence = 0, gameCredential = null, linkRequired = false, accountGeneration = 0, entering = null, leaving = null;
 
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   const numeric = value => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -75,7 +78,9 @@
     const nextName = String(name || '').trim();
     if (expectedName !== nextName) {
       expectedName = nextName; authenticatedName = ''; generation++;
+      accountGeneration++; gameCredential = null; linkRequired = false; entering = null;
       selectedTile = null; selectedTarget = null; message = null; retryRequest = null;
+      editingSquadId = null; attackSquadId = ''; worldState = null;
       busy = false; connecting = false; refreshing = null;
     }
   }
@@ -85,6 +90,7 @@
     if (worldState && numeric(nextState.serverTime) && numeric(worldState.serverTime) > numeric(nextState.serverTime)) return;
     worldState = nextState;
     authenticatedName = nextState.self?.name === expectedName ? expectedName : '';
+    if (authenticatedName) linkRequired = false;
     if (Number.isFinite(nextState.serverTime ?? nextState.now)) serverOffset = (nextState.serverTime ?? nextState.now) - Date.now();
     connected = true;
     if (!selectedTile) selectedTile = self()?.home ? { x: self().home.x, y: self().home.y } : { x: 7, y: 7 };
@@ -94,30 +100,74 @@
     return !!name && String(name).trim() === expectedName && authenticatedName === expectedName && worldState?.self?.name === expectedName;
   }
 
-  async function prepareSession(name = expectedName) {
+  function hasGameLogin(name = expectedName) {
+    return !!name && String(name).trim() === expectedName && gameCredential?.name === expectedName;
+  }
+
+  async function enterGame(name, password) {
     setPlayerName(name);
-    const forName = expectedName;
+    if (!expectedName || typeof password !== 'string' || !password) throw new WorldError('请先在游戏首页登录，再进入世界。', 'GAME_LOGIN_REQUIRED');
+    if (gameCredential?.name !== expectedName || gameCredential.password !== password) {
+      gameCredential = { name: expectedName, password }; accountGeneration++; entering = null;
+    }
+    return enterCurrentGame();
+  }
+
+  async function enterCurrentGame() {
+    if (!gameCredential || gameCredential.name !== expectedName) return false;
+    if (entering) return entering;
+    const credential = gameCredential, token = accountGeneration;
+    const operation = Promise.resolve(leaving).catch(() => {}).then(() => {
+      if (token !== accountGeneration || credential !== gameCredential) return null;
+      return request('enter', credential);
+    }).then(result => {
+      if (token !== accountGeneration || credential !== gameCredential) return false;
+      if (!result) return false;
+      linkRequired = false; adoptState(result.state, credential.name);
+      if (host) { render(); Promise.resolve().then(() => authenticatedCallback?.()).catch(() => {}); }
+      return isAuthenticated(credential.name);
+    }).catch(error => {
+      if (token === accountGeneration && credential === gameCredential) {
+        linkRequired = error.code === 'world_link_required';
+        if (linkRequired) connected = true;
+        if (host) { message = { text: error.message, kind: linkRequired ? 'error' : 'connection' }; render(); }
+      }
+      throw error;
+    }).finally(() => { if (entering === operation) entering = null; });
+    entering = operation;
+    return operation;
+  }
+
+  async function prepareSession(name = expectedName, { renderUI = true } = {}) {
+    setPlayerName(name);
+    const forName = expectedName, token = accountGeneration;
     const result = await request('state');
+    if (token !== accountGeneration || forName !== expectedName) return false;
     adoptState(result.state, forName);
-    if (host) render();
+    if (forName === expectedName && !isAuthenticated(forName) && gameCredential && !linkRequired) await enterCurrentGame();
+    if (host && renderUI) render();
     return isAuthenticated(forName);
   }
 
   async function beginCampaign(stage, name = expectedName) {
-    if (!await prepareSession(name)) throw new WorldError('先登录世界，再挑战关卡即可领取世界物资。', 'WORLD_LOGIN_REQUIRED');
-    const forName = expectedName;
+    setPlayerName(name);
+    const forName = expectedName, token = accountGeneration;
+    if (!await prepareSession(forName)) throw new WorldError('世界暂未连接，请进入世界完成连接后再挑战关卡。', 'WORLD_LOGIN_REQUIRED');
+    if (token !== accountGeneration || forName !== expectedName) throw new WorldError('已切换账号，本局世界物资登记已取消。', 'ACCOUNT_CHANGED');
     const result = await request('campaign/start', { stage: Number(stage), name: forName });
-    if (forName !== expectedName) throw new WorldError('已切换账号，本局世界物资登记已取消。', 'ACCOUNT_CHANGED');
+    if (token !== accountGeneration || forName !== expectedName) throw new WorldError('已切换账号，本局世界物资登记已取消。', 'ACCOUNT_CHANGED');
     adoptState(result.state, forName);
     if (host) render();
     return result;
   }
 
   async function claimCampaign(ticket, name = expectedName) {
-    if (!await prepareSession(name)) throw new WorldError('请先用本局的名字登录世界，再领取世界物资。', 'WORLD_LOGIN_REQUIRED');
-    const forName = expectedName;
+    setPlayerName(name);
+    const forName = expectedName, token = accountGeneration;
+    if (!await prepareSession(forName)) throw new WorldError('请用本局账号进入世界，再领取世界物资。', 'WORLD_LOGIN_REQUIRED');
+    if (token !== accountGeneration || forName !== expectedName) throw new WorldError('已切换账号，请回到本局账号查看世界物资。', 'ACCOUNT_CHANGED');
     const result = await request('campaign/claim', { ticket, requestId: `claim-${String(ticket)}`, name: forName });
-    if (forName !== expectedName) throw new WorldError('已切换账号，请回到本局账号查看世界物资。', 'ACCOUNT_CHANGED');
+    if (token !== accountGeneration || forName !== expectedName) throw new WorldError('已切换账号，请回到本局账号查看世界物资。', 'ACCOUNT_CHANGED');
     adoptState(result.state, forName);
     if (host) render();
     return result;
@@ -127,10 +177,9 @@
     if (refreshing || busy) return refreshing;
     const forName = expectedName, token = generation;
     if (!quiet) { connecting = true; render(); }
-    const operation = request('state').then(result => {
+    const operation = prepareSession(forName, { renderUI: false }).then(() => {
       if (token !== generation || forName !== expectedName) return;
       connecting = false;
-      adoptState(result.state, forName);
       if (message?.kind === 'connection') message = null;
       if (host && (!quiet || !host.contains(document.activeElement) || !document.activeElement.matches('input, select'))) render();
     }).catch(error => {
@@ -167,7 +216,7 @@
   }
 
   function header() {
-    return `<header class="world-header"><div><small class="world-eyebrow">ORCHARD FRONTIER / 共享世界</small><h2>果园世界</h2><p>同一片土地，各自建家，结盟远征。</p></div><div class="world-header-actions"><span class="world-connection ${connected ? '' : 'world-is-offline'}">${connecting ? '正在连接…' : connected ? '世界服务已连接' : '世界服务未连接'}</span><button class="world-button world-button-small" data-world-action="refresh" ${busy || connecting ? 'disabled' : ''}>↻ 刷新</button>${self() ? '<button class="world-button world-button-small" data-world-action="logout">退出世界账号</button>' : ''}</div></header>`;
+    return `<header class="world-header"><div><small class="world-eyebrow">ORCHARD FRONTIER / 共享世界</small><h2>${activeTab === 'home' ? '我的主城' : '果园世界'}</h2><p>同一片土地，各自建家，结盟远征。</p></div><div class="world-header-actions"><span class="world-connection ${connected ? '' : 'world-is-offline'}">${connecting ? '正在连接…' : connected ? '世界服务已连接' : '世界服务未连接'}</span><button class="world-button world-button-primary world-return-home" data-world-action="tab" data-tab="home">🏡 回到主城</button><button class="world-button world-button-small" data-world-action="refresh" ${busy || connecting ? 'disabled' : ''}>↻ 刷新</button></div></header>`;
   }
 
   function resourceBar() {
@@ -181,9 +230,9 @@
   }
 
   function authCard() {
-    if (self() && !authPromptOpen) return '';
-    const wrongName = worldState?.self?.name && worldState.self.name !== expectedName;
-    return `<section class="world-card world-auth-card"><div class="world-auth-copy"><span class="world-card-kicker">共享世界账号</span><h3>${authMode === 'register' ? '登记你的世界身份' : '登录世界，开始建家'}</h3><p>世界账号保存在服务器，使用当前守护者名字 <strong>${escapeHtml(expectedName || '请先登录游戏')}</strong>。首次进入请登记一次独立的世界密码。</p><p class="world-muted">先登录世界，再挑战关卡即可领取世界物资。世界物资与关卡金币分别保存。</p>${wrongName ? `<p class="world-auth-warning">浏览器当前的世界身份是 ${escapeHtml(worldState.self.name)}，请登录 ${escapeHtml(expectedName)} 后继续。</p>` : ''}</div><form id="worldAuthForm" class="world-auth-form"><div class="world-auth-tabs"><button type="button" data-world-action="auth-mode" data-mode="login" class="${authMode === 'login' ? 'world-is-active' : ''}">已有世界账号</button><button type="button" data-world-action="auth-mode" data-mode="register" class="${authMode === 'register' ? 'world-is-active' : ''}">首次登记</button></div><label>守护者名字<input type="text" value="${escapeHtml(expectedName)}" readonly autocomplete="username"></label><label>世界密码<input id="worldPassword" type="password" required minlength="6" maxlength="64" autocomplete="${authMode === 'register' ? 'new-password' : 'current-password'}" placeholder="输入 6–64 位世界密码" ${busy ? 'disabled' : ''}></label>${authMode === 'register' ? '<label>再次输入密码<input id="worldPasswordConfirm" type="password" required minlength="6" maxlength="64" autocomplete="new-password" placeholder="确认世界密码"></label>' : ''}<button class="world-button world-button-primary" type="submit" ${busy || !expectedName || !connected ? 'disabled' : ''}>${busy ? '正在连接…' : authMode === 'register' ? '登记并进入世界' : '登录世界'}</button></form></section>`;
+    if (self()) return '';
+    if (linkRequired) return `<section class="world-card world-auth-card"><div class="world-auth-copy"><span class="world-card-kicker">一次性连接旧家园</span><h3>把旧世界存档接到游戏账号</h3><p><strong>${escapeHtml(expectedName)}</strong> 已有旧世界家园。输入曾设置的世界密码确认归属，原有建筑、军队和物资都会保留。</p><p class="world-muted">连接完成后，登录游戏就能直接进入世界，不再重复填写世界密码。</p></div><form id="worldLinkForm" class="world-auth-form"><label>原世界密码<input id="worldLegacyPassword" type="password" required minlength="6" maxlength="64" autocomplete="current-password" placeholder="仅本次确认旧家园归属" ${busy ? 'disabled' : ''}></label><button class="world-button world-button-primary" type="submit" ${busy || !gameCredential ? 'disabled' : ''}>${busy ? '正在连接…' : '连接并保留旧家园'}</button></form></section>`;
+    return `<section class="world-card world-auth-card world-auto-connect"><div class="world-auth-copy"><span class="world-card-kicker">当前守护者 · ${escapeHtml(expectedName || '尚未登录')}</span><h3>${connecting ? '正在接入你的世界' : '使用游戏账号直接进入世界'}</h3><p>世界与游戏共用名字和密码，家园进度保存在服务器。${gameCredential ? '连接成功后即可建设主城。' : '请回游戏首页登录一次，即可自动连接。'}</p></div><button class="world-button" data-world-action="${gameCredential ? 'refresh' : 'exit'}" ${connecting ? 'disabled' : ''}>${connecting ? '连接中…' : gameCredential ? '重新连接' : '返回游戏'}</button></section>`;
   }
 
   function mapView() {
@@ -205,34 +254,58 @@
   function tilePanel() {
     const tile = selectedTile || { x: 7, y: 7 }, cell = tileByXY(tile.x, tile.y), me = self();
     const coordinates = `坐标 ${tile.x + 1}, ${tile.y + 1}`;
-    if (!cell) return `<section class="world-card"><span class="world-card-kicker">${coordinates} / 无主地块</span><span class="world-empty-art" aria-hidden="true">🌱</span><h3>在这里种下新家</h3><p>选择空地，建立一座属于你的城池。其他真实玩家也会在这片世界建造。</p><div class="world-cost-box"><small>建家所需</small><strong>${costText(rule().costs?.settle)}</strong></div>${!me ? '<p class="world-muted">登录世界后才能占地建家。</p>' : me.home ? '<p class="world-muted">你已有一座家园，可以升级建筑和招募军队。</p><button class="world-button world-button-primary" data-world-action="tab" data-tab="home">前往我的城池</button>' : `<button class="world-button world-button-primary" data-world-action="settle" ${!enabled() || !affordable(rule().costs?.settle) ? 'disabled' : ''}>${busy ? '正在建造…' : '确认在这里建家'}</button>${!affordable(rule().costs?.settle) ? '<p class="world-muted">物资不足，登录世界后通关即可补充。</p>' : ''}`}</section><section class="world-card world-field-notes"><h4>远征 → 建家 → 结盟</h4><p>通关取得木材、石料、粮草、铁矿与世界令，专用于这个世界。农田积粮，兵营造兵，城墙护家。</p></section>`;
+    if (!cell) return `<section class="world-card"><span class="world-card-kicker">${coordinates} / 无主地块</span><span class="world-empty-art" aria-hidden="true">🌱</span><h3>在这里种下新家</h3><p>选择空地，建立一座属于你的城池。其他真实玩家也会在这片世界建造。</p><div class="world-cost-box"><small>建家所需</small><strong>${costText(rule().costs?.settle)}</strong></div>${!me ? '<p class="world-muted">游戏账号连接世界后即可占地建家。</p>' : me.home ? '<p class="world-muted">你已有一座家园，可以升级建筑和招募军队。</p><button class="world-button world-button-primary" data-world-action="tab" data-tab="home">回到主城</button>' : `<button class="world-button world-button-primary" data-world-action="settle" ${!enabled() || !affordable(rule().costs?.settle) ? 'disabled' : ''}>${busy ? '正在建造…' : '确认在这里建家'}</button>${!affordable(rule().costs?.settle) ? '<p class="world-muted">物资不足，连接世界后通关即可补充。</p>' : ''}`}</section><section class="world-card world-field-notes"><h4>远征 → 建家 → 结盟</h4><p>通关取得木材、石料、粮草、铁矿与世界令，专用于这个世界。农田积粮，兵营造兵，城墙护家。</p></section>`;
     const mine = me?.id === cell.ownerId, player = playerById(cell.ownerId), guild = guildById(cell.guildId);
-    return `<section class="world-card"><span class="world-card-kicker">${coordinates} / ${mine ? '我的家园' : '玩家家园'}</span><span class="world-empty-art" aria-hidden="true">${mine ? '🏡' : '🏰'}</span><h3>${escapeHtml(cell.ownerName)}的家园</h3><div class="world-facts"><span>城池等级<b>Lv. ${number(cell.level)}</b></span><span>所属公会<b>${escapeHtml(guild?.name || '暂无公会')}</b></span><span>军队规模<b>${player?.army === undefined ? '未公开' : `${number(player.army)} 人`}</b></span></div>${remaining(cell.protectedUntil) ? `<p class="world-protection">🛡 新城保护 · ${countdown(cell.protectedUntil)}</p>` : '<p class="world-muted">当前没有新城保护。</p>'}${mine ? '<button class="world-button world-button-primary" data-world-action="tab" data-tab="home">管理我的城池</button>' : `<button class="world-button ${guild && guild.id === me?.guildId ? '' : 'world-button-primary'}" data-world-action="target" data-target-id="${escapeHtml(cell.ownerId)}" ${!enabled() || !me?.home || remaining(cell.protectedUntil) || (!!me?.guildId && me.guildId === cell.guildId) ? 'disabled' : ''}>查看并准备出征</button>${!!me?.guildId && me.guildId === cell.guildId ? '<p class="world-muted">同公会成员不能互相攻打。</p>' : !me?.home ? '<p class="world-muted">建家并训练军队后才能出征。</p>' : ''}`}</section>`;
+    return `<section class="world-card"><span class="world-card-kicker">${coordinates} / ${mine ? '我的家园' : '玩家家园'}</span><span class="world-empty-art" aria-hidden="true">${mine ? '🏡' : '🏰'}</span><h3>${escapeHtml(cell.ownerName)}的家园</h3><div class="world-facts"><span>城池等级<b>Lv. ${number(cell.level)}</b></span><span>所属公会<b>${escapeHtml(guild?.name || '暂无公会')}</b></span><span>军队规模<b>${player?.army === undefined ? '未公开' : `${number(player.army)} 人`}</b></span></div>${remaining(cell.protectedUntil) ? `<p class="world-protection">🛡 新城保护 · ${countdown(cell.protectedUntil)}</p>` : '<p class="world-muted">当前没有新城保护。</p>'}${mine ? '<button class="world-button world-button-primary" data-world-action="tab" data-tab="home">回到主城</button>' : `<button class="world-button ${guild && guild.id === me?.guildId ? '' : 'world-button-primary'}" data-world-action="target" data-target-id="${escapeHtml(cell.ownerId)}" ${!enabled() || !me?.home || remaining(cell.protectedUntil) || (!!me?.guildId && me.guildId === cell.guildId) ? 'disabled' : ''}>查看并准备出征</button>${!!me?.guildId && me.guildId === cell.guildId ? '<p class="world-muted">同公会成员不能互相攻打。</p>' : !me?.home ? '<p class="world-muted">建家并训练军队后才能出征。</p>' : ''}`}</section>`;
   }
 
-  function signInEmpty(text) { return `<section class="world-card world-simple-empty"><span class="world-empty-art">🌿</span><h3>${text}</h3><p>登录世界后管理家园、军队与公会。服务器保存你的世界进度。</p><button class="world-button" data-world-action="tab" data-tab="map">前往世界地图</button></section>`; }
+  function signInEmpty(text) { return `<section class="world-card world-simple-empty"><span class="world-empty-art">🌿</span><h3>${text}</h3><p>使用游戏账号连接后即可管理家园、军队与公会，世界进度由服务器保存。</p><button class="world-button" data-world-action="tab" data-tab="map">前往世界地图</button></section>`; }
+
+  function cityScene(home) {
+    return `<section class="world-town-scene" aria-label="我的主城建筑"><div class="world-town-sky"><span>🌳 青叶家园</span><small>建筑等级与主城实际存档同步</small></div><div class="world-town-plots">${Object.entries(BUILDINGS).map(([key, building]) => {
+      const level = buildingLevel(home, key);
+      return `<button class="world-town-plot ${level ? 'world-town-built' : 'world-town-unbuilt'} ${key === 'keep' ? 'world-town-keep' : ''}" data-world-action="focus-building" data-building="${key}" aria-label="${building.name}，${level ? `等级 ${level}` : '尚未建造'}"><span class="world-town-art" aria-hidden="true">${level ? building.icon : '🌱'}</span><strong>${building.name}</strong><small>${level ? `Lv. ${number(level)} · 已建造` : '空地 · 待建造'}</small></button>`;
+    }).join('')}</div><div class="world-town-path" aria-hidden="true">🌳 ━━━ 🌿 ━━━ 🌳</div></section>`;
+  }
+
+  function productionView(home) {
+    const production = home.production || {}, pending = Object.values(production).reduce((sum, item) => sum + numeric(item.stored), 0);
+    return `<section class="world-card world-city-production"><div class="world-section-heading"><div><span class="world-card-kicker">建筑生产 / 手动入库</span><h3>收取主城物资</h3></div><button class="world-button world-button-primary" data-world-action="harvest-all" ${!enabled() || !pending ? 'disabled' : ''}>一键收取</button></div><div class="world-production-grid">${['farm', 'lumbermill', 'quarry', 'ironworks'].map(key => {
+      const building = BUILDINGS[key], item = production[key], resource = item?.resource || rule().production?.[key]?.resource, material = MATERIALS[resource], built = buildingLevel(home, key) > 0;
+      const stored = numeric(item?.stored);
+      return `<article class="world-production-item"><div><strong>${building.icon} ${building.name}</strong><small>${built ? `${material?.name || '物资'} · 每分钟 ${number(item?.ratePerMinute)} / 暂存 ${number(item?.capacity)}` : stored ? '旧家园结余 · 可以收取' : '尚未建造'}</small></div><b>${built || stored ? `${number(stored)} ${material?.name || '物资'}` : '—'}</b><small>${built && item?.nextTickAt ? `下一批 ${countdown(item.nextTickAt, '待同步')}` : built ? '按服务器时间生产' : '建设后开始生产'}</small><button class="world-button world-button-small" data-world-action="harvest" data-building="${key}" ${!enabled() || !stored ? 'disabled' : ''}>收取${material?.name || '物资'}</button></article>`;
+    }).join('')}</div><p class="world-muted">生产物资先暂存在对应建筑，收取后才进入世界仓库。仓库装不下的部分会留在建筑中；每种仓库物资上限 ${number(self()?.capacity)}。</p></section>`;
+  }
 
   function homeView() {
     const me = self();
-    if (!me) return signInEmpty('先登录世界，领取自己的土地');
+    if (!me) return signInEmpty('连接世界后，回到自己的主城');
     if (!me.home) return `<section class="world-card world-simple-empty"><span class="world-empty-art">🏡</span><h3>你的家园，从一块空地开始</h3><p>前往世界地图，选中空地并确认建家。初始物资及通关物资可以用来建设。</p><button class="world-button world-button-primary" data-world-action="tab" data-tab="map">选择建家地块</button></section>`;
     const home = me.home, maxLevel = numeric(rule().buildMaxLevel) || 5;
-    return `<section class="world-card world-home-banner"><div class="world-home-illustration" aria-hidden="true"><span>🌳</span><span>🏡</span><span>🌾</span></div><div><span class="world-card-kicker">${escapeHtml(me.name)}的领地 / 坐标 ${home.x + 1}, ${home.y + 1}</span><h3>Lv. ${number(home.level || buildingLevel(home, 'keep'))} 果园城池</h3><p>${remaining(home.protectedUntil) ? `🛡 新城保护剩余 ${countdown(home.protectedUntil)}` : '新城保护已结束，可守家或率军出征。'}</p><p class="world-muted">每种物资的生产储存上限：${number(me.capacity)}。农田随时间产粮与木材，刷新时到账。</p></div><button class="world-button" data-world-action="locate-home">在地图中查看</button></section><div class="world-buildings">${Object.entries(BUILDINGS).map(([key, building]) => {
+    return `<section class="world-card world-home-banner"><div class="world-home-illustration" aria-hidden="true"><span>🌳</span><span>🏡</span><span>🌾</span></div><div><span class="world-card-kicker">${escapeHtml(me.name)}的领地 / 坐标 ${home.x + 1}, ${home.y + 1}</span><h3>Lv. ${number(home.level || buildingLevel(home, 'keep'))} 果园主城</h3><p>${remaining(home.protectedUntil) ? `🛡 新城保护剩余 ${countdown(home.protectedUntil)}` : '新城保护已结束，可守家或率军出征。'}</p><p class="world-muted">建设生产建筑，收取物资，训练士兵并编成自己的小队。</p></div><div class="world-inline-actions"><button class="world-button" data-world-action="locate-home">在地图中查看</button><button class="world-button world-button-primary" data-world-action="tab" data-tab="army">打造我的小队</button></div></section>${cityScene(home)}${productionView(home)}<div class="world-section-heading"><h3>主城建设</h3><small class="world-muted">点击上方建筑可定位建设卡片</small></div><div class="world-buildings">${Object.entries(BUILDINGS).map(([key, building]) => {
       const level = buildingLevel(home, key), cost = rule().costs?.buildings?.[key]?.[level + 1], maxed = level >= maxLevel;
       const keepRequired = key !== 'keep' && level + 1 > buildingLevel(home, 'keep');
-      return `<section class="world-card world-building-card"><div class="world-building-heading"><span aria-hidden="true">${building.icon}</span><div><h3>${building.name}</h3><small>Lv. ${number(level)} / ${maxLevel}</small></div></div><p>${building.detail}</p><div class="world-level-track" aria-label="${building.name}等级 ${level}">${Array.from({ length: maxLevel }, (_, i) => `<i class="${i < level ? 'world-filled' : ''}"></i>`).join('')}</div><div class="world-card-bottom"><small>${maxed ? '已达到最高等级' : cost ? costText(cost) : '建筑费用由服务器校验'}</small><button class="world-button ${maxed ? '' : 'world-button-primary'}" data-world-action="build" data-building="${key}" ${maxed || keepRequired || !enabled() || (cost && !affordable(cost)) ? 'disabled' : ''}>${maxed ? '建设完成' : keepRequired ? '先升级主城' : level ? '升级建筑' : '建造建筑'}</button></div></section>`;
-    }).join('')}</div><section class="world-card world-field-notes"><h4>世界物资从哪里来？</h4><p>先登录世界，再挑战正式关卡，通关结算后物资直接存入上方仓库。训练与无尽模式不发世界物资；世界物资不会改变局内英雄、装备或金币。</p><p class="world-muted">当前可领取至第 ${number(me.unlockedStage || 1)} 关；每次远征按服务器签发的票据结算。</p></section>`;
+      return `<section id="worldBuilding-${key}" class="world-card world-building-card"><div class="world-building-heading"><span aria-hidden="true">${building.icon}</span><div><h3>${building.name}</h3><small>${level ? `Lv. ${number(level)} / ${maxLevel}` : '尚未建造'}</small></div></div><p>${building.detail}</p><div class="world-level-track" aria-label="${building.name}等级 ${level}">${Array.from({ length: maxLevel }, (_, i) => `<i class="${i < level ? 'world-filled' : ''}"></i>`).join('')}</div><div class="world-card-bottom"><small>${maxed ? '已达到最高等级' : cost ? costText(cost) : '建筑费用由服务器校验'}</small><button class="world-button ${maxed ? '' : 'world-button-primary'}" data-world-action="build" data-building="${key}" ${maxed || keepRequired || !enabled() || (cost && !affordable(cost)) ? 'disabled' : ''}>${maxed ? '建设完成' : keepRequired ? '先升级主城' : level ? '升级建筑' : '建造建筑'}</button></div></section>`;
+    }).join('')}</div><section class="world-card world-field-notes"><h4>世界物资从哪里来？</h4><p>游戏账号连接世界后，正式关卡通关物资会存入世界仓库。主城生产建筑也会积攒物资，回城点击收取即可入库。训练与无尽模式不发世界物资。</p><p class="world-muted">当前可领取至第 ${number(me.unlockedStage || 1)} 关；每次远征按服务器签发的票据结算。</p></section>`;
   }
 
   function armyView() {
     const me = self();
-    if (!me) return signInEmpty('登录世界，招募你的守护军');
+    if (!me) return signInEmpty('连接世界，招募你的守护军');
     if (!me.home) return `<section class="world-card world-simple-empty"><span class="world-empty-art">⚔</span><h3>先有家园，才有军营</h3><p>在地图上建家后，就能修建兵营，训练三种士兵。</p><button class="world-button world-button-primary" data-world-action="tab" data-tab="map">前往建家</button></section>`;
     const total = Object.values(me.troops || {}).reduce((sum, value) => sum + numeric(value), 0);
-    return `<div class="world-section-heading world-army-heading"><div><span class="world-card-kicker">兵营 Lv. ${number(buildingLevel(me.home, 'barracks'))}</span><h3>守护军 · ${number(total)} 人</h3></div><span class="world-counter">训练队列 ${number(me.queues?.length)} / ${number(rule().maxQueues || 3)}</span></div><div class="world-training-grid">${Object.entries(UNITS).map(([key, unit]) => {
+    return `${squadsView()}<div class="world-section-heading world-army-heading"><div><span class="world-card-kicker">兵营 Lv. ${number(buildingLevel(me.home, 'barracks'))}</span><h3>守护军 · ${number(total)} 人</h3></div><span class="world-counter">训练队列 ${number(me.queues?.length)} / ${number(rule().maxQueues || 3)}</span></div><div class="world-training-grid">${Object.entries(UNITS).map(([key, unit]) => {
       const training = rule().training?.[key] || {}, available = buildingLevel(me.home, 'barracks') > 0;
       return `<section class="world-card world-unit-card"><div class="world-unit-heading"><span aria-hidden="true">${unit.icon}</span><div><h3>${unit.name}</h3><strong>${number(me.troops?.[key])} <small>已集结</small></strong></div></div><p class="world-muted">每人战力 ${number(training.power)} · 训练 ${number(training.seconds)} 秒</p><small>每人：${costText(training.cost)}</small><label class="world-train-control">训练人数<input id="worldTrain-${key}" data-world-preserve type="number" min="1" max="${numeric(rule().maxTrainCount) || 100}" value="10" inputmode="numeric"></label><button class="world-button world-button-primary" data-world-action="train" data-unit="${key}" ${!enabled() || !available || (me.queues?.length || 0) >= numeric(rule().maxQueues || 3) ? 'disabled' : ''}>${available ? '加入训练队列' : '先建造兵营'}</button></section>`;
     }).join('')}</div><section class="world-card"><div class="world-section-heading"><h3>训练队列</h3><small class="world-muted">计时结束后，刷新即自动入伍</small></div>${(me.queues || []).length ? `<div class="world-queue-list">${me.queues.map(queue => `<div class="world-queue"><span>${UNITS[queue.unit]?.icon || '⚔'} ${UNITS[queue.unit]?.name || '士兵'} × ${number(queue.count)}</span><b>${countdown(queue.readyAt, '待入伍 · 点击刷新')}</b></div>`).join('')}</div>` : '<p class="world-muted">暂无训练中的士兵。</p>'}</section>${attackPanel()}${reportsPanel()}`;
+  }
+
+  function squadsView() {
+    const me = self(), squads = me.squads || [], max = numeric(rule().maxSquads) || 3;
+    const editing = squads.find(squad => squad.id === editingSquadId);
+    const available = Object.fromEntries(Object.keys(UNITS).map(key => [key, Math.max(0, numeric(me.troops?.[key]) - squads.filter(squad => squad.id !== editingSquadId).reduce((sum, squad) => sum + numeric(squad.units?.[key]), 0))]));
+    const canCreate = !!editing || squads.length < max, totalFree = Object.values(available).reduce((sum, value) => sum + value, 0);
+    return `<section class="world-card world-squads"><div class="world-section-heading"><div><span class="world-card-kicker">选择兵种 / 编队出征</span><h3>我的小队 · ${number(squads.length)} / ${max}</h3></div><button class="world-button world-button-small" data-world-action="squad-new" ${!enabled() || squads.length >= max ? 'disabled' : ''}>＋ 新建小队</button></div><div class="world-squad-list">${squads.length ? squads.map(squad => `<article class="world-squad-row"><span class="world-squad-flag" aria-hidden="true">⚑</span><div><strong>${escapeHtml(squad.name)}</strong><small>${Object.entries(UNITS).map(([key, unit]) => `${unit.name} ${number(squad.units?.[key])}`).join(' · ')}</small></div><div class="world-inline-actions"><button class="world-button world-button-small" data-world-action="squad-edit" data-squad-id="${escapeHtml(squad.id)}">调整</button><button class="world-button world-button-small" data-world-action="squad-delete" data-squad-id="${escapeHtml(squad.id)}">解散</button></div></article>`).join('') : '<p class="world-muted">还没有小队。下方训练士兵后，选择人数组成自己的远征队。</p>'}</div><form id="worldSquadForm" class="world-squad-editor"><div class="world-section-heading"><h4>${editing ? `调整「${escapeHtml(editing.name)}」` : '编成新小队'}</h4><small class="world-muted">${totalFree ? '编队不消耗士兵' : '先训练士兵，再编成小队'}</small></div><label>小队名字<input id="worldSquadName" data-world-preserve type="text" required minlength="1" maxlength="12" autocomplete="off" placeholder="给自己的小队起个名字" value="${escapeHtml(editing?.name || '')}"></label><div class="world-squad-units">${Object.entries(UNITS).map(([key, unit]) => `<label>${unit.icon} ${unit.name}<input id="worldSquad-${key}" data-world-preserve type="number" min="0" max="${available[key]}" step="1" value="${numeric(editing?.units?.[key])}" inputmode="numeric"><small>可分配 ${number(available[key])} 人</small></label>`).join('')}</div><div class="world-inline-actions"><button class="world-button world-button-primary" type="submit" ${!enabled() || !canCreate || !totalFree ? 'disabled' : ''}>${editing ? '保存小队调整' : '保存我的小队'}</button>${editing ? '<button class="world-button" type="button" data-world-action="squad-new">取消调整</button>' : ''}</div><p class="world-muted">最多保存 ${max} 个小队；同一个士兵只分配给一个小队。解散仅取消编队，士兵仍留在军营。出征战损会同步更新编队人数。</p></form></section>`;
   }
 
   function attackPanel() {
@@ -240,10 +313,13 @@
     const cell = selectedTarget && (worldState?.map?.cells || []).find(item => item.ownerId === selectedTarget);
     if (!target || !cell) return `<section class="world-card world-field-notes"><h3>向其他家园出征</h3><p>在世界地图选择其他玩家的家园，再查看目标并确认出征。战斗由服务器结算，双方损失和掠夺物资都会保存。</p><button class="world-button" data-world-action="tab" data-tab="map">在地图选择目标</button></section>`;
     const protectedTarget = remaining(cell.protectedUntil), protectedSelf = remaining(me.home?.protectedUntil), cooldown = remaining(me.attackReadyAt);
-    const army = Object.values(me.troops || {}).reduce((sum, count) => sum + numeric(count), 0);
+    const squads = me.squads || [], chosenSquad = squads.find(squad => squad.id === attackSquadId);
+    if (attackSquadId && !chosenSquad) attackSquadId = '';
+    const units = chosenSquad?.units || me.troops || {};
+    const army = Object.values(units).reduce((sum, count) => sum + numeric(count), 0);
     const ally = me.guildId && me.guildId === cell.guildId;
     const cannotAttack = !enabled() || protectedTarget || cooldown || !army || ally;
-    return `<section class="world-card world-attack-panel"><span class="world-card-kicker">已侦察目标 / 坐标 ${cell.x + 1}, ${cell.y + 1}</span><h3>出征目标：${escapeHtml(target.name || cell.ownerName)}</h3><div class="world-facts"><span>目标城池<b>Lv. ${number(cell.level)}</b></span><span>目标军队<b>${target.army === undefined ? '未公开' : `${number(target.army)} 人`}</b></span><span>我的出征军<b>${number(army)} 人 · 全军</b></span></div><p class="world-attack-warning">确认后全部已集结士兵出征。双方可能损失士兵，胜方掠夺部分物资；家园不会被删除。无法撤销已经结算的战斗。</p>${protectedTarget ? `<p class="world-protection">目标正在保护：${countdown(cell.protectedUntil)}</p>` : ''}${protectedSelf ? `<p class="world-attack-warning">你的新城保护还剩 ${countdown(me.home.protectedUntil)}。主动出征将立即结束自己的保护。</p>` : ''}${cooldown ? `<p class="world-muted">出征休整剩余 ${countdown(me.attackReadyAt)}</p>` : ''}${ally ? '<p class="world-muted">同公会成员不能互相攻打。</p>' : ''}${!army ? '<p class="world-muted">需要先训练士兵。</p>' : ''}<div class="world-inline-actions"><button class="world-button world-button-danger" data-world-action="attack" data-target-id="${escapeHtml(cell.ownerId)}" ${cannotAttack ? 'disabled' : ''}>${protectedSelf ? '结束保护并全军出征' : '确认全军出征'}</button><button class="world-button" data-world-action="cancel-target">取消目标</button></div></section>`;
+    return `<section class="world-card world-attack-panel"><span class="world-card-kicker">已侦察目标 / 坐标 ${cell.x + 1}, ${cell.y + 1}</span><h3>出征目标：${escapeHtml(target.name || cell.ownerName)}</h3><label class="world-attack-select">出征队伍<select id="worldAttackSquad"><option value="">全部已集结士兵</option>${squads.map(squad => `<option value="${escapeHtml(squad.id)}" ${chosenSquad?.id === squad.id ? 'selected' : ''}>${escapeHtml(squad.name)} · ${number(Object.values(squad.units || {}).reduce((sum, count) => sum + numeric(count), 0))} 人</option>`).join('')}</select></label><div class="world-facts"><span>目标城池<b>Lv. ${number(cell.level)}</b></span><span>目标军队<b>${target.army === undefined ? '未公开' : `${number(target.army)} 人`}</b></span><span>我的出征军<b>${number(army)} 人 · ${escapeHtml(chosenSquad?.name || '全军')}</b></span></div><p class="world-attack-warning">确认后${chosenSquad ? '仅所选小队' : '全部已集结士兵'}出征。双方可能损失士兵，胜方掠夺部分物资；家园不会被删除。无法撤销已经结算的战斗。</p>${protectedTarget ? `<p class="world-protection">目标正在保护：${countdown(cell.protectedUntil)}</p>` : ''}${protectedSelf ? `<p class="world-attack-warning">你的新城保护还剩 ${countdown(me.home.protectedUntil)}。主动出征将立即结束自己的保护。</p>` : ''}${cooldown ? `<p class="world-muted">出征休整剩余 ${countdown(me.attackReadyAt)}</p>` : ''}${ally ? '<p class="world-muted">同公会成员不能互相攻打。</p>' : ''}${!army ? '<p class="world-muted">所选队伍没有可出征士兵，需要先训练或调整小队。</p>' : ''}<div class="world-inline-actions"><button class="world-button world-button-danger" data-world-action="attack" data-target-id="${escapeHtml(cell.ownerId)}" ${cannotAttack ? 'disabled' : ''}>${protectedSelf ? '结束保护并' : '确认'}${chosenSquad ? '小队' : '全军'}出征</button><button class="world-button" data-world-action="cancel-target">取消目标</button></div></section>`;
   }
 
   function reportsPanel() {
@@ -257,7 +333,7 @@
 
   function guildView() {
     const me = self();
-    if (!me) return signInEmpty('登录世界，与其他守护者结盟');
+    if (!me) return signInEmpty('连接世界，与其他守护者结盟');
     const mine = guildById(me.guildId), guilds = worldState?.guilds || [];
     return `${mine ? `<section class="world-card world-guild-banner" style="--world-guild-color:${guildColor(mine.id)}"><span class="world-guild-flag" aria-hidden="true">⚑</span><div><span class="world-card-kicker">我的公会 / Lv. ${number(mine.level)}</span><h3>${escapeHtml(mine.name)}</h3><p>会长：${escapeHtml(playerById(mine.ownerId)?.name || '守护者')} · 成员 ${number(mine.members?.length)} 人 · 累计贡献 ${number(mine.donations)}</p></div><button class="world-button" data-world-action="guild-leave">退出公会</button></section><div class="world-guild-layout"><section class="world-card"><h3>公会成员</h3><div class="world-member-list">${(mine.members || []).map(id => {
       const player = playerById(id);
@@ -265,9 +341,9 @@
     }).join('')}</div></section><section class="world-card"><h3>一起建设公会</h3><p class="world-muted">捐献世界物资增加公会贡献。成员家园在地图上显示同一面公会旗色，同公会不能互相攻击。</p><label>捐献物资<select id="worldDonateResource" data-world-preserve>${Object.entries(MATERIALS).filter(([key]) => key !== 'token').map(([key, item]) => `<option value="${key}">${item.icon} ${item.name}</option>`).join('')}</select></label><label>捐献数量<input id="worldDonateAmount" data-world-preserve type="number" min="${numeric(rule().costs?.guildDonate?.min) || 10}" max="${numeric(rule().costs?.guildDonate?.max) || 1000}" value="50" inputmode="numeric"></label><button class="world-button world-button-primary" data-world-action="guild-donate" ${enabled() ? '' : 'disabled'}>确认捐献</button></section></div>` : `<section class="world-card world-guild-create"><div><span class="world-card-kicker">以果园为家，以同伴为盟</span><h3>创建你的公会</h3><p>号召其他守护者加入，一起建设公会。</p><small>创建所需：${costText(rule().costs?.guildCreate)}</small></div><form id="worldGuildCreateForm"><label>公会名字<input id="worldGuildName" data-world-preserve required maxlength="7" placeholder="1–7 字：中文、字母、数字或下划线" autocomplete="off"></label><button class="world-button world-button-primary" type="submit" ${!enabled() || !affordable(rule().costs?.guildCreate) ? 'disabled' : ''}>创建公会</button></form></section>`}<section class="world-card"><div class="world-section-heading"><h3>世界中的公会</h3><span class="world-counter">${number(guilds.length)} 个公会</span></div>${guilds.length ? `<div class="world-guild-list">${guilds.map(guild => `<article class="world-guild-row"><span class="world-small-flag" style="color:${guildColor(guild.id)}">⚑</span><div><strong>${escapeHtml(guild.name)}</strong><small>Lv. ${number(guild.level)} · ${number(guild.members?.length)} 人 · 贡献 ${number(guild.donations)}</small></div><button class="world-button world-button-small" data-world-action="guild-join" data-guild-id="${escapeHtml(guild.id)}" ${!enabled() || me.guildId ? 'disabled' : ''}>${guild.id === me.guildId ? '已加入' : '加入公会'}</button></article>`).join('')}</div>` : '<p class="world-muted">世界还没有公会。你可以创建第一个，邀请朋友加入。</p>'}</section>`;
   }
 
-  function render() {
+  function render({ resetForms = false } = {}) {
     if (!host) return;
-    const values = saveForm(), scroll = host.querySelector('.world-body')?.scrollTop || 0;
+    const values = resetForms ? {} : saveForm(), scroll = host.querySelector('.world-body')?.scrollTop || 0;
     const views = { map: mapView, home: homeView, army: armyView, guild: guildView };
     host.innerHTML = `<div class="world-dialog" aria-busy="${busy || connecting}">${header()}${resourceBar()}${notice()}<main class="world-body">${authCard()}${(views[activeTab] || mapView)()}</main><footer class="world-footer"><nav class="world-nav" aria-label="世界页面">${TABS.map(([key, icon, name]) => `<button class="world-nav-button ${activeTab === key ? 'world-is-active' : ''}" data-world-action="tab" data-tab="${key}" aria-current="${activeTab === key ? 'page' : 'false'}"><span aria-hidden="true">${icon}</span>${name}</button>`).join('')}<button class="world-nav-button world-exit" data-world-action="exit">↩ 返回关卡</button></nav><small>${busy ? '服务器正在处理，请稍候…' : '家园与军队存于服务器 · 自动同步每 15 秒 · 战斗结果由服务器结算'}</small></footer></div>`;
     restoreForm(values);
@@ -279,50 +355,45 @@
   async function mutate(payload, successText) {
     if (busy || !connected || !self()) return;
     const forName = expectedName, token = generation;
-    busy = true; message = null; render();
+    busy = true; message = null; render(); let resetForms = false;
     const requestBody = { ...payload, accountName: forName, requestId: payload.requestId || uid() };
     try {
       const result = await request('action', requestBody);
       if (token !== generation) return;
       adoptState(result.state, forName); retryRequest = null;
-      message = { text: successText || '世界已同步。', kind: 'success' };
+      message = { text: typeof successText === 'function' ? successText(result) : successText || '世界已同步。', kind: 'success' };
       if (payload.type === 'settle') { activeTab = 'home'; selectedTile = { x: payload.x, y: payload.y }; }
       if (payload.type === 'attack') selectedTarget = null;
+      if (['squad-save', 'squad-delete'].includes(payload.type)) { editingSquadId = null; resetForms = true; }
     } catch (error) {
       if (token !== generation) return;
       if (['UNAUTHORIZED', 'AUTH_REQUIRED', 'login_required', 'account_mismatch'].includes(error.code)) authenticatedName = '';
       message = { text: error.message, kind: 'error' };
       retryRequest = error.retryable ? { payload: requestBody, successText, name: forName } : null;
-    } finally { if (token === generation) { busy = false; render(); } }
+    } finally { if (token === generation) { busy = false; render({ resetForms }); } }
   }
 
-  async function authenticate(form) {
-    if (busy || !connected || !expectedName) return;
-    const password = form.querySelector('#worldPassword')?.value || '';
-    if (authMode === 'register' && form.querySelector('#worldPasswordConfirm')?.value !== password) {
-      message = { text: '两次输入的世界密码不一致。', kind: 'error' }; render(); return;
-    }
+  async function linkLegacy(form) {
+    if (busy || !connected || !expectedName || !gameCredential || !linkRequired) return;
+    const worldPassword = form.querySelector('#worldLegacyPassword')?.value || '';
+    const credential = gameCredential;
     const forName = expectedName, token = generation;
     busy = true; message = null; render();
     try {
-      const result = await request(authMode, { name: forName, password });
-      if (token !== generation) return;
-      adoptState(result.state, forName); authPromptOpen = false;
-      message = { text: `欢迎 ${forName}！先选空地建家；之后通关会领取世界物资。`, kind: 'success' };
+      const result = await request('link', { name: forName, password: credential.password, worldPassword });
+      if (token !== generation || credential !== gameCredential) return;
+      adoptState(result.state, forName); linkRequired = false;
+      message = { text: '旧家园已连接，建筑、军队和物资全部保留。以后登录游戏即可进入世界。', kind: 'success' };
       if (authenticatedCallback) Promise.resolve().then(() => authenticatedCallback?.()).catch(() => {});
     } catch (error) { if (token === generation) message = { text: error.message, kind: 'error' }; }
     finally { if (token === generation) { busy = false; render(); } }
   }
 
-  async function logout() {
-    if (busy) return;
-    busy = true; render();
-    try {
-      const result = await request('logout', {});
-      authenticatedName = ''; adoptState(result.state, expectedName);
-      message = { text: '已退出世界账号，家园与军队仍保存在服务器。', kind: 'success' };
-    } catch (error) { message = { text: error.message, kind: 'error' }; }
-    finally { busy = false; render(); }
+  async function leaveGame() {
+    close(); setPlayerName(''); gameCredential = null; linkRequired = false; worldState = null; authenticatedName = ''; accountGeneration++; entering = null;
+    const operation = Promise.resolve(leaving).catch(() => {}).then(() => request('logout', {}));
+    leaving = operation;
+    try { await operation; } finally { if (leaving === operation) leaving = null; }
   }
 
   function onClick(event) {
@@ -335,13 +406,14 @@
       activeTab = button.dataset.tab; message = message?.kind === 'connection' ? message : null;
       render(); host.querySelector('.world-body')?.scrollTo?.(0, 0); return;
     }
-    if (action === 'auth-mode') { authMode = button.dataset.mode; message = null; render(); return; }
     if (action === 'refresh') { refresh(); return; }
-    if (action === 'logout') { logout(); return; }
     if (action === 'tile') { selectedTile = { x: Number(button.dataset.x), y: Number(button.dataset.y) }; render(); return; }
     if (action === 'locate-home') { selectedTile = { x: self().home.x, y: self().home.y }; activeTab = 'map'; render(); return; }
     if (action === 'target') { selectedTarget = button.dataset.targetId; activeTab = 'army'; render(); host.querySelector('.world-attack-panel')?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }); return; }
     if (action === 'cancel-target') { selectedTarget = null; render(); return; }
+    if (action === 'focus-building') { host.querySelector(`#worldBuilding-${button.dataset.building}`)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }); return; }
+    if (action === 'squad-new') { editingSquadId = null; render({ resetForms: true }); host.querySelector('#worldSquadForm')?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }); return; }
+    if (action === 'squad-edit') { editingSquadId = button.dataset.squadId; render({ resetForms: true }); host.querySelector('#worldSquadForm')?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }); return; }
     if (action === 'retry') {
       const retry = retryRequest;
       if (retry && retry.name === expectedName) mutate(retry.payload, retry.successText);
@@ -350,12 +422,14 @@
     if (!enabled()) return;
     if (action === 'settle') { mutate({ type: 'settle', x: selectedTile.x, y: selectedTile.y }, '家园建成！接下来建设农田、仓库、城墙和兵营。'); return; }
     if (action === 'build') { mutate({ type: 'build', building: button.dataset.building }, `${BUILDINGS[button.dataset.building].name}建设完成。`); return; }
+    if (action === 'harvest' || action === 'harvest-all') { mutate({ type: action, ...(action === 'harvest' ? { building: button.dataset.building } : {}) }, result => Object.values(result.harvested || {}).some(value => numeric(value) > 0) ? `物资已入库：${costText(result.harvested)}。` : '本次没有物资入库；请检查生产进度和仓库剩余容量。暂存物资会保留。'); return; }
+    if (action === 'squad-delete') { mutate({ type: 'squad-delete', squadId: button.dataset.squadId }, '已解散小队，士兵仍留在军营。'); return; }
     if (action === 'train') {
       const unit = button.dataset.unit, count = Number(host.querySelector(`#worldTrain-${unit}`).value);
       if (!Number.isInteger(count) || count < 1 || count > (numeric(rule().maxTrainCount) || 100)) { message = { text: `训练人数须为 1–${numeric(rule().maxTrainCount) || 100} 的整数。`, kind: 'error' }; render(); return; }
       mutate({ type: 'train', unit, count }, `${count} 名${UNITS[unit].name}已加入训练队列。`); return;
     }
-    if (action === 'attack') { mutate({ type: 'attack', targetId: button.dataset.targetId }, '出征已结算，结果记录在下方战报中。'); return; }
+    if (action === 'attack') { mutate({ type: 'attack', targetId: button.dataset.targetId, ...(attackSquadId ? { squadId: attackSquadId } : {}) }, '出征已结算，结果记录在下方战报中。'); return; }
     if (action === 'guild-join') { mutate({ type: 'guild-join', guildId: button.dataset.guildId }, '已加入公会，一起守护果园世界。'); return; }
     if (action === 'guild-leave') {
       const mine = guildById(self().guildId);
@@ -374,7 +448,15 @@
   function onSubmit(event) {
     if (!host?.contains(event.target)) return;
     event.preventDefault();
-    if (event.target.id === 'worldAuthForm') { authenticate(event.target); return; }
+    if (event.target.id === 'worldLinkForm') { linkLegacy(event.target); return; }
+    if (event.target.id === 'worldSquadForm') {
+      const form = event.target, name = String(form.querySelector('#worldSquadName').value || '').trim();
+      const units = Object.fromEntries(Object.keys(UNITS).map(key => [key, Number(form.querySelector(`#worldSquad-${key}`).value)]));
+      if (!name || Array.from(name).length > 12 || Object.values(units).some(count => !Number.isInteger(count) || count < 0) || !Object.values(units).some(count => count > 0)) {
+        message = { text: '填写 1–12 字的小队名字，兵种人数须为非负整数，并至少编入一名士兵。', kind: 'error' }; render(); return;
+      }
+      mutate({ type: 'squad-save', name, units, ...(editingSquadId ? { squadId: editingSquadId } : {}) }, `小队「${name}」已保存，可在出征时选择。`); return;
+    }
     if (event.target.id === 'worldGuildCreateForm') {
       const name = String(event.target.querySelector('#worldGuildName').value || '').trim();
       if (!name) { message = { text: '先给公会取一个名字。', kind: 'error' }; render(); return; }
@@ -387,16 +469,20 @@
     host.querySelectorAll('[data-world-until]').forEach(element => { const seconds = remaining(element.dataset.worldUntil); element.textContent = seconds ? duration(seconds) : element.dataset.worldEnd; });
   }
 
-  function open({ overlay, name, onExit, onAuthenticated } = {}) {
+  function onChange(event) {
+    if (event.target.id === 'worldAttackSquad') { attackSquadId = event.target.value; render(); }
+  }
+
+  function open({ overlay, name, onExit, onAuthenticated, initialTab = 'map' } = {}) {
     close();
     if (!overlay) throw new Error('果园世界需要提供 overlay 容器。');
     setPlayerName(name);
-    host = overlay; exitCallback = onExit; authenticatedCallback = onAuthenticated; activeTab = 'map'; busy = false;
+    host = overlay; exitCallback = onExit; authenticatedCallback = onAuthenticated; activeTab = TABS.some(([key]) => key === initialTab) ? initialTab : 'map'; busy = false;
     host.classList.remove('hidden', 'upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay');
     host.classList.add('frontier-overlay');
     host.setAttribute('role', 'dialog'); host.setAttribute('aria-modal', 'true'); host.setAttribute('aria-label', '果园世界');
     document.getElementById('arena')?.classList.add('is-lobby');
-    host.addEventListener('click', onClick); host.addEventListener('submit', onSubmit);
+    host.addEventListener('click', onClick); host.addEventListener('submit', onSubmit); host.addEventListener('change', onChange);
     render(); refresh();
     refreshTimer = setInterval(() => { if (!document.hidden) refresh({ quiet: true }); }, 15000);
     countdownTimer = setInterval(updateCountdowns, 1000);
@@ -407,11 +493,11 @@
     clearInterval(refreshTimer); clearInterval(countdownTimer);
     refreshTimer = countdownTimer = null;
     if (host) {
-      host.removeEventListener('click', onClick); host.removeEventListener('submit', onSubmit);
+      host.removeEventListener('click', onClick); host.removeEventListener('submit', onSubmit); host.removeEventListener('change', onChange);
       host.classList.remove('frontier-overlay');
     }
     host = null; exitCallback = authenticatedCallback = null; busy = false; connecting = false; refreshing = null;
   }
 
-  window.ORCHARD_FRONTIER = Object.freeze({ open, close, prepareSession, setPlayerName, isAuthenticated, beginCampaign, claimCampaign });
+  window.ORCHARD_FRONTIER = Object.freeze({ open, close, enterGame, leaveGame, prepareSession, setPlayerName, isAuthenticated, hasGameLogin, beginCampaign, claimCampaign });
 })();

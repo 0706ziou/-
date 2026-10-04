@@ -35,26 +35,37 @@ UNITS = {
 BASE_COSTS = {
     "keep": {"wood": 100, "stone": 120, "iron": 10},
     "farm": {"wood": 65, "stone": 25},
+    "lumbermill": {"wood": 55, "stone": 35},
+    "quarry": {"wood": 75, "stone": 30},
+    "ironworks": {"wood": 85, "stone": 65, "iron": 10},
     "warehouse": {"wood": 70, "stone": 55},
     "wall": {"wood": 45, "stone": 90, "iron": 10},
     "barracks": {"wood": 90, "stone": 55, "iron": 20},
+}
+PRODUCTION = {
+    "farm": {"resource": "grain", "ratePerMinute": 8},
+    "lumbermill": {"resource": "wood", "ratePerMinute": 6},
+    "quarry": {"resource": "stone", "ratePerMinute": 5},
+    "ironworks": {"resource": "iron", "ratePerMinute": 3},
 }
 SETTLE_COST = {"wood": 120, "stone": 80}
 BUILD_COSTS = {kind: [None] + [{key: amount * level * level for key, amount in base.items()}
                               for level in range(1, 6)] for kind, base in BASE_COSTS.items()}
 RULES = {
-    "version": VERSION, "buildMaxLevel": 5, "maxTrainCount": 100, "maxQueues": 3,
+    "version": VERSION, "buildMaxLevel": 5, "maxTrainCount": 100, "maxQueues": 3, "maxSquads": 3,
+    "production": PRODUCTION,
     "mapWidth": 16, "mapHeight": 16, "protectionMs": 300000, "attackCooldownMs": 120000,
     "defenderCooldownMs": 60000, "campaignMinimumMs": 60000, "campaignTicketTtlMs": 7200000,
     "campaignMaxStage": 100, "campaignClaimCooldownMs": 60000, "training": UNITS,
     "costs": {"settle": SETTLE_COST, "buildings": BUILD_COSTS,
               "guildCreate": {"token": 10, "wood": 100}, "guildDonate": {"min": 10, "max": 1000}},
     "resourceNames": {"wood": "木材", "stone": "石料", "grain": "粮草", "iron": "铁矿", "token": "世界令"},
-    "buildingNames": {"keep": "主城", "farm": "农田", "warehouse": "仓库", "wall": "城墙", "barracks": "兵营"},
+    "buildingNames": {"keep": "主城", "farm": "农田", "lumbermill": "伐木场", "quarry": "采石场", "ironworks": "铁矿场",
+                      "warehouse": "仓库", "wall": "城墙", "barracks": "兵营"},
     "initialResources": {"wood": 400, "stone": 350, "grain": 450, "iron": 150, "token": 25},
-    "notes": ["先登录世界，再挑战关卡可获世界物资。", "世界物资不影响局内战斗、装备或英雄养成。",
-              "农田每分钟产木材与粮食，最多补计24小时，超过仓库上限不再生产。",
-              "攻打派出全部已完成训练的部队，会发生伤亡并解除自己的新手保护。",
+    "notes": ["游戏登录会自动进入对应世界账号，通关可获世界物资。", "世界物资不影响局内战斗、装备或英雄养成。",
+              "生产建筑每分钟积累对应物资，最多补计24小时；返回主城手动收取，仓库满时保留未收取物资。",
+              "最多编组3支小队，同一士兵不能重复编组；攻打可选择小队，会发生伤亡并解除自己的新手保护。",
               "胜利可掠夺部分物资，不能永久摧毁家园；同公会成员免战。",
               "关卡仍由本地浏览器运行；奖励票据的时间与次数限制不等于完整反作弊。"],
 }
@@ -169,18 +180,66 @@ class WorldStore:
             if queued["readyAt"] <= now:
                 player["troops"][queued["unit"]] += queued["count"]
         player["queues"] = [item for item in queues if item["readyAt"] > now]
+        player.setdefault("squads", [])
         home = player.get("home")
         if home:
-            minutes = min(1440, max(0, (now - player.get("productionAt", now)) // 60000))
-            if minutes:
-                farm = home["buildings"].get("farm", 0)
-                limit = self.capacity(player)
-                for resource, amount in (("grain", farm * 8), ("wood", farm * 4)):
-                    current = player["resources"][resource]
-                    player["resources"][resource] += min(minutes * amount, max(0, limit - current))
-                # Discard overflow and excess offline time; do not bank hidden production.
-                player["productionAt"] = now - (now - player.get("productionAt", now)) % 60000
+            buildings = home["buildings"]
+            for kind in BASE_COSTS:
+                buildings.setdefault(kind, 0)
+            limit = self.capacity(player)
+            if "production" not in player:
+                # Migrate old automatic farm income exactly once. Existing inventory
+                # is untouched; even legacy wood remains harvestable without a mill.
+                old_at = player.get("productionAt", now)
+                minutes = min(1440, max(0, (now - old_at) // 60000))
+                farm = buildings.get("farm", 0)
+                player["production"] = {kind: {"stored": 0, "at": now} for kind in PRODUCTION}
+                player["production"]["farm"]["stored"] = min(limit, minutes * farm * 8)
+                player["production"]["lumbermill"]["stored"] = min(limit, minutes * farm * 4)
+            for kind, rule in PRODUCTION.items():
+                production = player["production"].setdefault(kind, {"stored": 0, "at": now})
+                elapsed = max(0, now - production["at"])
+                minutes = min(1440, elapsed // 60000)
+                if minutes:
+                    earned = minutes * buildings[kind] * rule["ratePerMinute"]
+                    production["stored"] += min(earned, max(0, limit - production["stored"]))
+                    production["at"] = now - elapsed % 60000
         return player
+
+    def production_state(self, player):
+        if not player.get("home"):
+            return {}
+        buildings = player["home"]["buildings"]
+        return {kind: {"resource": rule["resource"],
+                       "ratePerMinute": rule["ratePerMinute"] * buildings[kind],
+                       "stored": player["production"][kind]["stored"],
+                       "capacity": self.capacity(player),
+                       "nextTickAt": player["production"][kind]["at"] + 60000 if buildings[kind] else None}
+                for kind, rule in PRODUCTION.items()}
+
+    def harvest(self, player, kinds):
+        require(player["home"], "home_required", "先建造主城，再收取生产物资。")
+        harvested = {resource: 0 for resource in RESOURCE_KEYS}
+        limit = self.capacity(player)
+        for kind in kinds:
+            resource = PRODUCTION[kind]["resource"]
+            production = player["production"][kind]
+            amount = min(production["stored"], max(0, limit - player["resources"][resource]))
+            player["resources"][resource] += amount
+            production["stored"] -= amount
+            harvested[resource] += amount
+        return harvested
+
+    def reconcile_squads(self, player, preferred=None):
+        # Allocations are reservations, not extra troops. Casualties must never
+        # leave duplicate or nonexistent soldiers assigned to any squad.
+        available = dict(player["troops"])
+        squads = player.get("squads", [])
+        ordered = sorted(squads, key=lambda squad: squad["id"] != preferred) if preferred else squads
+        for squad in ordered:
+            for unit in UNITS:
+                squad["units"][unit] = min(squad["units"][unit], available[unit])
+                available[unit] -= squad["units"][unit]
 
     def load(self, connection, player_id, tick=True):
         row = connection.execute("SELECT payload FROM players WHERE id=?", (player_id,)).fetchone()
@@ -220,6 +279,58 @@ class WorldStore:
             connection.execute("INSERT INTO players VALUES(?,?,?,?,?)", (player_id, name, salt, hashed, dumps(player)))
             token = self.issue_session(connection, player_id)
             state = self.state_in(connection, player_id)
+        return {"ok": True, "state": state}, token
+
+    def enter(self, name, password, current_token=None, before_create=None):
+        require(valid_name(name), "invalid_name", "名字需1至7个中文、字母、数字或下划线。")
+        require(valid_password(password), "invalid_password", "密码长度需6至64个有效字符。")
+        with self.transaction() as connection:
+            row = connection.execute("SELECT * FROM players WHERE name=?", (name,)).fetchone()
+            if row is None:
+                if before_create:
+                    before_create()
+                now, player_id, salt = self.clock(), secrets.token_hex(12), secrets.token_hex(16)
+                player = {"id": player_id, "name": name, "resources": dict(RULES["initialResources"]),
+                          "home": None, "troops": {kind: 0 for kind in UNITS}, "queues": [], "squads": [],
+                          "guildId": None, "unlockedStage": 1, "attackReadyAt": 0,
+                          "defenseReadyAt": 0, "productionAt": now, "createdAt": now}
+                connection.execute("INSERT INTO players VALUES(?,?,?,?,?)",
+                                   (player_id, name, salt, password_hash(password, salt), dumps(player)))
+            else:
+                player_id = row["id"]
+                correct = hmac.compare_digest(password_hash(password, row["salt"]), row["password_hash"])
+                current_session = None
+                if isinstance(current_token, str) and re.fullmatch(r"[A-Za-z0-9_-]{40,96}", current_token):
+                    # Check the ownership proof within this same write transaction:
+                    # a session revoked by another migration cannot overwrite it.
+                    current_session = connection.execute("SELECT player_id FROM sessions WHERE token_hash=? AND expires_at>?",
+                        (hashlib.sha256(current_token.encode()).hexdigest(), self.clock())).fetchone()
+                require(correct or current_session is not None and current_session[0] == player_id, "world_link_required",
+                        "这个名字已有世界存档，首次合并请验证原世界密码。", 409)
+                if not correct:
+                    self.replace_password(connection, player_id, password)
+            token = self.issue_session(connection, player_id)
+            state = self.state_in(connection, player_id)
+        return {"ok": True, "state": state}, token
+
+    def replace_password(self, connection, player_id, password):
+        salt = secrets.token_hex(16)
+        connection.execute("UPDATE players SET salt=?,password_hash=? WHERE id=?",
+                           (salt, password_hash(password, salt), player_id))
+        # A credential migration invalidates every old browser session.
+        connection.execute("DELETE FROM sessions WHERE player_id=?", (player_id,))
+
+    def link(self, name, password, world_password):
+        require(valid_name(name) and valid_password(password) and valid_password(world_password),
+                "invalid_credentials", "原世界密码不正确，游戏密码长度需6至64个字符。", 401)
+        with self.transaction() as connection:
+            row = connection.execute("SELECT * FROM players WHERE name=?", (name,)).fetchone()
+            derived = password_hash(world_password, row["salt"] if row else "00" * 16)
+            require(row is not None and hmac.compare_digest(derived, row["password_hash"]),
+                    "invalid_credentials", "原世界密码不正确，存档未改变。", 401)
+            self.replace_password(connection, row["id"], password)
+            token = self.issue_session(connection, row["id"])
+            state = self.state_in(connection, row["id"])
         return {"ok": True, "state": state}, token
 
     def login(self, name, password):
@@ -272,6 +383,8 @@ class WorldStore:
         if own:
             last_claim = connection.execute("SELECT MAX(claimed_at) FROM campaigns WHERE player_id=?", (player_id,)).fetchone()[0]
             own["claimReadyAt"] = (last_claim + RULES["campaignClaimCooldownMs"]) if last_claim is not None else 0
+            if own.get("home"):
+                own["home"] = dict(own["home"], production=self.production_state(own))
         return {"self": own, "map": {"width": 16, "height": 16, "cells": cells}, "players": public,
                 "guilds": guilds, "reports": reports, "rules": RULES, "serverTime": self.clock()}
 
@@ -297,7 +410,8 @@ class WorldStore:
         require(player_id, "login_required", "请先登录世界账号。", 401)
         request_id, fingerprint = self.request_key(payload)
         kind = payload.get("type")
-        require(isinstance(kind, str) and kind in {"settle", "build", "train", "attack", "guild-create", "guild-join", "guild-leave", "guild-donate"},
+        require(isinstance(kind, str) and kind in {"settle", "build", "harvest", "harvest-all", "train", "squad-save", "squad-delete",
+                                                   "attack", "guild-create", "guild-join", "guild-leave", "guild-donate"},
                 "invalid_action", "未知的世界操作。")
         with self.transaction() as connection:
             player = self.load(connection, player_id)
@@ -317,8 +431,9 @@ class WorldStore:
                         "plot_occupied", "这块土地已经有其他玩家建家，请选择空地。", 409)
                 self.spend(player, SETTLE_COST)
                 player["home"] = {"x": x, "y": y, "level": 1, "protectedUntil": now + RULES["protectionMs"],
-                                  "buildings": {"keep": 1, "farm": 0, "warehouse": 0, "wall": 0, "barracks": 0}}
+                                  "buildings": {kind: 1 if kind == "keep" else 0 for kind in BASE_COSTS}}
                 player["productionAt"] = now
+                player["production"] = {building: {"stored": 0, "at": now} for building in PRODUCTION}
                 connection.execute("INSERT INTO plots VALUES(?,?,?)", (x, y, player_id))
             elif kind == "build":
                 require(player["home"], "home_required", "先选择一块空地建家。")
@@ -330,7 +445,15 @@ class WorldStore:
                 require(building == "keep" or level <= buildings["keep"], "keep_required", "建筑等级不能超过主城，请先升级主城。")
                 self.spend(player, BUILD_COSTS[building][level])
                 buildings[building] = level
+                if building in PRODUCTION:
+                    # Rate changes begin now, never backdate a new building or upgrade.
+                    player["production"][building]["at"] = now
                 player["home"]["level"] = buildings["keep"]
+            elif kind in ("harvest", "harvest-all"):
+                building = payload.get("building")
+                require(kind == "harvest-all" or isinstance(building, str) and building in PRODUCTION,
+                        "invalid_building", "只能收取生产建筑的物资。")
+                result = {"harvested": self.harvest(player, PRODUCTION if kind == "harvest-all" else (building,))}
             elif kind == "train":
                 require(player["home"] and player["home"]["buildings"]["barracks"] > 0,
                         "barracks_required", "先建造兵营才能训练部队。")
@@ -344,8 +467,40 @@ class WorldStore:
                 barracks_level = player["home"]["buildings"]["barracks"]
                 duration = math.ceil(UNITS[unit]["seconds"] * count * 1000 / (1 + .15 * (barracks_level - 1)))
                 player["queues"].append({"id": secrets.token_hex(8), "unit": unit, "count": count, "readyAt": now + duration})
+            elif kind == "squad-save":
+                require(player["home"] and player["home"]["buildings"]["barracks"] > 0,
+                        "barracks_required", "先建造兵营并训练士兵，再编组小队。")
+                squad_id = payload.get("squadId")
+                squad = next((item for item in player["squads"] if item["id"] == squad_id), None)
+                require(squad_id is None or isinstance(squad_id, str) and squad is not None,
+                        "squad_missing", "这支小队不存在或不属于你。", 404)
+                require(squad is not None or len(player["squads"]) < RULES["maxSquads"],
+                        "squad_limit", "最多编组3支小队。")
+                name = payload.get("name")
+                require(isinstance(name, str) and 1 <= len(name) <= 12 and name.strip() == name
+                        and name == unicodedata.normalize("NFC", name)
+                        and not any(unicodedata.category(char)[0] == "C" for char in name),
+                        "invalid_squad_name", "小队名字需1至12个有效字符。")
+                units = payload.get("units")
+                require(isinstance(units, dict) and all(unit in UNITS for unit in units),
+                        "invalid_units", "小队只能配置步兵、弓兵和骑兵。")
+                assigned = {unit: integer(units.get(unit, 0), 0, 2000, "编组数量") for unit in UNITS}
+                require(sum(assigned.values()) > 0, "army_required", "小队至少需要一名已训练完成的士兵。")
+                other = [item for item in player["squads"] if item is not squad]
+                require(all(assigned[unit] + sum(item["units"][unit] for item in other) <= player["troops"][unit]
+                            for unit in UNITS), "insufficient_troops", "可用士兵不足，同一士兵不能加入多支小队。")
+                if squad is None:
+                    squad = {"id": secrets.token_hex(10)}
+                    player["squads"].append(squad)
+                squad.update(name=name, units=assigned)
+                result = {"squadId": squad["id"]}
+            elif kind == "squad-delete":
+                squad_id = payload.get("squadId")
+                require(isinstance(squad_id, str) and any(item["id"] == squad_id for item in player["squads"]),
+                        "squad_missing", "这支小队不存在或不属于你。", 404)
+                player["squads"] = [item for item in player["squads"] if item["id"] != squad_id]
             elif kind == "attack":
-                result = {"report": self.attack(connection, player, payload.get("targetId"))}
+                result = {"report": self.attack(connection, player, payload.get("targetId"), payload.get("squadId"))}
             elif kind == "guild-create":
                 require(not player["guildId"], "already_in_guild", "请先退出当前公会。")
                 name = payload.get("name")
@@ -396,7 +551,7 @@ class WorldStore:
             connection.execute("INSERT INTO requests VALUES(?,?,?,?,?)", (player_id, request_id, fingerprint, dumps(result), now))
             return {"ok": True, **result, "state": self.state_in(connection, player_id)}
 
-    def attack(self, connection, attacker, target_id):
+    def attack(self, connection, attacker, target_id, squad_id=None):
         now = self.clock()
         require(attacker["home"], "home_required", "先建家才能派兵。")
         require(isinstance(target_id, str) and target_id != attacker["id"], "invalid_target", "请选择其他玩家的家园。")
@@ -407,7 +562,10 @@ class WorldStore:
         require(defender["home"]["protectedUntil"] <= now, "target_protected", "目标处于新手保护期，暂时不能攻打。")
         require(attacker["attackReadyAt"] <= now, "attack_cooldown", "部队正在休整，请等待进攻冷却结束。")
         require(defender["defenseReadyAt"] <= now, "target_cooldown", "目标刚经历战斗，请稍后再攻打。")
-        army = dict(attacker["troops"])
+        squad = next((item for item in attacker["squads"] if item["id"] == squad_id), None)
+        require(squad_id is None or isinstance(squad_id, str) and squad is not None,
+                "squad_missing", "出战小队不存在或不属于你。", 404)
+        army = dict(squad["units"] if squad else attacker["troops"])
         defense = dict(defender["troops"])
         require(sum(army.values()) > 0, "army_required", "没有已完成训练的部队。")
         beats = {"infantry": "archer", "archer": "cavalry", "cavalry": "infantry"}
@@ -426,9 +584,13 @@ class WorldStore:
         for unit in UNITS:
             attacker["troops"][unit] -= losses[unit]
             defender["troops"][unit] -= defender_losses[unit]
+            if squad:
+                squad["units"][unit] -= losses[unit]
+        self.reconcile_squads(attacker, squad_id)
+        self.reconcile_squads(defender)
         loot = {resource: 0 for resource in RESOURCE_KEYS}
         if won:
-            carrying = sum(attacker["troops"].values()) * 6
+            carrying = sum(army[unit] - losses[unit] for unit in UNITS) * 6
             for resource in ("wood", "stone", "grain", "iron"):
                 amount = min(carrying, defender["resources"][resource] * 15 // 100)
                 loot[resource] = amount
@@ -440,6 +602,7 @@ class WorldStore:
         defender["defenseReadyAt"] = now + RULES["defenderCooldownMs"]
         report = {"id": secrets.token_hex(12), "at": now, "attackerId": attacker["id"], "attackerName": attacker["name"],
                   "defenderId": defender["id"], "defenderName": defender["name"], "won": won, "loot": loot,
+                  "squadId": squad_id, "squadName": squad["name"] if squad else "全军", "deployed": army,
                   "losses": losses, "defenderLosses": defender_losses, "attackPower": round(attack_power, 1),
                   "defendPower": round(defend_power, 1), "detail": "进攻获胜，带回部分世界物资。" if won else "守军挡住进攻，部队返回休整。"}
         self.save(connection, defender)
@@ -680,13 +843,19 @@ class WorldHandler(BaseHTTPRequestHandler):
             path = urlsplit(self.path).path
             ip = self.client_ip()
             self.server.rate_limit((ip, "write"), 120, 60)
-            if path in ("/api/world/register", "/api/world/login"):
+            if path in ("/api/world/register", "/api/world/login", "/api/world/enter", "/api/world/link"):
                 self.server.rate_limit((ip, "auth"), 20, 60)
                 if path.endswith("register"):
                     self.server.rate_limit((ip, "register"), 10, 3600)
                     response, token = self.server.store.register(payload.get("name"), payload.get("password"))
-                else:
+                elif path.endswith("login"):
                     response, token = self.server.store.login(payload.get("name"), payload.get("password"))
+                elif path.endswith("enter"):
+                    response, token = self.server.store.enter(payload.get("name"), payload.get("password"),
+                        self.token(),
+                        lambda: self.server.rate_limit((ip, "register"), 10, 3600))
+                else:
+                    response, token = self.server.store.link(payload.get("name"), payload.get("password"), payload.get("worldPassword"))
                 self.send_json(response, cookie=token)
                 return
             token = self.token()

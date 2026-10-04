@@ -29,13 +29,13 @@
       if (active === record && owner() === record.owner) onChange(status());
     }
     function status() {
-      return active && owner() === active.owner ? { text: active.text, canRetry: !!active.retry } : { text: '先进入世界登录，再挑战关卡即可领取世界专属物资。', canRetry: false };
+      return active && owner() === active.owner ? { text: active.text, canRetry: !!active.retry } : { text: '游戏账号会自动连接世界，通关后领取世界专属物资。', canRetry: false };
     }
     async function redeem(record) {
       if (record.busy || record.done || owner() !== record.owner) return false;
       const client = getClient();
-      if (!client?.isAuthenticated(record.name)) {
-        message(record, '世界物资待入库，请用本次挑战的名字登录世界后重试。', true); return false;
+      if (!client?.isAuthenticated(record.name) && !client?.hasGameLogin?.(record.name)) {
+        message(record, '世界物资待入库，请用本次挑战的游戏账号登录后重试。', true); return false;
       }
       record.busy = true; message(record, '正在将世界专属物资存入世界仓库…');
       try {
@@ -50,7 +50,7 @@
         if (['invalid_ticket', 'ticket_expired'].includes(error.code)) {
           write(record.owner, read(record.owner).filter(item => item.ticket !== record.ticket));
           record.done = true;
-          message(record, '本次世界奖励凭证已失效，请登录世界后重新挑战关卡。');
+          message(record, '本次世界奖励凭证已失效，请连接世界后重新挑战关卡。');
           return true;
         }
         message(record, '世界物资待入库：' + (error.message || '暂时无法连接世界') + '。可稍后重试。', true); return false;
@@ -60,9 +60,9 @@
       const record = { owner: owner(), name: String(getName() || ''), stage, text: '', ticket: '', victory: false, done: false, busy: false, retry: false };
       active = record;
       const client = getClient();
-      if (!record.owner || !client?.isAuthenticated(record.name)) {
+      if (!record.owner || (!client?.isAuthenticated(record.name) && !client?.hasGameLogin?.(record.name))) {
         record.pending = Promise.resolve(null);
-        message(record, '本次未登录世界，无法领取世界物资；先进入世界登录后再挑战。'); return record.pending;
+        message(record, '本次尚未连接世界，无法领取世界物资；用游戏账号完成连接后再挑战。'); return record.pending;
       }
       message(record, '世界物资凭证正在准备…');
       record.pending = Promise.resolve().then(() => client.beginCampaign(stage, record.name)).then(result => {

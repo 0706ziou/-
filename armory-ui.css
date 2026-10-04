@@ -1,0 +1,39 @@
+.armory-overlay .menu-body{gap:12px;min-height:0}
+.armory-overlay .gear-toolbar{flex:0 0 auto;align-items:center;gap:12px}
+.armory-overlay .gear-tabs .secondary{border-radius:20px;padding:8px 20px;min-height:36px}
+.armory-overlay .gear-tabs .active{background:#607743;border-color:#d1e69b;color:#fff3ce}
+.armory-overlay .gear-note{font-size:11px;color:#b7caa0}
+.armory-loadout{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;flex:0 0 auto}
+.loadout-item{display:flex;align-items:center;gap:10px;min-width:0;padding:7px 12px;border:1px solid #74895270;border-radius:12px;background:linear-gradient(115deg,#344733,#22382a);text-align:left;color:#f0e6c1}
+.loadout-item:hover{border-color:#bdd680;background:#3f5534}
+.loadout-item>div{min-width:0}.loadout-item small,.loadout-item strong,.loadout-item span{display:block}
+.loadout-item small{font-size:9px;color:#b1c596}.loadout-item strong{font-size:12px;margin:3px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.loadout-item span{font-size:10px;color:#cfdf9b}
+.equipment-art{display:block;width:100%;height:154px;overflow:hidden;pointer-events:none}
+.loadout-item .loadout-art{width:52px;height:55px;flex:0 0 auto;border-radius:8px}
+.armory-overlay .menu-dialog .equipment-grid{flex:1 1 0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:max-content;align-content:start;align-items:start;min-height:0;gap:12px;overflow-y:auto;overflow-x:hidden;padding:2px 6px 8px 1px;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#93ae64 #193226;touch-action:pan-y}
+.armory-overlay .menu-dialog .equipment-card{height:auto;min-height:336px;padding:0;overflow:hidden;border:1px solid #697e4b;border-radius:14px;background:linear-gradient(155deg,#2d4230,#1e3326);box-shadow:0 5px 15px #07130b30;transition:border-color .15s,box-shadow .15s}
+.armory-overlay .menu-dialog .equipment-card:hover{border-color:#bed28b;box-shadow:0 6px 20px #0003}
+.armory-overlay .menu-dialog .equipment-card.equipped{border-color:#d3e8a0;box-shadow:inset 0 0 0 1px #d3e8a044,0 5px 20px #0002}
+.armory-overlay .menu-dialog .equipment-card.locked{opacity:1;border-color:#506841}
+.equipment-picture{position:relative;padding:27px 15px 7px;background:radial-gradient(ellipse at 50% 65%,#35513888,#173226);border-bottom:1px solid #79915830}
+.equipment-tier{position:absolute;left:12px;top:10px;color:#c5d59d;font-size:9px;letter-spacing:2px}
+.equipment-equipped,.equipment-locked{position:absolute;right:9px;top:8px;font-size:9px;padding:3px 7px;border-radius:12px;background:#9abb6340;color:#e7f3bb;font-weight:500}
+.equipment-locked{background:#b7b38b18;color:#bac7ac}
+.equipment-copy{padding:11px 13px 0}.equipment-copy>strong{display:block;font-size:15px;color:#f3e8c2;letter-spacing:.5px;line-height:1.4}
+.equipment-copy>p{font-size:10px;color:#afc6a2;line-height:1.5;margin:5px 0 8px!important;min-height:30px;text-align:left}
+.equipment-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin:0 12px 10px;background:#142c2066;border-radius:8px;padding:7px 2px}
+.equipment-stats>div{text-align:center;min-width:0;border-right:1px solid #768d4630}.equipment-stats>div:last-child{border:0}.equipment-stats small{display:block;font-size:9px;color:#a8bd93}.equipment-stats b{display:block;font-size:15px;color:#e0edb2;line-height:1.5;font-variant-numeric:tabular-nums}
+.equipment-level{display:flex;align-items:center;gap:9px;margin:0 13px 0;color:#c1d598;font-size:9px;white-space:nowrap}.equipment-level>div{flex:1;height:4px;background:#12291e;border-radius:3px;overflow:hidden}.equipment-level i{display:block;height:100%;background:linear-gradient(90deg,#86a45b,#d2e39a)}
+.armory-overlay .menu-dialog .equipment-card .gear-actions{display:flex;gap:6px;margin:0;padding:11px 12px 12px}
+.armory-overlay .menu-dialog .equipment-card .gear-actions .secondary{min-height:34px;font-size:10px;border-radius:8px;flex:1;padding:6px 4px;white-space:nowrap}
+.armory-overlay .equipment-card .enhance-gear{background:#526c39;border-color:#8fac62;color:#f6edc7}
+.equipment-unlock{margin:auto 12px 12px;padding:10px 7px;border:1px dashed #79885566;border-radius:8px;text-align:center;font-size:11px;color:#b8c79d;background:#213728}.equipment-unlock b{color:#e2d69b}
+@media(max-width:1000px){.armory-overlay .menu-dialog .equipment-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.armory-overlay .gear-note{font-size:10px}}
+@media(max-width:650px){
+ .armory-overlay .menu-body{gap:9px}.armory-overlay .gear-toolbar{flex-wrap:wrap;gap:6px}.armory-overlay .gear-tabs{flex:1;display:flex;gap:5px}.armory-overlay .gear-tabs .secondary{flex:1;min-height:34px;padding:6px;font-size:11px}.armory-overlay .gear-note{display:none}
+ .armory-loadout{gap:5px}.loadout-item{flex-direction:column;gap:1px;text-align:center;padding:5px 3px;border-radius:9px}.loadout-item .loadout-art{width:38px;height:38px}.loadout-item small{font-size:8px}.loadout-item strong{font-size:9px;margin:2px 0;max-width:100%}.loadout-item span{display:none}
+ .armory-overlay .menu-dialog .equipment-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding-right:4px}.armory-overlay .menu-dialog .equipment-card{min-height:285px;border-radius:11px}.equipment-picture{padding:23px 5px 4px}.equipment-art{height:118px}.equipment-tier{left:8px;top:9px;font-size:8px}.equipment-equipped,.equipment-locked{right:6px;font-size:8px;padding:2px 5px}
+ .equipment-copy{padding:9px 9px 0}.equipment-copy>strong{font-size:12px}.equipment-copy>p{font-size:9px;min-height:28px}.equipment-stats{margin:0 8px 8px;padding:6px 1px}.equipment-stats small{font-size:8px}.equipment-stats b{font-size:13px}.equipment-level{margin:0 9px;font-size:8px}
+ .armory-overlay .menu-dialog .equipment-card .gear-actions{flex-wrap:wrap;padding:9px 8px;gap:5px}.armory-overlay .menu-dialog .equipment-card .gear-actions .secondary{min-height:33px;font-size:9px}.armory-overlay .equipment-card .enhance-gear{flex-basis:100%!important}.equipment-unlock{margin:0 8px 9px;font-size:9px;padding:9px 4px}
+}
+@media(max-height:500px) and (min-width:651px){.armory-loadout{display:none}.equipment-art{height:112px}.armory-overlay .menu-dialog .equipment-card{min-height:285px}.equipment-picture{padding-top:23px}.equipment-copy>p{min-height:20px}}

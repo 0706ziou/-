@@ -8,7 +8,7 @@ const { spawnSync } = require('node:child_process');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const ROOT_FILES = new Set([
-  'rogue-guide.css', 'index.html', 'auth-data.js', 'experience-data.js', 'progression.js', 'orchard-data.js',
+  'armory-ui.css', 'rogue-guide.css', 'index.html', 'auth-data.js', 'experience-data.js', 'progression.js', 'orchard-data.js',
   'relic-data.js', 'relic-effects.js', 'build-data.js', 'growth-data.js', 'world-data.js',
   'art-catalog.js', 'map-data.js', 'navigation.js', 'map-renderer.js', 'conversation-data.js',
   'game.js', 'training-data.js', 'frontier-ui.js', 'frontier-rewards.js', 'frontier-ui.css',
