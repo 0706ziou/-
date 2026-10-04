@@ -44,10 +44,10 @@ node experience-verify.cjs
 双击 HTML 可以游玩本地关卡；多人世界需要先启动服务，再从该服务地址打开游戏。Python 服务只使用标准库，SQLite 保存世界账号、地图、公会与战报。先登录世界再挑战正式关卡，通关后服务器发放独立物资；新手练习与无尽模式不发放世界物资。
 
 ```sh
-python3 tools/world-server.py --host 127.0.0.1 --port 8766 --db .world-server-data/world.sqlite --site .
+python3 tools/world-server.py --host 127.0.0.1 --port 8765 --db .world-server-data/world.sqlite --site .
 ```
 
-本地游戏地址为 `http://127.0.0.1:8766/index.html`。局域网或公网联机需通过同源代理接入这个服务；详细规则、生产配置与部署脚本见 `世界玩法说明.txt`、`tools/WORLD-SERVER.md`。浏览器报告关卡胜利，服务端验证奖励票据、时间和领取频率，当前版本没有完整的服务端关卡战斗反作弊。
+本地游戏地址为 `http://127.0.0.1:8765/index.html`，沿用这个地址可以保留原浏览器的关卡账号和进度。若该端口已有旧静态预览，请先停止旧服务。局域网或公网联机需通过同源代理接入这个服务；详细规则、生产配置与部署脚本见 `世界玩法说明.txt`、`tools/WORLD-SERVER.md`。浏览器报告关卡胜利，服务端验证奖励票据、时间和领取频率，当前版本没有完整的服务端关卡战斗反作弊。
 
 ```sh
 python3 tools/world-server-verify.py

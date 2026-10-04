@@ -1792,7 +1792,8 @@ test('All shipped real chapter clears reconcile exactly 10000 XP into thirty ran
     const build=t.player.build,summary=t.builds.summary(t.player);
     assert.equal(t.gems.length,0);assert.equal(build.mode,'stage');assert.equal(build.attackChoices+build.attributeChoices,30);
     assert(build.attackChoices<=20&&build.attributeChoices<=20);assert(build.attackSlots.length<=4&&build.attributeSlots.length<=4);
-    assert(Object.values(build.levels).every(level=>level>=1&&level<=5));assert(Object.values(build.levels).some(level=>level<5));
+    assert(Object.values(build.levels).every(level=>level>=1&&level<=5));
+    // Thirty choices may fill six slots to rank five; unused slots still allow further growth.
     assert.equal(summary.limits.totalChoices,40);assert.equal(summary.exhausted,false);
   }
 });
