@@ -32,6 +32,11 @@
 .world-resource > span:first-child { color: #e9e9af; font-size: 20px; }
 .world-resource > span:last-child { display: flex; flex-direction: column; color: #a9bf99; font-size: 9px; gap: 2px; }
 .world-resource b { color: #f5f0c8; font-size: 14px; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.world-material-icon { display: inline-block; width: 28px; height: 28px; object-fit: contain; vertical-align: middle; filter: drop-shadow(0 2px 1px #10261c66); }
+.world-resource > span:first-child { display: inline-flex; flex: 0 0 auto; align-items: center; }
+.world-cost-material { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.world-cost-material .world-material-icon { width: 19px; height: 19px; }
+@media (max-width: 620px) { .world-resource .world-material-icon { width: 22px; height: 22px; } }
 .world-resource-tip { border-left: 1px solid #64854c6b; align-self: center; padding-left: 12px; color: #bccc9e; text-align: right; font-size: 10px; line-height: 1.5; }
 .world-notice { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 9px; padding: 8px 11px; border: 1px solid #6a8655; border-radius: 9px; background: #35543b; color: #e1e9c8; font-size: 11px; line-height: 1.5; }
 .world-notice-error, .world-notice-connection { border-color: #9f8353; background: #4a432c; color: #f5dfaf; }

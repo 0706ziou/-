@@ -40,6 +40,9 @@
 .lobby-actions .lobby-feature:hover { background: #4b653e; border-color: #d3e69c; }
 .lobby-actions .lobby-play:disabled { opacity: .5; transform: none; cursor: default; }
 .lobby-bottom { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.lobby-links { display: flex; gap: 16px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.lobby-links .leaderboard-entry { color: #ffea9d; font-weight: 700; }
+@media (max-width: 620px) { .lobby-links { gap: 6px 10px; flex: 0 0 auto; max-width: 50%; } }
 .lobby-note { min-width: 0; color: #a4ba94; font-size: 10px; line-height: 1.4; text-align: left; }
 .chapter-map-link { flex: 0 0 auto; padding: 3px 0; background: none; border: 0; color: #d8e79e; font-size: 10px; }
 .chapter-map-link:hover:enabled { color: #fff4c9; text-decoration: underline; }

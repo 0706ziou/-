@@ -1,0 +1,126 @@
+/* Rankings keep controls fixed while only the player list scrolls. */
+.overlay.leaderboard-overlay { max-width: 940px; padding: 22px; border-color: #92a86a; background: linear-gradient(145deg, #233d2b, #13281e 72%); }
+.overlay.leaderboard-overlay.hidden { display: none; }
+.leaderboard-overlay .leaderboard-dialog { gap: 12px; }
+.leaderboard-heading { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; }
+.leaderboard-heading .tag { display: block; color: #c9dd98; }
+.leaderboard-heading .menu-title { color: #fff1c3; font-size: 29px; }
+.leaderboard-heading .menu-title > span { margin-right: 5px; }
+.leaderboard-refresh { flex: 0 0 auto; min-width: 75px; border-color: #8a9d66; }
+.leaderboard-summary { display: grid; flex: 0 0 auto; grid-template-columns: minmax(0, 1.9fr) minmax(150px, 1fr); gap: 12px; }
+.leaderboard-self { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 20px; border: 1px solid #afc871; border-radius: 15px; background: linear-gradient(125deg, #4a6436, #293f2a); box-shadow: inset 0 1px 0 #e9f4b619; }
+.leaderboard-self-heading { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.leaderboard-self-avatar { display: grid; place-items: center; width: 48px; height: 48px; flex: 0 0 auto; border: 1px solid #c3db8759; border-radius: 13px; background: #263b23; font-size: 29px; }
+.leaderboard-self-heading > div { min-width: 0; }
+.leaderboard-self-heading small, .leaderboard-self-stats small { display: block; font-size: 11px; line-height: 1.4; color: #c2d5ad; }
+.leaderboard-self-heading strong { display: block; margin-top: 4px; color: #fff2c6; font-size: 17px; overflow-wrap: anywhere; }
+.leaderboard-self-stats { display: flex; flex: 0 0 auto; gap: 22px; }
+.leaderboard-self-stats strong { display: block; margin-top: 5px; color: #f1f8b0; font-size: 20px; line-height: 1.2; white-space: nowrap; }
+.leaderboard-total { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; column-gap: 11px; padding: 12px; border: 1px solid #54764c; border-radius: 15px; background: #1b3526; }
+.leaderboard-total > span { color: #abd380; font-size: 30px; }
+.leaderboard-total strong { color: #eaf2c8; font-size: 22px; line-height: 1.2; }
+.leaderboard-total strong small { display: block; margin-top: 3px; color: #c0d5af; font-size: 10px; font-weight: 400; }
+.leaderboard-total p { flex-basis: 100%; margin: 7px 0 0; color: #b6cba9; text-align: center; font-size: 10px; line-height: 1.5; }
+.leaderboard-rule { flex: 0 0 auto; margin: 0 !important; color: #d2e3b8; font-size: 12px !important; line-height: 1.5; }
+.leaderboard-sync-note { flex: 0 0 auto; margin: 0 !important; padding: 8px 11px; border: 1px solid #bba66180; border-radius: 8px; background: #514a2870; color: #f5e5b1; font-size: 11px !important; line-height: 1.5; }
+.leaderboard-sync-note > span { margin-right: 4px; color: #fff2a1; font-weight: 700; }
+.leaderboard-feedback { flex: 0 0 auto; min-height: 0; color: #c6d6b6; font-size: 11px; line-height: 1.5; }
+.leaderboard-feedback:empty { display: none; }
+.leaderboard-feedback.has-error { color: #f4c29c; }
+.leaderboard-feedback button { margin-left: 7px; padding: 0 3px; border: 0; background: none; color: #f1efb1; font: inherit; text-decoration: underline; }
+.leaderboard-list { display: flex; flex: 1 1 0; min-height: 0; flex-direction: column; overflow: hidden; border: 1px solid #54734a; border-radius: 14px; background: #152c20; }
+.leaderboard-columns, .leaderboard-row { display: grid; grid-template-columns: 90px minmax(0, 1fr) 110px; align-items: center; gap: 13px; padding: 0 19px; }
+.leaderboard-columns { flex: 0 0 auto; min-height: 38px; border-bottom: 1px solid #668451; background: #29422d; color: #bfd4a9; font-size: 11px; }
+.leaderboard-columns > :last-child { text-align: right; }
+.leaderboard-scroll { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; scrollbar-width: thin; scrollbar-color: #8da867 #172d20; }
+.leaderboard-scroll::-webkit-scrollbar { width: 6px; }
+.leaderboard-scroll::-webkit-scrollbar-thumb { background: #8da867; border-radius: 8px; }
+.leaderboard-rows { margin: 0; padding: 0; list-style: none; }
+.leaderboard-row { min-height: 53px; border-bottom: 1px solid #45613b70; color: #d4e1c8; }
+.leaderboard-row:last-child { border-bottom: 0; }
+.leaderboard-row:nth-child(even) { background: #2940293d; }
+.leaderboard-row.is-self { background: #4e68314f; box-shadow: inset 3px 0 #cce988; }
+.leaderboard-rank { display: flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; font-size: 17px; }
+.leaderboard-medal { font-size: 24px; line-height: 1; }
+.leaderboard-rank-number { color: #e9e5b1; font-size: 12px; }
+.leaderboard-player { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; min-width: 0; }
+.leaderboard-player strong { min-width: 0; color: #e3ebd5; font-size: 14px; overflow-wrap: anywhere; }
+.leaderboard-me { padding: 2px 5px; border-radius: 4px; background: #cce588; color: #24371e; font-size: 9px; font-weight: 700; line-height: 1.2; }
+.leaderboard-stage { display: flex; align-items: baseline; justify-content: flex-end; gap: 5px; white-space: nowrap; }
+.leaderboard-stage strong { color: #e7efc3; font-size: 20px; font-variant-numeric: tabular-nums; }
+.leaderboard-stage small { color: #bbcea7; font-size: 11px; }
+.leaderboard-row.podium-1 .leaderboard-player strong, .leaderboard-row.podium-1 .leaderboard-stage strong { color: #fff0a0; }
+.leaderboard-row.podium-2 .leaderboard-player strong { color: #e4eef2; }
+.leaderboard-row.podium-3 .leaderboard-player strong { color: #edc49b; }
+.leaderboard-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; padding: 24px 15px; gap: 10px; text-align: center; box-sizing: border-box; }
+.leaderboard-placeholder > span { color: #b8d582; font-size: 40px; line-height: 1; }
+.leaderboard-placeholder strong { color: #e7efc1; font-size: 17px; line-height: 1.5; }
+.leaderboard-placeholder p { margin: 0 !important; color: #b7cdaa; font-size: 12px !important; line-height: 1.6; }
+.leaderboard-loading-mark { animation: leaderboard-breathe 1.6s ease-in-out infinite; }
+.leaderboard-footer { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 14px; }
+.leaderboard-pagination { display: flex; align-items: center; gap: 13px; color: #e0e8c2; }
+.leaderboard-pagination .secondary { min-width: 36px; padding: 2px 10px; font-size: 25px; line-height: 1; }
+.leaderboard-pagination > span { min-width: 55px; text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; }
+.leaderboard-pagination small { font-size: 10px; color: #b8cba6; }
+.leaderboard-overlay button:disabled { opacity: .45; cursor: default; }
+.leaderboard-overlay button:focus-visible, .leaderboard-scroll:focus-visible { outline: 3px solid #e7f49f; outline-offset: -2px; }
+@keyframes leaderboard-breathe { 50% { opacity: .55; transform: scale(.9); } }
+@media (max-width: 620px) {
+  .overlay.leaderboard-overlay { padding: 13px; }
+  .leaderboard-overlay .leaderboard-dialog { gap: 9px; }
+  .leaderboard-heading .menu-title { font-size: 23px; }
+  .leaderboard-summary { grid-template-columns: minmax(0, 1fr) 93px; gap: 8px; }
+  .leaderboard-self { display: block; padding: 12px; border-radius: 11px; }
+  .leaderboard-self-heading { gap: 8px; }
+  .leaderboard-self-avatar { width: 35px; height: 35px; font-size: 24px; border-radius: 9px; }
+  .leaderboard-self-heading strong { font-size: 14px; margin-top: 2px; }
+  .leaderboard-self-heading small, .leaderboard-self-stats small { font-size: 10px; }
+  .leaderboard-self-stats { justify-content: space-between; gap: 7px; margin-top: 12px; }
+  .leaderboard-self-stats strong { font-size: 16px; margin-top: 4px; }
+  .leaderboard-total { padding: 10px 5px; gap: 5px; border-radius: 11px; }
+  .leaderboard-total > span { font-size: 22px; }
+  .leaderboard-total strong { font-size: 21px; text-align: center; }
+  .leaderboard-total strong small { font-size: 9px; }
+  .leaderboard-total p { font-size: 9px; margin-top: 2px; }
+  .leaderboard-rule { font-size: 10px !important; }
+  .leaderboard-sync-note { font-size: 10px !important; padding: 7px 9px; }
+  .leaderboard-columns, .leaderboard-row { grid-template-columns: 50px minmax(0, 1fr) 74px; gap: 8px; padding: 0 11px; }
+  .leaderboard-columns { font-size: 10px; min-height: 33px; }
+  .leaderboard-row { min-height: 49px; }
+  .leaderboard-rank { gap: 5px; font-size: 15px; }
+  .leaderboard-medal { font-size: 21px; }
+  .leaderboard-rank-number { font-size: 10px; }
+  .leaderboard-player strong { font-size: 12px; }
+  .leaderboard-stage strong { font-size: 18px; }
+  .leaderboard-stage small { font-size: 10px; }
+  .leaderboard-placeholder { padding: 20px 12px; gap: 9px; }
+  .leaderboard-placeholder strong { font-size: 14px; }
+  .leaderboard-placeholder p { font-size: 11px !important; }
+  .leaderboard-footer { gap: 10px; }
+  .leaderboard-pagination { gap: 8px; }
+  .leaderboard-pagination > span { font-size: 12px; min-width: 45px; }
+  .leaderboard-dialog .leaderboard-exit { padding: 9px 17px; }
+}
+@media (max-height: 500px) {
+  .overlay.leaderboard-overlay { padding: 10px 13px; }
+  .leaderboard-overlay .leaderboard-dialog { gap: 6px; }
+  .leaderboard-heading .tag { display: none; }
+  .leaderboard-heading .menu-title { font-size: 21px; }
+  .leaderboard-summary { grid-template-columns: minmax(0, 1fr) 125px; gap: 8px; }
+  .leaderboard-self { display: flex; padding: 8px 12px; gap: 14px; }
+  .leaderboard-self-avatar { width: 31px; height: 31px; font-size: 22px; }
+  .leaderboard-self-heading strong { font-size: 13px; }
+  .leaderboard-self-heading small, .leaderboard-self-stats small { font-size: 9px; }
+  .leaderboard-self-stats { margin-top: 0; gap: 13px; }
+  .leaderboard-self-stats strong { font-size: 15px; margin-top: 2px; }
+  .leaderboard-total { flex-wrap: nowrap; padding: 5px 8px; gap: 6px; }
+  .leaderboard-total > span { font-size: 24px; }
+  .leaderboard-total strong { font-size: 18px; }
+  .leaderboard-total p { display: none; }
+  .leaderboard-rule { font-size: 10px !important; }
+  .leaderboard-sync-note { padding: 5px 8px; font-size: 9px !important; }
+  .leaderboard-columns { min-height: 28px; font-size: 10px; }
+  .leaderboard-row { min-height: 41px; }
+  .leaderboard-footer .primary, .leaderboard-footer .secondary { min-height: 29px; }
+}
+@media (prefers-reduced-motion: reduce) { .leaderboard-loading-mark { animation: none; } }

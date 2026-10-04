@@ -7,20 +7,59 @@ const { createGame } = require('./verify.cjs');
 const tick = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
 let count = 0;
 async function check(name, fn) { await fn(); count++; console.log('PASS ' + name); }
-function fixture({ authenticated = true, gameLogin = false, store = new Map(), begin, claim } = {}) {
+function fixture({ authenticated = true, gameLogin = false, store = new Map(), begin, claim, complete, clock, schedule, cancel } = {}) {
   let owner = 'alpha', name = '甲甲';
-  const calls = { begin: [], claim: [] };
+  const calls = { begin: [], claim: [], complete: [] };
   const client = {
     isAuthenticated: value => authenticated && value === name,
     hasGameLogin: value => gameLogin && value === name,
     beginCampaign: async (stage, player) => { calls.begin.push({ stage, player }); return begin ? begin(stage, player) : { ticket: 'ticket-' + stage }; },
     claimCampaign: async (ticket, player) => { calls.claim.push({ ticket, player }); return claim ? claim(ticket, player) : { rewards: { wood: 48, stone: 37, grain: 64, iron: 9, token: 1 } }; }
   };
+  if (complete) client.completeCampaign = async (ticket, player) => { calls.complete.push({ ticket, player }); return complete(ticket, player); };
   const storage = { getItem: key => store.get(key) || null, setItem: (key, value) => store.set(key, value) };
   const options = { getClient: () => client, getName: () => name, getOwner: () => owner, storage };
+  if (clock) options.clock = clock;
+  if (schedule) options.schedule = schedule;
+  if (cancel) options.cancel = cancel;
   return { bridge: create(options), options, calls, store, switchAccount(next, display) { owner = next; name = display; } };
 }
 (async () => {
+  await check('Starting the next stage waits for the previous victory record, never the material cooldown', async () => {
+    let release;
+    const f = fixture({ complete: () => new Promise(resolve => { release = resolve; }) });
+    await f.bridge.begin(1); const win = f.bridge.victory(); await tick(); const next = f.bridge.begin(2); await tick();
+    assert.equal(f.calls.begin.length, 1);
+    release({ completedStage: 1 }); await win; await next;
+    assert.equal(f.calls.begin.length, 2); assert.equal(f.calls.begin[1].stage, 2);
+  });
+  await check('Fast victories record rankings immediately and award materials only when ready', async () => {
+    let now = 1000; const timers = new Map(); let id = 0;
+    const f = fixture({ clock: () => now, schedule(fn, ms) { timers.set(++id, { fn, ms }); return id; }, cancel: key => timers.delete(key),
+      begin: () => ({ ticket: 'early-win-ticket', claimAfter: 61000, state: { serverTime: 1000 } }),
+      complete: () => ({ completedStage: 1, state: { serverTime: 1000, self: { claimReadyAt: 0 } } }) });
+    await f.bridge.begin(1); now += 10000; await f.bridge.victory();
+    assert.equal(f.calls.complete.length, 1); assert.equal(f.calls.claim.length, 0);
+    assert(f.bridge.status().text.includes('排行榜')); assert.equal(timers.size, 1);
+    const job = [...timers.values()][0]; assert.equal(job.ms, 50000); timers.clear(); now = 61001; job.fn(); await tick();
+    assert.equal(f.calls.complete.length, 1); assert.equal(f.calls.claim.length, 1); assert.equal(timers.size, 0);
+    assert.equal(JSON.parse(f.store.get('orchard-world-pending-v1:alpha')).length, 0);
+  });
+  await check('Failed score synchronization preserves the ticket and retries before awarding materials', async () => {
+    let broken = true;
+    const f = fixture({ complete: () => { if (broken) throw new Error('离线'); return { completedStage: 1 }; } });
+    await f.bridge.begin(1); await f.bridge.victory(); assert.equal(f.calls.claim.length, 0);
+    assert.equal(JSON.parse(f.store.get('orchard-world-pending-v1:alpha')).length, 1);
+    broken = false; assert(await f.bridge.retry()); assert.equal(f.calls.complete.length, 2); assert.equal(f.calls.claim.length, 1);
+  });
+  await check('Logout cancels automatic material grants without discarding earned score receipts', async () => {
+    let job, cancelled = 0;
+    const f = fixture({ clock: () => 1000, schedule(fn) { job = fn; return 1; }, cancel() { cancelled++; },
+      begin: () => ({ ticket: 'cancel-ticket', claimAfter: 61000, state: { serverTime: 1000 } }), complete: () => ({ completedStage: 1 }) });
+    await f.bridge.begin(1); await f.bridge.victory(); f.bridge.reset(); f.switchAccount('beta', '乙乙'); job(); await tick();
+    assert.equal(cancelled, 1); assert.equal(f.calls.claim.length, 0);
+    assert.equal(JSON.parse(f.store.get('orchard-world-pending-v1:alpha')).length, 1);
+  });
   await check('Unlinked runs never call world APIs or create local world currency', async () => {
     const f = fixture({ authenticated: false }); await f.bridge.begin(1); await f.bridge.victory();
     assert.equal(f.calls.begin.length, 0); assert.equal(f.calls.claim.length, 0); assert.equal(f.store.size, 0);
@@ -81,7 +120,7 @@ function fixture({ authenticated = true, gameLogin = false, store = new Map(), b
     const { t, element } = createGame(new Map(), { frontierClient: client }); t.startScreen();
     assert(t.showWorld()); assert.equal(t.state, 'world'); assert.equal(t.isRunActive(), false); assert.equal(opens, 1);
     assert(t.openGameHelp()); assert(t.closeGameHelp()); assert.equal(t.state, 'world'); assert.equal(opens, 2); assert(closes > 0);
-    t.startScreen(); element('startTraining').onclick(); t.startTraining(); t.finish(false); await tick(); assert.equal(starts, 0);
+    t.startScreen(); t.startTraining(); t.finish(false); await tick(); assert.equal(starts, 0);
   });
   console.log(count + ' world reward/integration checks passed.');
 })().catch(error => { console.error(error.stack); process.exitCode = 1; });

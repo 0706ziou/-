@@ -175,6 +175,7 @@
   function el(id) { return document.getElementById(id); }
   function showCover() {
     window.ORCHARD_FRONTIER?.close();
+    window.ORCHARD_LEADERBOARD?.close();
     state = 'cover'; keys.clear(); pointer = null; overlay.classList.add('hidden');
     document.body.classList.add('is-cover'); el('coverScreen').classList.remove('hidden'); el('playerAccount').classList.add('hidden');
     el('loginAccount').value = authService?.getLastAccount() || '';
@@ -185,6 +186,7 @@
   }
   function resetAccountSession() {
     frontierRewards?.reset(); window.ORCHARD_FRONTIER?.close();
+    window.ORCHARD_LEADERBOARD?.close();
     training = null;
     keys.clear(); pointer = null; selectedStage = profile.unlockedStage; previewStage = selectedStage; activeStage = stage();
     enemies = []; bullets = []; gems = []; particles = []; choices = []; heroEffects = []; skillEffects = [];
@@ -250,6 +252,7 @@
   }
   function show(html, menu = false) {
     window.ORCHARD_FRONTIER?.close();
+    window.ORCHARD_LEADERBOARD?.close();
     overlay.classList.remove('upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay', 'armory-overlay', 'pause-overlay');
     arena.classList.remove('is-lobby');
     for (const attribute of ['role', 'aria-modal', 'aria-label']) overlay.removeAttribute?.(attribute);
@@ -258,16 +261,18 @@
   }
   function showMenu(title, subtitle, body, actions, activeTab, note = '进度自动保存 · 所有操作无需滚轮') {
     if (!currentAccount) return false;
-    const tabs = [['stages', '关卡挑战', 'navStages'], ['armory', '装备工坊', 'navArmory'], ['heroes', '英雄育成', 'navHeroes'], ['orchard', '我的果园', 'navOrchard'], ['world', '共享世界', 'navWorld'], ['map', '投放地图', 'navMap']];
+    const tabs = [['stages', '关卡挑战', 'navStages'], ['armory', '装备工坊', 'navArmory'], ['heroes', '英雄育成', 'navHeroes'], ['orchard', '我的果园', 'navOrchard'], ['world', '共享世界', 'navWorld'], ['leaderboard', '通关排行', 'navLeaderboard'], ['map', '投放地图', 'navMap']];
     show('<div class="menu-top"><div><div class="tag">' + subtitle + '</div><h2 class="menu-title">' + title + '</h2></div><div class="wallet">☀ 阳光籽 ' + profile.seeds + '　◆ 果核 ' + profile.cores + '<small>通关 ' + profile.clearedStages.length + ' / ' + stages.length + ' · 精灵 ' + profile.rescuedSprites.length + ' / ' + rescueDefs.length + '</small></div></div>' +
       '<div class="menu-body">' + featureGuideHTML(activeTab) + body + '</div><div class="menu-footer"><div class="menu-actions">' + actions + '</div>' +
       '<nav class="menu-nav" aria-label="果园功能">' + tabs.map(([tab, name, id]) => '<button class="nav-button ' + (activeTab === tab ? 'active' : '') + '" id="' + id + '" ' + (!featuresUnlocked() && ['armory', 'heroes', 'orchard', 'world'].includes(tab) ? 'disabled title="首次通关后解锁" ' : '') + 'aria-pressed="' + (activeTab === tab) + '">' + name + '</button>').join('') + '</nav>' +
       '<div class="micro">' + (!storageAvailable ? '浏览器存储不可用，进度仅在当前页面中保留' : note) + '</div></div>', true);
     el('navStages').onclick = startScreen; el('navHeroes').onclick = () => showHeroes(); el('navArmory').onclick = showArmory; el('navOrchard').onclick = showOrchard; el('navWorld').onclick = showWorld; el('navMap').onclick = showRelicMap;
+    el('navLeaderboard').onclick = showLeaderboard;
     bindFeatureGuide(activeTab);
   }
   function showWorld(initialTab = 'map') {
     if (!currentAccount || isRunActive() || !featuresUnlocked()) return false;
+    window.ORCHARD_LEADERBOARD?.close();
     state = 'world'; keys.clear(); pointer = null;
     if (!window.ORCHARD_FRONTIER) {
       showPanel('世界暂未载入', '共享世界 / 家园与公会', featureGuideHTML('world') + '<p>请刷新游戏后再次进入世界。</p>', '<button class="secondary" id="worldBackLobby">返回关卡</button>');
@@ -275,6 +280,18 @@
       bindFeatureGuide('world');
     } else {
       window.ORCHARD_FRONTIER.open({ overlay, name: currentAccount.nickname, initialTab: typeof initialTab === 'string' ? initialTab : 'map', onExit: startScreen, onAuthenticated: () => frontierRewards?.retry(), guideHTML: featureGuideHTML('world'), onGuideDone: () => advanceFeatureGuide('world') });
+    }
+    updateHUD(); return true;
+  }
+  function showLeaderboard() {
+    if (!currentAccount || isRunActive() || training) return false;
+    window.ORCHARD_FRONTIER?.close();
+    state = 'leaderboard'; keys.clear(); pointer = null;
+    if (!window.ORCHARD_LEADERBOARD) {
+      showPanel('排行榜暂未载入', '通关远征 / 玩家排名', '<p>请刷新游戏后再次打开排行榜。</p>', '<button class="secondary" id="leaderboardBackLobby">返回关卡</button>');
+      el('leaderboardBackLobby').onclick = startScreen;
+    } else {
+      window.ORCHARD_LEADERBOARD.open({ overlay, name: currentAccount.nickname, onExit: startScreen, localHighestStage: Math.max(0, ...profile.clearedStages) });
     }
     updateHUD(); return true;
   }
@@ -598,7 +615,7 @@
       '<div class="chapter-brief"><span class="chapter-chip">普通 ' + s.normalCount + ' · 精英 ' + s.eliteCount + ' · Boss ' + s.bossCount + '</span><span class="chapter-chip">虫王 ' + s.bossSchedule[0] + ' 秒起 · 清空小怪立即接续</span><span class="chapter-chip">首通 ☀ ' + s.reward.seeds + ' · ◆ ' + s.reward.cores + reward + '</span></div></div>' +
       '<div class="menu-footer lobby-footer">' + trainingEntry + '<div class="lobby-actions"><button class="lobby-play primary" id="start" ' + (!unlocked ? 'disabled' : '') + '><span class="action-icon">▶</span><strong>' + (unlocked ? '进入游戏' : '关卡未解锁') + '</strong><small>' + (unlocked ? '挑战第 ' + id + ' 关' : '先通关第 ' + (id - 1) + ' 关') + '</small></button>' +
       [['navArmory', '⚒', '装备', '搭配与强化'], ['navHeroes', '✦', '英雄', '13 位英雄可选择'], ['navOrchard', '♧', '果园', '精灵与养成'], ['navWorld', '⚑', '世界', '建家 · 造兵 · 公会']].map(([key, icon, name, detail]) => '<button class="lobby-feature secondary" id="' + key + '" ' + (!featuresUnlocked() ? 'disabled title="首次通关后解锁"' : '') + '><span class="action-icon">' + (featuresUnlocked() ? icon : '🔒') + '</span><strong>' + name + '</strong><small>' + (featuresUnlocked() ? detail : '首次通关后解锁') + '</small></button>').join('') + '</div>' +
-      '<div class="lobby-bottom"><span class="lobby-note">' + (!storageAvailable ? '浏览器存储不可用，进度仅在当前页面中保留' : escapeHTML(sessionGreeting) + (sessionGreeting ? ' · ' : '') + '出战：' + growth.hero(profile.selectedHero).name) + '</span><button class="chapter-map-link" id="navMap" ' + (!unlocked ? 'disabled' : '') + '>本关地形与饰品 ↗</button></div></div>', true);
+      '<div class="lobby-bottom"><span class="lobby-note">' + (!storageAvailable ? '浏览器存储不可用，进度仅在当前页面中保留' : escapeHTML(sessionGreeting) + (sessionGreeting ? ' · ' : '') + '出战：' + growth.hero(profile.selectedHero).name) + '</span><div class="lobby-links"><button class="chapter-map-link leaderboard-entry" id="navLeaderboard">🏆 通关排行</button><button class="chapter-map-link" id="navMap" ' + (!unlocked ? 'disabled' : '') + '>本关地形与饰品 ↗</button></div></div></div>', true);
     overlay.classList.add('lobby-overlay'); arena.classList.add('is-lobby');
     el('start').onclick = () => { if (unlocked && state === 'lobby') start(); };
     if (trainingEntry) el('startTraining').onclick = showTrainingIntro;
@@ -612,6 +629,7 @@
     };
     el('navArmory').onclick = showArmory; el('navHeroes').onclick = () => { inspectedHero = profile.selectedHero; showHeroes('heroes'); }; el('navOrchard').onclick = showOrchard;
     el('navWorld').onclick = showWorld;
+    el('navLeaderboard').onclick = showLeaderboard;
     el('navMap').onclick = () => { if (unlocked && state === 'lobby') showRelicMap(); };
     bindFeatureGuide('lobby');
   }
@@ -991,7 +1009,7 @@
     (guide ? el('nextTutorial') : el('closeGameHelp')).focus?.();
   }
   function openGameHelp() {
-    if (!currentAccount || !['lobby', 'heroes', 'armory', 'orchard', 'world', 'relicMap', 'playing', 'paused'].includes(state) || (state === 'relicMap' && isRunActive())) return false;
+    if (!currentAccount || !['lobby', 'heroes', 'armory', 'orchard', 'world', 'leaderboard', 'relicMap', 'playing', 'paused'].includes(state) || (state === 'relicMap' && isRunActive())) return false;
     helpReturnState = state; helpTab = 'conversation'; tutorialStep = 0; tutorialIsFirstRun = false; helpFocusReturn = el('gameHelp');
     state = 'help'; keys.clear(); pointer = null; renderGameHelp(); updateHUD(); return true;
   }
@@ -1037,6 +1055,7 @@
     else if (helpReturnState === 'armory') showArmory();
     else if (helpReturnState === 'orchard') showOrchard();
     else if (helpReturnState === 'world') showWorld();
+    else if (helpReturnState === 'leaderboard') showLeaderboard();
     else if (helpReturnState === 'relicMap') { state = 'relicMap'; showRelicMap(); }
     else resume();
     updateHUD(); focusReturn?.focus?.(); return true;
@@ -1315,7 +1334,7 @@
   el('trainingExit').onclick = skipTraining;
   addEventListener('keydown', e => {
     if (state === 'cover') return;
-    if (state === 'world') {
+    if (state === 'world' || state === 'leaderboard') {
       if (e.target?.closest?.('input, select, textarea')) return;
       if (e.key.toLowerCase() === 'h') openGameHelp();
       else if (e.key === 'Escape') startScreen();

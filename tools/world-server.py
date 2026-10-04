@@ -23,7 +23,7 @@ from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 VERSION = "orchard-world-1"
 RESOURCE_KEYS = ("wood", "stone", "grain", "iron", "token")
@@ -72,6 +72,8 @@ RULES = {
 REQUEST_PATTERN = re.compile(r"[A-Za-z0-9_-]{8,96}\Z")
 SESSION_SECONDS = 7 * 24 * 3600
 PBKDF_ROUNDS = 240000
+LEADERBOARD_PAGE_SIZE = 20
+LEADERBOARD_MAX_PAGE = 1000000
 
 
 class WorldError(Exception):
@@ -136,12 +138,18 @@ class WorldStore:
                 CREATE TABLE IF NOT EXISTS campaigns(ticket TEXT PRIMARY KEY,player_id TEXT NOT NULL,
                     stage INTEGER NOT NULL,started_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,
                     claimed_at INTEGER,result TEXT);
+                CREATE TABLE IF NOT EXISTS campaign_completions(ticket TEXT PRIMARY KEY,player_id TEXT NOT NULL,
+                    stage INTEGER NOT NULL,completed_at INTEGER NOT NULL);
                 CREATE TABLE IF NOT EXISTS reports(id TEXT PRIMARY KEY,at INTEGER NOT NULL,
                     attacker_id TEXT NOT NULL,defender_id TEXT NOT NULL,payload TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS reports_attacker ON reports(attacker_id,at DESC);
                 CREATE INDEX IF NOT EXISTS reports_defender ON reports(defender_id,at DESC);
                 CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires_at);
                 CREATE INDEX IF NOT EXISTS campaigns_player ON campaigns(player_id,started_at DESC);
+                CREATE INDEX IF NOT EXISTS campaigns_leaderboard
+                    ON campaigns(player_id,stage DESC,claimed_at) WHERE claimed_at IS NOT NULL;
+                CREATE INDEX IF NOT EXISTS campaign_completions_leaderboard
+                    ON campaign_completions(player_id,stage DESC,completed_at);
             """)
             row = connection.execute("SELECT value FROM metadata WHERE key='schema'").fetchone()
             require(not row or row[0] == "1", "schema_mismatch", "世界数据库版本不兼容。", 500)
@@ -391,6 +399,73 @@ class WorldStore:
     def state(self, player_id=None):
         with self.transaction() as connection:
             return {"ok": True, "state": self.state_in(connection, player_id)}
+
+    def leaderboard(self, player_id=None, page=1):
+        integer(page, 1, LEADERBOARD_MAX_PAGE, "排行榜页码")
+        offset = (page - 1) * LEADERBOARD_PAGE_SIZE
+        # Scores use server-issued tickets completed by the campaign client,
+        # plus historical successful reward claims. The capped unlockedStage
+        # cannot distinguish an
+        # account which unlocked stage 100 from one which actually cleared it.
+        # A repeated or lower-stage claim cannot replace the first arrival time
+        # at the highest cleared stage. Historical claimed tickets work as-is.
+        with contextlib.closing(self.connect()) as connection:
+            connection.execute("BEGIN")
+            total = connection.execute("""
+                SELECT COUNT(*) FROM players p WHERE EXISTS (
+                    SELECT 1 FROM campaigns c WHERE c.player_id=p.id
+                    AND c.claimed_at IS NOT NULL AND c.stage BETWEEN 1 AND 100
+                ) OR EXISTS (
+                    SELECT 1 FROM campaign_completions c WHERE c.player_id=p.id
+                    AND c.stage BETWEEN 1 AND 100
+                )
+            """).fetchone()[0]
+            rows = connection.execute("""
+                WITH completed AS (
+                    SELECT player_id,stage,claimed_at AS reached_at FROM campaigns
+                    WHERE claimed_at IS NOT NULL AND stage BETWEEN 1 AND 100
+                    UNION ALL
+                    SELECT player_id,stage,completed_at AS reached_at FROM campaign_completions
+                    WHERE stage BETWEEN 1 AND 100
+                ), highest AS (
+                    SELECT player_id,MAX(stage) AS stage FROM completed
+                    GROUP BY player_id
+                ), scores AS (
+                    SELECT p.id,p.name,COALESCE(h.stage,0) AS highest_stage,
+                        MIN(c.reached_at) AS reached_at
+                    FROM players p LEFT JOIN highest h ON h.player_id=p.id
+                    LEFT JOIN completed c ON c.player_id=p.id AND c.stage=h.stage
+                    GROUP BY p.id,p.name,h.stage
+                ), ranked AS (
+                    SELECT id,name,highest_stage,reached_at,
+                        RANK() OVER (ORDER BY highest_stage DESC) AS rank,
+                        ROW_NUMBER() OVER (
+                            ORDER BY highest_stage DESC,reached_at ASC,id ASC
+                        ) AS position
+                    FROM scores WHERE highest_stage>0
+                )
+                SELECT * FROM ranked WHERE (position>? AND position<=?) OR id=?
+                ORDER BY position
+            """, (offset, offset + LEADERBOARD_PAGE_SIZE, player_id)).fetchall()
+            entries, own = [], None
+            for row in rows:
+                entry = {"rank": row["rank"], "playerId": row["id"], "name": row["name"],
+                         "highestStage": row["highest_stage"], "reachedAt": row["reached_at"],
+                         "isSelf": row["id"] == player_id}
+                if entry["isSelf"]:
+                    own = entry
+                if offset < row["position"] <= offset + LEADERBOARD_PAGE_SIZE:
+                    entries.append(entry)
+            if player_id and own is None:
+                player = connection.execute("SELECT id,name FROM players WHERE id=?", (player_id,)).fetchone()
+                if player:
+                    own = {"rank": 0, "playerId": player["id"], "name": player["name"],
+                           "highestStage": 0, "reachedAt": None, "isSelf": True}
+            connection.commit()
+        return {"ok": True, "leaderboard": {"entries": entries, "self": own,
+                "totalPlayers": total, "page": page, "pageSize": LEADERBOARD_PAGE_SIZE,
+                "totalPages": max(1, (total + LEADERBOARD_PAGE_SIZE - 1) // LEADERBOARD_PAGE_SIZE),
+                "serverTime": self.clock()}}
 
     def spend(self, player, cost):
         require(all(player["resources"].get(key, 0) >= value for key, value in cost.items()),
@@ -653,6 +728,34 @@ class WorldStore:
             connection.execute("UPDATE campaigns SET claimed_at=?,result=? WHERE ticket=?", (now, dumps(rewards), ticket))
             return {"ok": True, "rewards": rewards, "state": self.state_in(connection, player_id)}
 
+    def campaign_complete(self, player_id, payload):
+        require(player_id, "login_required", "请先登录游戏账号。", 401)
+        ticket = payload.get("ticket")
+        require(isinstance(ticket, str) and 30 <= len(ticket) <= 96, "invalid_ticket", "挑战凭证无效。")
+        with self.transaction() as connection:
+            row = connection.execute("SELECT * FROM campaigns WHERE ticket=? AND player_id=?", (ticket, player_id)).fetchone()
+            require(row, "invalid_ticket", "挑战凭证不存在或不属于当前账号。", 404)
+            player = self.load(connection, player_id)
+            require(payload.get("name") == player["name"], "account_mismatch", "游戏账号与挑战名字不一致，成绩暂未记录。", 409)
+            previous = connection.execute("SELECT completed_at FROM campaign_completions WHERE ticket=? AND player_id=?",
+                                          (ticket, player_id)).fetchone()
+            reached_at = previous[0] if previous else row["claimed_at"]
+            if reached_at is not None:
+                return {"ok": True, "replayed": True, "completedStage": row["stage"], "completedAt": reached_at,
+                        "state": self.state_in(connection, player_id)}
+            now = self.clock()
+            require(now <= row["expires_at"], "ticket_expired", "挑战凭证已过期，请重新挑战。")
+            require(row["stage"] <= player["unlockedStage"], "stage_locked", "请先通关当前已解锁关卡。")
+            # Campaign victory and world-material redemption are independent:
+            # completion advances rank immediately but never credits resources.
+            # The claim endpoint keeps its original minimum time and cooldown.
+            connection.execute("INSERT INTO campaign_completions VALUES(?,?,?,?)",
+                               (ticket, player_id, row["stage"], now))
+            player["unlockedStage"] = min(100, max(player["unlockedStage"], row["stage"] + 1))
+            self.save(connection, player)
+            return {"ok": True, "completedStage": row["stage"], "completedAt": now,
+                    "state": self.state_in(connection, player_id)}
+
 
 class WorldHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
@@ -787,7 +890,8 @@ class WorldHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             self.validate_host()
-            path = urlsplit(self.path).path
+            parsed = urlsplit(self.path)
+            path = parsed.path
             if path == "/api/world/health":
                 with contextlib.closing(self.server.store.connect()) as connection:
                     connection.execute("SELECT 1 FROM metadata LIMIT 1").fetchone()
@@ -795,6 +899,18 @@ class WorldHandler(BaseHTTPRequestHandler):
             elif path == "/api/world/state":
                 self.server.rate_limit((self.client_ip(), "read"), 240, 60)
                 self.send_json(self.server.store.state(self.server.store.session_player(self.token())))
+            elif path == "/api/world/leaderboard":
+                self.server.rate_limit((self.client_ip(), "read"), 240, 60)
+                require(len(parsed.query) <= 256, "invalid_input", "排行榜查询过长。")
+                try:
+                    query = parse_qs(parsed.query, keep_blank_values=True, max_num_fields=8)
+                except ValueError:
+                    raise WorldError("invalid_input", "排行榜查询无效。")
+                pages = query.get("page", ["1"])
+                require(len(pages) == 1 and re.fullmatch(r"[1-9][0-9]{0,6}", pages[0]),
+                        "invalid_input", "排行榜页码必须是正整数。")
+                page = integer(int(pages[0]), 1, LEADERBOARD_MAX_PAGE, "排行榜页码")
+                self.send_json(self.server.store.leaderboard(self.server.store.session_player(self.token()), page))
             elif path.startswith("/api/"):
                 raise WorldError("not_found", "接口不存在。", 404)
             else:
@@ -869,6 +985,8 @@ class WorldHandler(BaseHTTPRequestHandler):
                 self.send_json(self.server.store.campaign_start(player_id, payload))
             elif path == "/api/world/campaign/claim":
                 self.send_json(self.server.store.campaign_claim(player_id, payload))
+            elif path == "/api/world/campaign/complete":
+                self.send_json(self.server.store.campaign_complete(player_id, payload))
             else:
                 raise WorldError("not_found", "接口不存在。", 404)
         except WorldError as error:

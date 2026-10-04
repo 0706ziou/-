@@ -3,7 +3,7 @@
   'use strict';
   const API = '/api/world';
   const MATERIALS = {
-    wood: { name: '木材', icon: '🪵' }, stone: { name: '石料', icon: '🪨' },
+    wood: { name: '木材', icon: '🪵', image: 'assets/materials/wood.svg' }, stone: { name: '石料', icon: '🪨', image: 'assets/materials/stone.svg' },
     grain: { name: '粮草', icon: '🌾' }, iron: { name: '铁矿', icon: '⛏' },
     token: { name: '世界令', icon: '✦' }
   };
@@ -38,7 +38,8 @@
   const enabled = () => connected && !busy && !!self();
   const rule = () => worldState?.rules || {};
   const buildingLevel = (home, key) => numeric(home?.buildings?.[key]?.level ?? home?.buildings?.[key]);
-  const costText = costs => Object.entries(costs || {}).filter(([key, value]) => MATERIALS[key] && numeric(value) > 0).map(([key, value]) => `${MATERIALS[key].icon} ${MATERIALS[key].name} ${number(value)}`).join(' · ') || '无需物资';
+  const materialIcon = key => MATERIALS[key]?.image ? `<img class="world-material-icon" src="${MATERIALS[key].image}" alt="" width="28" height="28">` : MATERIALS[key]?.icon || '';
+  const costText = costs => Object.entries(costs || {}).filter(([key, value]) => MATERIALS[key] && numeric(value) > 0).map(([key, value]) => `<span class="world-cost-material">${materialIcon(key)} ${MATERIALS[key].name} ${number(value)}</span>`).join(' · ') || '无需物资';
   const affordable = costs => !!self() && Object.entries(costs || {}).every(([key, amount]) => !MATERIALS[key] || numeric(self().resources?.[key]) >= numeric(amount));
   const guildById = id => (worldState?.guilds || []).find(guild => guild.id === id);
   const playerById = id => (worldState?.players || []).find(player => player.id === id);
@@ -174,6 +175,34 @@
     return result;
   }
 
+  async function completeCampaign(ticket, name = expectedName) {
+    setPlayerName(name);
+    const forName = expectedName, token = accountGeneration;
+    if (!await prepareSession(forName)) throw new WorldError('账号服务暂未连接，通关成绩会在连接后同步。', 'WORLD_LOGIN_REQUIRED');
+    if (token !== accountGeneration || forName !== expectedName) throw new WorldError('已切换账号，本局通关成绩未提交。', 'ACCOUNT_CHANGED');
+    const result = await request('campaign/complete', { ticket, name: forName });
+    if (token !== accountGeneration || forName !== expectedName) throw new WorldError('已切换账号，请回到本局账号查看成绩。', 'ACCOUNT_CHANGED');
+    adoptState(result.state, forName);
+    if (host) render();
+    return result;
+  }
+
+  async function getLeaderboard(page = 1, name = expectedName) {
+    if (!Number.isInteger(page) || page < 1 || page > 1000000) throw new WorldError('排行榜页码无效。', 'INVALID_PAGE');
+    setPlayerName(name);
+    const forName = expectedName, token = accountGeneration;
+    try { await prepareSession(forName, { renderUI: false }); } catch (error) {
+      // The global list stays readable even when an old account still needs linking.
+      if (error.code === 'ACCOUNT_CHANGED') throw error;
+    }
+    if (token !== accountGeneration || forName !== expectedName) throw new WorldError('已切换账号，请重新打开排行榜。', 'ACCOUNT_CHANGED');
+    const result = await request(`leaderboard?page=${page}`);
+    if (token !== accountGeneration || forName !== expectedName) throw new WorldError('已切换账号，请重新打开排行榜。', 'ACCOUNT_CHANGED');
+    if (!result.leaderboard || !Array.isArray(result.leaderboard.entries)) throw new WorldError('排行榜数据暂时不可用，请刷新重试。', 'INVALID_LEADERBOARD', true);
+    if (!isAuthenticated(forName)) return { ...result.leaderboard, self: null, entries: result.leaderboard.entries.map(row => ({ ...row, isSelf: false })) };
+    return result.leaderboard;
+  }
+
   async function refresh({ quiet = false } = {}) {
     if (refreshing || busy) return refreshing;
     const forName = expectedName, token = generation;
@@ -222,7 +251,7 @@
 
   function resourceBar() {
     const resources = self()?.resources;
-    return `<div class="world-resources" aria-label="世界专属物资">${Object.entries(MATERIALS).map(([key, material]) => `<div class="world-resource"><span aria-hidden="true">${material.icon}</span><span>${material.name}<b>${resources ? number(resources[key]) : '—'}</b></span></div>`).join('')}<div class="world-resource-tip">${self() ? `${escapeHtml(self().name)} · 世界专属仓库` : '通关取得 · 仅在世界使用'}</div></div>`;
+    return `<div class="world-resources" aria-label="世界专属物资">${Object.entries(MATERIALS).map(([key, material]) => `<div class="world-resource"><span aria-hidden="true">${materialIcon(key)}</span><span>${material.name}<b>${resources ? number(resources[key]) : '—'}</b></span></div>`).join('')}<div class="world-resource-tip">${self() ? `${escapeHtml(self().name)} · 世界专属仓库` : '通关取得 · 仅在世界使用'}</div></div>`;
   }
 
   function notice() {
@@ -503,5 +532,5 @@
     featureGuide = ''; guideCallback = null;
   }
 
-  window.ORCHARD_FRONTIER = Object.freeze({ open, close, enterGame, leaveGame, prepareSession, setPlayerName, isAuthenticated, hasGameLogin, beginCampaign, claimCampaign });
+  window.ORCHARD_FRONTIER = Object.freeze({ open, close, enterGame, leaveGame, prepareSession, setPlayerName, isAuthenticated, hasGameLogin, beginCampaign, completeCampaign, claimCampaign, getLeaderboard });
 })();

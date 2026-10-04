@@ -50,6 +50,8 @@ async function verify() {
       if (url.endsWith('/logout')) cookieName = null;
       if (url.endsWith('/campaign/start')) result = { ok: true, ticket: 'ticket-123456789', claimAfter: clock + 60000 };
       if (url.endsWith('/campaign/claim')) result = { ok: true, rewards: { wood: 48, token: 1 } };
+      if (url.endsWith('/campaign/complete')) result = { ok: true, completedStage: 1, completedAt: clock };
+      if (url.includes('/leaderboard?')) result.leaderboard = { entries: [{ rank: 1, playerId: alice.id, name: alice.name, highestStage: 100, reachedAt: clock, isSelf: cookieName === alice.name }], self: cookieName === alice.name ? { rank: 1, playerId: alice.id, name: alice.name, highestStage: 100 } : null, totalPlayers: 1, page: Number(url.split('page=')[1]), pageSize: 20, totalPages: 1, serverTime: clock };
       if (url.endsWith('/action')) {
         assert.equal(payload.accountName, cookieName, 'Actions bind the intended game account');
         const me = users.get(cookieName).player;
@@ -74,6 +76,7 @@ async function verify() {
   assert.equal(client.hasGameLogin('字欧'), false);
   await client.enterGame('字欧', 'alice-game-password'); assert.equal(client.hasGameLogin('字欧'), true); assert.equal(client.hasGameLogin('李总'), false); assert.equal(client.isAuthenticated('字欧'), true);
   client.open({ overlay: host, name: '字欧', initialTab: 'home' }); await flush();
+  assert.match(host.innerHTML, /assets\/materials\/wood\.svg/); assert.match(host.innerHTML, /assets\/materials\/stone\.svg/);
   assert.match(host.innerHTML, /我的主城/); assert.match(host.innerHTML, /回到主城/); assert.doesNotMatch(host.innerHTML, /worldAuthForm|worldPassword|首次登记|退出世界账号/);
   host.click('tab', { tab: 'map' }); assert.equal((host.innerHTML.match(/class="world-tile /g) || []).length, 256);
   failActionOnce = true; host.click('settle'); await flush(); assert.match(host.innerHTML, /重试刚才操作/);
@@ -98,6 +101,10 @@ async function verify() {
   host.click('attack', { targetId: 'evil-id' }); await flush(); assert.equal(calls.at(-1).payload.squadId, 'squad-1');
   host.click('squad-delete', { squadId: 'squad-1' }); await flush(); assert.equal(alice.squads.length, 0); assert.equal(alice.troops.infantry, 20);
   const ticket = await client.beginCampaign(1, '字欧'); assert.equal(ticket.ticket, 'ticket-123456789'); await client.claimCampaign(ticket.ticket, '字欧'); assert.equal(calls.at(-1).payload.requestId, 'claim-ticket-123456789');
+  await client.completeCampaign(ticket.ticket, '字欧'); assert.deepEqual(calls.at(-1).payload, { ticket: ticket.ticket, name: '字欧' });
+  const board = await client.getLeaderboard(1, '字欧'); assert.equal(board.self.highestStage, 100); assert.equal(board.entries[0].rank, 1);
+  assert.equal(calls.at(-1).options.method, 'GET'); assert.equal(calls.at(-1).payload, undefined);
+  await assert.rejects(client.getLeaderboard(-1, '字欧'), error => error.code === 'INVALID_PAGE');
   cookieName = bob.name; const entersBefore = calls.filter(call => call.url.endsWith('/enter')).length;
   await Promise.all([client.prepareSession('字欧'), client.prepareSession('字欧')]); assert.equal(client.isAuthenticated('字欧'), true); assert.equal(calls.filter(call => call.url.endsWith('/enter')).length, entersBefore + 1, 'Auto reconnect uses a single enter request');
   client.close(); assert.equal(intervals.size, 0); assert.equal(Object.keys(host.events).length, 0); assert.equal(client.hasGameLogin('字欧'), true, 'Closing UI keeps current game identity');

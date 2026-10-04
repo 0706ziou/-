@@ -25,7 +25,7 @@ const boot = 'showCover();requestAnimationFrame(frame);';
 assert(gameSource.includes(boot), 'Keep the game bootstrap available for the test hook.');
 gameSource = gameSource.replace(boot,
   `globalThis.test={start,update,frame,pause,resume,choose,upgrade,draw,spawn,shoot,upgradeDefs,keys,
-  stages,gearDefs,gearGrowth,combat,gearCost,gearStats,equipGear,upgradeGear,selectStage,finish,saveProfile,loadProfile,freshProfile,startScreen,showArmory,browseStage,showWorld,frontierRewards,
+  stages,gearDefs,gearGrowth,combat,gearCost,gearStats,equipGear,upgradeGear,selectStage,finish,saveProfile,loadProfile,freshProfile,startScreen,showArmory,browseStage,showWorld,showLeaderboard,frontierRewards,
   openGameHelp,closeGameHelp,openTutorial,nextTutorial,tutorialSteps,
   startTraining,finishTraining,exitTraining,skipTraining,needsFirstTraining,trainingTick,get training(){return training},
   submitLogin,acceptAccount,logoutAccount,showCover,
@@ -146,6 +146,7 @@ function createGame(storage = new Map(), options = {}) {
   vm.runInContext(trainingSource,sandbox,{filename:'training-data.js'});
   vm.runInContext(frontierRewardsSource,sandbox,{filename:'frontier-rewards.js'});
   if(options.frontierClient)sandbox.window.ORCHARD_FRONTIER=options.frontierClient;
+  if(options.leaderboardClient)sandbox.window.ORCHARD_LEADERBOARD=options.leaderboardClient;
   if(options.conversation)sandbox.window.ORCHARD_CONVERSATION=options.conversation;
   // Ordinary combat fixtures represent an existing player before the new-login gate runs.
   // Keep original storage bytes intact, including corrupt or inaccessible storage cases.
