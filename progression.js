@@ -1,5 +1,5 @@
 /*
- * 果园远征：100关、五个篇章。前20关保留原配置；后80关固定398普通虫、精英45→64、Boss短队列与渐进数值。
+ * 果园远征：100关、五个篇章。前三关为新手关，4～20关保留原配置；后80关固定398普通虫、精英45→64、Boss短队列与渐进数值。
  * Boss 时间仅授予登场资格：首关 60 秒、第二关 65 / 110 秒，后期首位 60 秒。
  * 所有关卡同时最多 1 位 Boss；击败后额外 12 秒喘息，再按资格排程逐位放行。
  * 普通追击开局 20→36，每批 20→32，间隔 10→7 秒；精英首批 16→12 秒。
@@ -256,9 +256,24 @@
     });
   }
   const chapterEquipment = { 25: 'weapon_grape', 30: 'armor_moon', 35: 'charm_moon', 40: 'weapon_blueberry', 45: 'charm_gale', 50: 'armor_thorn', 60: 'weapon_sunbow', 70: 'charm_star', 85: 'armor_frost', 100: 'weapon_coconut' };
+  // Three gentle opening stages; later chapters keep their existing tuning.
+  for (let index = 0; index < 3; index++) {
+    const stage = stages[index], rank = index + 1;
+    Object.assign(stage, {
+      normalCount: 48 + rank * 24, fastCount: rank * 12,
+      slow: { hp: 10 + rank * 6, speed: 40 + rank * 5, damage: 1 + rank, xp: 2 },
+      fast: { hp: 8 + rank * 4, speed: 55 + rank * 10, damage: 1 + rank, xp: 3 },
+      eliteCount: rank, eliteStats: { hp: 35 + rank * 15, speed: 45 + rank * 10, damage: 2 + rank },
+      initialPursuers: 4 + rank * 2, batchSize: 8 + rank * 2, pursuitInterval: 5,
+      eliteFirstAt: 25, eliteInterval: 14, eliteBatchSize: 1,
+      bossCount: 1, bossIds: [rank], bossFirstAt: 60, bossInterval: 45,
+      beginner: Object.freeze({ bossHp: 120 + rank * 60, bossDamage: 2 + rank, bossSpeed: 45 + rank * 5, chargeSpeed: 105 + rank * 10, chargeInterval: 8, regeneration: 2, regenerationDelay: 3 }),
+      description: '新手友好：' + (48 + rank * 24) + '只普通虫、' + rank + '只精英和1位虫王。虫群缓慢追击，脱离伤害3秒后每秒恢复2生命；虫王60秒登场。'
+    });
+  }
   for (const stage of stages) if (chapterEquipment[stage.id]) stage.firstClearGear = chapterEquipment[stage.id];
   window.ORCHARD_STAGES = Object.freeze(stages.map(stage => {
-    const normalCount = 398;
+    const normalCount = stage.normalCount ?? 398;
     const eliteCount = stage.eliteCount ?? (4 + stage.id * 2);
     const bossCount = stage.bossCount ?? stage.id;
     const bossSchedule = Object.freeze(Array.from({ length: bossCount }, (_, index) =>

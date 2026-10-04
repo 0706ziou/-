@@ -291,13 +291,13 @@
   }
 ].map(item => ({ ...item, unlockStage: 0, maxLevel: 30 })));
   const talents = [
-    { id: 'vitality', name: '丰汁研究', icon: '♥', maxLevel: 20, description: '每级永久生命上限 +4，满级 +80。',
+    { id: 'vitality', name: '丰汁研究', icon: '♥', art: 'assets/talents/vitality.png', maxLevel: 20, description: '每级永久生命上限 +4，满级 +80。',
       bonus: { hp: 4 }, baseSeeds: 45, seedStep: 25, seedCurve: 6, baseCores: 1, coreStep: 3 },
-    { id: 'damage', name: '日光淬籽', icon: '☀', maxLevel: 20, description: '每级永久基础伤害 +2%，满级 +40%。',
+    { id: 'damage', name: '日光淬籽', icon: '☀', art: 'assets/talents/damage.png', maxLevel: 20, description: '每级永久基础伤害 +2%，满级 +40%。',
       bonus: { damage: .02 }, baseSeeds: 65, seedStep: 35, seedCurve: 8, baseCores: 2, coreStep: 2 },
-    { id: 'rate', name: '枝脉传导', icon: '»', maxLevel: 20, description: '每级永久基础射速 +1%，满级 +20%。',
+    { id: 'rate', name: '枝脉传导', icon: '»', art: 'assets/talents/rate.png', maxLevel: 20, description: '每级永久基础射速 +1%，满级 +20%。',
       bonus: { rate: .01 }, baseSeeds: 60, seedStep: 30, seedCurve: 8, baseCores: 2, coreStep: 2 },
-    { id: 'insight', name: '虫群研习', icon: '✧', maxLevel: 15, description: '每级经验倍率 +2%，满级 +30%；关卡提前领取固定经验预算，无尽增加经验收益，与装备倍率相乘。',
+    { id: 'insight', name: '虫群研习', icon: '✧', art: 'assets/talents/insight.png', maxLevel: 15, description: '每级经验倍率 +2%，满级 +30%；关卡提前领取固定经验预算，无尽增加经验收益，与装备倍率相乘。',
       bonus: { xpBonus: .02 }, baseSeeds: 55, seedStep: 30, seedCurve: 7, baseCores: 1, coreStep: 2 }
   ];
   for (const item of heroes) { Object.freeze(item.runModifiers); Object.freeze(item.active); Object.freeze(item); }

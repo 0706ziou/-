@@ -121,6 +121,8 @@ function skipFirstTraining(g){
     assert(g.t.logoutAccount());assert.equal(leaves,1);
     assert(!(await login(g,'同账','incorrect-demo')));assert.equal(calls.length,1);
     assert(await login(g,'同账','unified-demo-123'));assert.equal(calls.length,2);
+    assert.equal(g.t.showWorld('home'),false,'World remains locked before a campaign victory');
+    g.t.profile.clearedStages=[1];g.t.profile.unlockedStage=2;g.t.saveProfile();
     assert(g.t.showWorld('home'));assert.equal(opened.initialTab,'home');
   });
   await test('Unavailable world service preserves verified local account and campaign progress',async()=>{

@@ -112,6 +112,9 @@ async function verify() {
   client.close(); cookieName = null; await client.prepareSession('李总'); assert.equal(client.isAuthenticated('李总'), true, 'Unified credential reconnects after old link');
   await client.leaveGame(); let releaseEnter; heldEnter = new Promise(resolve => { releaseEnter = resolve; }); const stale = client.enterGame('字欧', 'alice-game-password'); await flush(); client.setPlayerName('李总'); releaseEnter(); await stale; assert.equal(client.hasGameLogin('字欧'), false); assert.equal(client.isAuthenticated('字欧'), false, 'Stale enter response cannot adopt a previous account');
   await client.enterGame('李总', 'bob-game-password'); client.close(); unavailable = true; client.open({ overlay: host, name: '李总' }); await flush(); assert.match(host.innerHTML, /世界服务未连接/); assert.match(host.innerHTML, /尚未连接世界服务/); client.close();
+  let guideCompletions = 0;
+  client.open({ overlay: host, name: '李总', guideHTML: '<aside class="feature-guide">地图空地引导<button data-world-action="guide-done">完成指引</button></aside>', onGuideDone() { guideCompletions++; client.close(); } });
+  await flush(); assert.match(host.innerHTML, /地图空地引导/); host.click('guide-done'); assert.equal(guideCompletions, 1); assert.equal(Object.keys(host.events).length, 0);
   for (const call of calls) { assert.equal(call.options.credentials, 'same-origin'); if (call.payload) assert.equal(call.options.headers['Content-Type'], 'application/json'); if (!call.url.endsWith('/enter') && !call.url.endsWith('/link')) assert.equal(call.payload?.password, undefined, 'Credentials appear only in authentication requests'); }
   console.log('PASS frontier client: unified entry and single-flight reconnect, password memory only, legacy link preservation, logout identity isolation, main-city scene, manual harvest, squads and selected attack, idempotent retry, campaign tickets, escaping and cleanup');
 }

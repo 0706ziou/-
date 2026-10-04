@@ -1,0 +1,7 @@
+Generated with the built-in image_gen tool. Use case: stylized-concept.
+Shared prompt: Square talent illustration for a cozy fantasy fruit-garden survival game. High quality hand-painted 3D storybook game item art, detailed soft forms, deep forest green background fading to dark edges, warm golden rim lighting and vibrant botanical colors. One central emblem occupying 75% of the frame, readable at thumbnail size. No text, letters, UI, border or watermark.
+
+vitality.png: A ripe peach cut open to reveal a glowing pink heart-shaped nectar gem, lush leaves and sparkling juice droplets; permanent vitality and health.
+damage.png: A golden sunflower seed glowing like a miniature sun, golden rays, two green leaves and orange sparks; concentrated attack power.
+rate.png: Emerald branching leaf veins carrying luminous turquoise pulses toward three pointed fruit seeds shooting forward, with flowing motion trails; rapid firing.
+insight.png: An open botanical field journal with a golden beetle and leaf diagrams, magnifying glass and luminous purple experience crystals; studying bugs and gaining knowledge.

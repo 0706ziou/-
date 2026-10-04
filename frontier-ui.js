@@ -20,6 +20,7 @@
   const UNITS = { infantry: { name: '步兵', icon: '🛡' }, archer: { name: '弓兵', icon: '🏹' }, cavalry: { name: '骑兵', icon: '🐎' } };
   const TABS = [['map', '🗺', '世界地图'], ['home', '🏡', '主城'], ['army', '⚔', '小队军营'], ['guild', '⚑', '公会']];
   let host = null, exitCallback = null, authenticatedCallback = null, worldState = null, expectedName = '', authenticatedName = '';
+  let featureGuide = '', guideCallback = null;
   let activeTab = 'map', selectedTile = null, selectedTarget = null, editingSquadId = null, attackSquadId = '';
   let connected = false, connecting = false, busy = false, message = null, retryRequest = null;
   let refreshTimer = null, countdownTimer = null, generation = 0, refreshing = null, serverOffset = 0;
@@ -345,11 +346,11 @@
     if (!host) return;
     const values = resetForms ? {} : saveForm(), scroll = host.querySelector('.world-body')?.scrollTop || 0;
     const views = { map: mapView, home: homeView, army: armyView, guild: guildView };
-    host.innerHTML = `<div class="world-dialog" aria-busy="${busy || connecting}">${header()}${resourceBar()}${notice()}<main class="world-body">${authCard()}${(views[activeTab] || mapView)()}</main><footer class="world-footer"><nav class="world-nav" aria-label="世界页面">${TABS.map(([key, icon, name]) => `<button class="world-nav-button ${activeTab === key ? 'world-is-active' : ''}" data-world-action="tab" data-tab="${key}" aria-current="${activeTab === key ? 'page' : 'false'}"><span aria-hidden="true">${icon}</span>${name}</button>`).join('')}<button class="world-nav-button world-exit" data-world-action="exit">↩ 返回关卡</button></nav><small>${busy ? '服务器正在处理，请稍候…' : '家园与军队存于服务器 · 自动同步每 15 秒 · 战斗结果由服务器结算'}</small></footer></div>`;
+    host.innerHTML = `<div class="world-dialog" aria-busy="${busy || connecting}">${header()}${resourceBar()}${notice()}<main class="world-body">${featureGuide}${authCard()}${(views[activeTab] || mapView)()}</main><footer class="world-footer"><nav class="world-nav" aria-label="世界页面">${TABS.map(([key, icon, name]) => `<button class="world-nav-button ${activeTab === key ? 'world-is-active' : ''}" data-world-action="tab" data-tab="${key}" aria-current="${activeTab === key ? 'page' : 'false'}"><span aria-hidden="true">${icon}</span>${name}</button>`).join('')}<button class="world-nav-button world-exit" data-world-action="exit">↩ 返回关卡</button></nav><small>${busy ? '服务器正在处理，请稍候…' : '家园与军队存于服务器 · 自动同步每 15 秒 · 战斗结果由服务器结算'}</small></footer></div>`;
     restoreForm(values);
     const body = host.querySelector('.world-body');
     if (body) body.scrollTop = scroll;
-    if (busy) host.querySelectorAll('button, input, select').forEach(element => { if (element.dataset.worldAction !== 'exit') element.disabled = true; });
+    if (busy) host.querySelectorAll('button, input, select').forEach(element => { if (!['exit', 'guide-done'].includes(element.dataset.worldAction)) element.disabled = true; });
   }
 
   async function mutate(payload, successText) {
@@ -400,6 +401,7 @@
     const button = event.target.closest('[data-world-action]');
     if (!button || !host?.contains(button) || button.disabled) return;
     const action = button.dataset.worldAction;
+    if (action === 'guide-done') { guideCallback?.(); return; }
     if (action === 'exit') { const callback = exitCallback; close(); callback?.(); return; }
     if (busy) return;
     if (action === 'tab') {
@@ -473,11 +475,12 @@
     if (event.target.id === 'worldAttackSquad') { attackSquadId = event.target.value; render(); }
   }
 
-  function open({ overlay, name, onExit, onAuthenticated, initialTab = 'map' } = {}) {
+  function open({ overlay, name, onExit, onAuthenticated, guideHTML = '', onGuideDone, initialTab = 'map' } = {}) {
     close();
     if (!overlay) throw new Error('果园世界需要提供 overlay 容器。');
     setPlayerName(name);
     host = overlay; exitCallback = onExit; authenticatedCallback = onAuthenticated; activeTab = TABS.some(([key]) => key === initialTab) ? initialTab : 'map'; busy = false;
+    featureGuide = typeof onGuideDone === 'function' ? guideHTML : ''; guideCallback = onGuideDone;
     host.classList.remove('hidden', 'upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay');
     host.classList.add('frontier-overlay');
     host.setAttribute('role', 'dialog'); host.setAttribute('aria-modal', 'true'); host.setAttribute('aria-label', '果园世界');
@@ -497,6 +500,7 @@
       host.classList.remove('frontier-overlay');
     }
     host = null; exitCallback = authenticatedCallback = null; busy = false; connecting = false; refreshing = null;
+    featureGuide = ''; guideCallback = null;
   }
 
   window.ORCHARD_FRONTIER = Object.freeze({ open, close, enterGame, leaveGame, prepareSession, setPlayerName, isAuthenticated, hasGameLogin, beginCampaign, claimCampaign });

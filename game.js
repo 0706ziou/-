@@ -103,7 +103,7 @@
     return '<svg class="equipment-art ' + extraClass + '" role="img" aria-label="' + g.name + '装备图" viewBox="' + viewBox + '" preserveAspectRatio="xMidYMid meet"><defs><clipPath id="' + clip + '" clipPathUnits="userSpaceOnUse"><rect x="' + x + '" y="' + y + '" width="' + width + '" height="' + height + '"/></clipPath></defs><image href="' + gearAtlases[g.slot] + '" ' + size + ' clip-path="url(#' + clip + ')"/></svg>';
   }
   function freshProfile() {
-    const base = { version: 1, unlockedStage: 1, clearedStages: [], seeds: 0, cores: 0, tutorialSeen: false, trainingComplete: false, trainingSkipped: false,
+    const base = { version: 1, unlockedStage: 1, clearedStages: [], seeds: 0, cores: 0, tutorialSeen: false, trainingComplete: false, trainingSkipped: false, featureGuideStep: 0, featureGuideRound: 1,
       rescuedSprites: [], spriteLevels: {}, orchard: { level: 0 },
       inventory: { weapon_seed: { level: 0 }, armor_leaf: { level: 0 }, charm_sprout: { level: 0 } },
       equipped: { weapon: 'weapon_seed', armor: 'armor_leaf', charm: 'charm_sprout' } };
@@ -123,6 +123,8 @@
       result.unlockedStage = integer(raw.unlockedStage, 1, stages.length);
       result.seeds = integer(raw.seeds, 0, 999999); result.cores = integer(raw.cores, 0, 999999);
       result.clearedStages = [...new Set((Array.isArray(raw.clearedStages) ? raw.clearedStages : []).filter(n => Number.isInteger(n) && n >= 1 && n <= stages.length))];
+      result.featureGuideStep = raw.featureGuideStep === undefined ? (result.clearedStages.length ? 4 : 0) : integer(raw.featureGuideStep, 0, 4);
+      result.featureGuideRound = raw.featureGuideRound === 2 ? 2 : 1;
       result.orchard.level = integer(raw.orchard?.level, 0, 10);
       // Old saves already completed these rescues; preserve their earned residents on migration.
       const residents = [...(Array.isArray(raw.rescuedSprites) ? raw.rescuedSprites : []), ...result.clearedStages];
@@ -257,21 +259,51 @@
     if (!currentAccount) return false;
     const tabs = [['stages', '关卡挑战', 'navStages'], ['armory', '装备工坊', 'navArmory'], ['heroes', '英雄育成', 'navHeroes'], ['orchard', '我的果园', 'navOrchard'], ['world', '共享世界', 'navWorld'], ['map', '投放地图', 'navMap']];
     show('<div class="menu-top"><div><div class="tag">' + subtitle + '</div><h2 class="menu-title">' + title + '</h2></div><div class="wallet">☀ 阳光籽 ' + profile.seeds + '　◆ 果核 ' + profile.cores + '<small>通关 ' + profile.clearedStages.length + ' / ' + stages.length + ' · 精灵 ' + profile.rescuedSprites.length + ' / ' + rescueDefs.length + '</small></div></div>' +
-      '<div class="menu-body">' + body + '</div><div class="menu-footer"><div class="menu-actions">' + actions + '</div>' +
-      '<nav class="menu-nav" aria-label="果园功能">' + tabs.map(([tab, name, id]) => '<button class="nav-button ' + (activeTab === tab ? 'active' : '') + '" id="' + id + '" aria-pressed="' + (activeTab === tab) + '">' + name + '</button>').join('') + '</nav>' +
+      '<div class="menu-body">' + featureGuideHTML(activeTab) + body + '</div><div class="menu-footer"><div class="menu-actions">' + actions + '</div>' +
+      '<nav class="menu-nav" aria-label="果园功能">' + tabs.map(([tab, name, id]) => '<button class="nav-button ' + (activeTab === tab ? 'active' : '') + '" id="' + id + '" ' + (!featuresUnlocked() && ['armory', 'heroes', 'orchard', 'world'].includes(tab) ? 'disabled title="首次通关后解锁" ' : '') + 'aria-pressed="' + (activeTab === tab) + '">' + name + '</button>').join('') + '</nav>' +
       '<div class="micro">' + (!storageAvailable ? '浏览器存储不可用，进度仅在当前页面中保留' : note) + '</div></div>', true);
     el('navStages').onclick = startScreen; el('navHeroes').onclick = () => showHeroes(); el('navArmory').onclick = showArmory; el('navOrchard').onclick = showOrchard; el('navWorld').onclick = showWorld; el('navMap').onclick = showRelicMap;
+    bindFeatureGuide(activeTab);
   }
   function showWorld(initialTab = 'map') {
-    if (!currentAccount || isRunActive()) return false;
+    if (!currentAccount || isRunActive() || !featuresUnlocked()) return false;
     state = 'world'; keys.clear(); pointer = null;
     if (!window.ORCHARD_FRONTIER) {
-      showPanel('世界暂未载入', '共享世界 / 家园与公会', '<p>请刷新游戏后再次进入世界。</p>', '<button class="secondary" id="worldBackLobby">返回关卡</button>');
+      showPanel('世界暂未载入', '共享世界 / 家园与公会', featureGuideHTML('world') + '<p>请刷新游戏后再次进入世界。</p>', '<button class="secondary" id="worldBackLobby">返回关卡</button>');
       el('worldBackLobby').onclick = startScreen;
+      bindFeatureGuide('world');
     } else {
-      window.ORCHARD_FRONTIER.open({ overlay, name: currentAccount.nickname, initialTab: typeof initialTab === 'string' ? initialTab : 'map', onExit: startScreen, onAuthenticated: () => frontierRewards?.retry() });
+      window.ORCHARD_FRONTIER.open({ overlay, name: currentAccount.nickname, initialTab: typeof initialTab === 'string' ? initialTab : 'map', onExit: startScreen, onAuthenticated: () => frontierRewards?.retry(), guideHTML: featureGuideHTML('world'), onGuideDone: () => advanceFeatureGuide('world') });
     }
     updateHUD(); return true;
+  }
+  function featuresUnlocked() { return profile.clearedStages.length > 0; }
+  function featureGuideSteps() {
+    return [
+      { tab: 'armory', id: 'navArmory', name: '装备工坊', tip: '选择武器、护甲或饰品卡片，查看属性。通关材料可以强化已拥有的装备。' },
+      { tab: 'heroes', id: 'navHeroes', name: '英雄育成', tip: '点击英雄头像查看技能，选择出战英雄。训练与全队天赋会永久提升实力。' },
+      { tab: 'orchard', id: 'navOrchard', name: '我的果园', tip: '第一位精灵已经回家。点击精灵查看培养效果，也可以扩建果园获得全队加成。' },
+      { tab: 'world', id: 'navWorld', name: '共享世界', tip: '点击地图上的空地查看建家选项。家园建好后可以造兵、结盟；通关所得世界物资用于这里。' }
+    ].slice(0, profile.featureGuideRound === 2 ? 3 : 4);
+  }
+  function featureGuideHTML(tab) {
+    if (!featuresUnlocked() || profile.featureGuideStep >= featureGuideSteps().length) return '';
+    const step = featureGuideSteps()[profile.featureGuideStep];
+    if (tab !== 'lobby' && tab !== step.tab) return '';
+    const secondRound = profile.featureGuideRound === 2;
+    return '<aside class="feature-guide" aria-live="polite"><div><strong>' + (profile.featureGuideStep + 1) + ' / ' + featureGuideSteps().length + ' · ' + (tab === 'lobby' ? secondRound ? '第二关成长练习：' : '新功能已解锁：' : '认识') + step.name + '</strong><p>' + (tab === 'lobby' ? '点击下方发光的「' + step.name + '」按钮，' + (secondRound ? '再熟悉一次通关后的养成操作。' : '看看首次通关带来的新成长。') : step.tip) + '</p></div>' + (tab === 'lobby' ? '<button class="secondary" id="skipFeatureGuide">跳过指引</button>' : '<button class="primary" id="nextFeatureGuide" data-world-action="guide-done">' + (profile.featureGuideStep === featureGuideSteps().length - 1 ? '完成指引' : '了解了，下一项') + '</button>') + '</aside>';
+  }
+  function advanceFeatureGuide(tab) {
+    if (!featuresUnlocked() || profile.featureGuideStep >= featureGuideSteps().length || featureGuideSteps()[profile.featureGuideStep].tab !== tab || isRunActive()) return false;
+    profile.featureGuideStep++; saveProfile(); window.ORCHARD_FRONTIER?.close(); startScreen(); return true;
+  }
+  function bindFeatureGuide(tab) {
+    if (!featuresUnlocked() || profile.featureGuideStep >= featureGuideSteps().length) return;
+    const step = featureGuideSteps()[profile.featureGuideStep];
+    if (tab === 'lobby') {
+      el(step.id)?.classList.add('feature-guide-target');
+      el('skipFeatureGuide').onclick = () => { profile.featureGuideStep = featureGuideSteps().length; saveProfile(); startScreen(); };
+    } else if (tab === step.tab) el('nextFeatureGuide').onclick = () => advanceFeatureGuide(tab);
   }
   function showPanel(title, subtitle, body, actions, note = '') {
     if (!currentAccount) return false;
@@ -537,18 +569,19 @@
     const s = stages[id - 1], unlocked = id <= profile.unlockedStage, cleared = profile.clearedStages.includes(id);
     const status = unlocked ? cleared ? '已通关 · 可以再次挑战' : '已解锁 · 等你守护' : '通关第 ' + (id - 1) + ' 关后解锁';
     const reward = s.firstClearGear ? ' · ' + gearDefs[s.firstClearGear].name : '';
+    const trainingEntry = needsFirstTraining() ? '<div class="training-entry"><div><strong>🌱 新手引导关 · 晨芽练习场</strong><small>10 项实操任务，认识战斗与全部养成功能</small></div><button class="secondary" id="startTraining">开始引导</button></div>' : '';
     show('<div class="lobby-heading"><div class="chapter-heading"><small class="chapter-eyebrow">ORCHARD GUARDIANS / 第 ' + String(id).padStart(2, '0') + ' 关</small><h2 class="chapter-name">' + s.name + '</h2><span class="chapter-status">' + status + '</span></div><div class="lobby-wallet">☀ ' + profile.seeds + '　◆ ' + profile.cores + '<small>通关 ' + profile.clearedStages.length + ' / ' + stages.length + ' · 救援 ' + profile.rescuedSprites.length + ' / ' + rescueDefs.length + '</small></div></div>' +
       '<div class="menu-body lobby-body"><section class="chapter-showcase" aria-label="关卡图片"><img class="chapter-image" style="filter:hue-rotate(' + (art.stages[id - 1].hue || 0) + 'deg)" src="' + art.stages[id - 1].image + '" alt="' + s.name + '主题图"><div class="chapter-shade"></div><span class="chapter-ribbon">' + String(id).padStart(2, '0') + ' / ' + stages.length + ' · ' + (unlocked ? cleared ? '已通关' : '可挑战' : '未解锁') + '</span>' +
       '<button class="chapter-arrow previous" id="previousStage" aria-label="切换上一关" ' + (id === 1 ? 'disabled' : '') + '>‹</button><button class="chapter-arrow next" id="nextStagePreview" aria-label="切换下一关" ' + (id === stages.length ? 'disabled' : '') + '>›</button>' +
       '<div class="chapter-caption"><strong>守护这片果园</strong><span>' + s.description + '</span></div></section>' +
       '<div class="campaign-picker"><label>篇章 <select id="chapterJump" aria-label="选择远征篇章">' + ['青叶启程', '月露群岛', '赤焰山林', '霜晶高原', '星辉王庭'].map((name, index) => '<option value="' + (index * 20 + 1) + '" ' + (Math.floor((id - 1) / 20) === index ? 'selected' : '') + '>' + (index + 1) + ' · ' + name + '</option>').join('') + '</select></label><label>关卡 <select id="stageJump" aria-label="选择篇章关卡">' + stages.slice(Math.floor((id - 1) / 20) * 20, Math.floor((id - 1) / 20) * 20 + 20).map(item => '<option value="' + item.id + '" ' + (item.id === id ? 'selected' : '') + '>第 ' + item.id + ' 关 · ' + (profile.clearedStages.includes(item.id) ? '✓' : item.id <= profile.unlockedStage ? '可挑战' : '未解锁') + '</option>').join('') + '</select></label></div>' +
       '<div class="chapter-brief"><span class="chapter-chip">普通 ' + s.normalCount + ' · 精英 ' + s.eliteCount + ' · Boss ' + s.bossCount + '</span><span class="chapter-chip">虫王 ' + s.bossSchedule[0] + ' 秒起 · 逐位登场</span><span class="chapter-chip">首通 ☀ ' + s.reward.seeds + ' · ◆ ' + s.reward.cores + reward + '</span></div></div>' +
-      '<div class="menu-footer lobby-footer"><div class="training-entry"><div><strong>🌱 新手引导关 · 晨芽练习场</strong><small>' + (profile.trainingComplete ? '已完成 · 随时回来复习操作' : '10 项实操任务，认识战斗与全部养成功能') + '</small></div><button class="secondary" id="startTraining">' + (profile.trainingComplete ? '再练一次' : '开始引导') + '</button></div><div class="lobby-actions"><button class="lobby-play primary" id="start" ' + (!unlocked ? 'disabled' : '') + '><span class="action-icon">▶</span><strong>' + (unlocked ? '进入游戏' : '关卡未解锁') + '</strong><small>' + (unlocked ? '挑战第 ' + id + ' 关' : '先通关第 ' + (id - 1) + ' 关') + '</small></button>' +
-      '<button class="lobby-feature secondary" id="navArmory"><span class="action-icon">⚒</span><strong>装备</strong><small>搭配与强化</small></button><button class="lobby-feature secondary" id="navHeroes"><span class="action-icon">✦</span><strong>英雄</strong><small>13 位初始解锁</small></button><button class="lobby-feature secondary" id="navOrchard"><span class="action-icon">♧</span><strong>果园</strong><small>精灵与养成</small></button><button class="lobby-feature secondary" id="navWorld"><span class="action-icon">⚑</span><strong>世界</strong><small>建家 · 造兵 · 公会</small></button></div>' +
+      '<div class="menu-footer lobby-footer">' + trainingEntry + featureGuideHTML('lobby') + '<div class="lobby-actions"><button class="lobby-play primary" id="start" ' + (!unlocked ? 'disabled' : '') + '><span class="action-icon">▶</span><strong>' + (unlocked ? '进入游戏' : '关卡未解锁') + '</strong><small>' + (unlocked ? '挑战第 ' + id + ' 关' : '先通关第 ' + (id - 1) + ' 关') + '</small></button>' +
+      [['navArmory', '⚒', '装备', '搭配与强化'], ['navHeroes', '✦', '英雄', '13 位英雄可选择'], ['navOrchard', '♧', '果园', '精灵与养成'], ['navWorld', '⚑', '世界', '建家 · 造兵 · 公会']].map(([key, icon, name, detail]) => '<button class="lobby-feature secondary" id="' + key + '" ' + (!featuresUnlocked() ? 'disabled title="首次通关后解锁"' : '') + '><span class="action-icon">' + (featuresUnlocked() ? icon : '🔒') + '</span><strong>' + name + '</strong><small>' + (featuresUnlocked() ? detail : '首次通关后解锁') + '</small></button>').join('') + '</div>' +
       '<div class="lobby-bottom"><span class="lobby-note">' + (!storageAvailable ? '浏览器存储不可用，进度仅在当前页面中保留' : escapeHTML(sessionGreeting) + (sessionGreeting ? ' · ' : '') + '出战：' + growth.hero(profile.selectedHero).name) + '</span><button class="chapter-map-link" id="navMap" ' + (!unlocked ? 'disabled' : '') + '>本关地形与饰品 ↗</button></div></div>', true);
     overlay.classList.add('lobby-overlay'); arena.classList.add('is-lobby');
     el('start').onclick = () => { if (unlocked && state === 'lobby') start(); };
-    el('startTraining').onclick = showTrainingIntro;
+    if (trainingEntry) el('startTraining').onclick = showTrainingIntro;
     el('previousStage').onclick = () => browseStage(-1); el('nextStagePreview').onclick = () => browseStage(1);
     for (const key of ['chapterJump', 'stageJump']) el(key).onchange = () => {
       if (state !== 'lobby') return;
@@ -560,6 +593,7 @@
     el('navArmory').onclick = showArmory; el('navHeroes').onclick = () => { inspectedHero = profile.selectedHero; showHeroes('heroes'); }; el('navOrchard').onclick = showOrchard;
     el('navWorld').onclick = showWorld;
     el('navMap').onclick = () => { if (unlocked && state === 'lobby') showRelicMap(); };
+    bindFeatureGuide('lobby');
   }
   function browseStage(direction) {
     if (state !== 'lobby' || ![-1, 1].includes(direction)) return false;
@@ -586,11 +620,11 @@
     return heroSkillView === 'active' ? hero.skillDescription : hero.passiveDescription;
   }
   function selectHero(id) {
-    if (!currentAccount || isRunActive() || !growth.isUnlocked(id, profile)) return false;
+    if (!currentAccount || !featuresUnlocked() || isRunActive() || !growth.isUnlocked(id, profile)) return false;
     profile.selectedHero = id; inspectedHero = id; saveProfile(); player = freshPlayer(); updateHUD(); return true;
   }
   function trainHero(id) {
-    if (!currentAccount) return false;
+    if (!currentAccount || !featuresUnlocked()) return false;
     const hero = growth.hero(id), level = profile.heroLevels[id] || 0;
     if (!hero || isRunActive() || !growth.isUnlocked(hero, profile)) return false;
     const cost = growth.cost('hero', id, level); if (!cost || !canAfford(cost)) return false;
@@ -598,14 +632,14 @@
     saveProfile(); player = freshPlayer(); updateHUD(); return true;
   }
   function researchTalent(id) {
-    if (!currentAccount) return false;
+    if (!currentAccount || !featuresUnlocked()) return false;
     if (isRunActive() || !growth.talents.some(t => t.id === id)) return false;
     const cost = growth.cost('talent', id, profile.talents[id] || 0); if (!cost || !canAfford(cost)) return false;
     profile.seeds -= cost.seeds; profile.cores -= cost.cores; profile.talents[id] = (profile.talents[id] || 0) + 1;
     saveProfile(); player = freshPlayer(); updateHUD(); return true;
   }
   function showHeroes(tab = heroTab) {
-    if (!currentAccount) return false;
+    if (!currentAccount || !featuresUnlocked()) return false;
     if (isRunActive()) return false;
     const heroListScroll = el('heroGrid')?.scrollTop || 0;
     if (['heroes', 'talents'].includes(tab)) heroTab = tab;
@@ -616,9 +650,9 @@
     const cost = growth.cost('hero', inspected.id, level);
     const tabs = '<div class="hero-tabs"><button class="secondary ' + (heroTab === 'heroes' ? 'active' : '') + '" data-growth-tab="heroes">英雄与训练</button><button class="secondary ' + (heroTab === 'talents' ? 'active' : '') + '" data-growth-tab="talents">全队天赋研究</button><small>全部 ' + growth.heroes.length + ' 位初始解锁 · 出战：' + growth.hero(profile.selectedHero).name + '</small></div>';
     const heroesHTML = '<div class="hero-layout"><div id="heroGrid" class="hero-grid">' + growth.heroes.map(hero => '<button class="hero-card ' + (hero.id === inspectedHero ? 'selected ' : '') + (!growth.isUnlocked(hero, profile) ? 'locked' : '') + '" data-inspect-hero="' + hero.id + '">' + heroPortrait(hero) + '<div><strong>' + hero.name + '</strong><span>' + hero.role + '</span><small>' + (growth.isUnlocked(hero, profile) ? hero.id === profile.selectedHero ? '正在出战 ✓' : '训练 ' + profile.heroLevels[hero.id] + ' / ' + hero.maxLevel : '通关第 ' + hero.unlockStage + ' 关解锁') + '</small></div></button>').join('') + '</div><article class="hero-detail"><strong>' + inspected.icon + ' ' + inspected.name + ' · ' + inspected.role + '</strong><p class="hero-description hero-lore">' + inspected.description + '</p><span>' + inspected.statsText + '</span><div class="hero-skill-copy"><div class="hero-skill-tabs"><button class="secondary ' + (heroSkillView === 'active' ? 'active' : '') + '" data-hero-view="active" aria-pressed="' + (heroSkillView === 'active') + '">主动技能</button><button class="secondary ' + (heroSkillView === 'passive' ? 'active' : '') + '" data-hero-view="passive" aria-pressed="' + (heroSkillView === 'passive') + '">专属被动</button></div><b>' + (heroSkillView === 'active' ? inspected.skillIcon + ' ' + inspected.skillName + ' · E' : inspected.passiveName) + '</b><p class="hero-full-description">' + (heroSkillView === 'active' ? inspected.skillDescription : inspected.passiveDescription) + '</p><p class="hero-compact-description">' + heroSummary(inspected) + '</p></div><small>训练 ' + level + ' / ' + inspected.maxLevel + '：前5级每级伤害 +2.5%、生命 +5、冷却 −2%；6～30级每级伤害 +1%、生命 +3、冷却 −0.8%。</small><div class="hero-actions"><button class="secondary" id="equipHero" ' + (!owned || inspected.id === profile.selectedHero ? 'disabled' : '') + '>' + (owned ? inspected.id === profile.selectedHero ? '已出战' : '选择出战' : '尚未解锁') + '</button><button class="secondary" id="trainHero" ' + (!owned || !cost || !canAfford(cost) ? 'disabled' : '') + '>' + (!cost ? '训练已满级' : '训练 · ☀' + cost.seeds + ' ◆' + cost.cores) + '</button></div></article></div>';
-    const talentsHTML = '<div class="growth-grid">' + growth.talents.map(talent => {
+    const talentsHTML = '<div class="growth-grid talent-grid">' + growth.talents.map(talent => {
       const level = profile.talents[talent.id] || 0, cost = growth.cost('talent', talent.id, level);
-      return '<article class="growth-card"><strong>' + talent.icon + ' ' + talent.name + '</strong><span>' + talent.description + '</span><small>永久研究 ' + level + ' / ' + talent.maxLevel + ' · 全英雄共享</small><button class="secondary" data-research="' + talent.id + '" ' + (!cost || !canAfford(cost) ? 'disabled' : '') + '>' + (!cost ? '已满级' : '研究 · ☀' + cost.seeds + ' ◆' + cost.cores) + '</button></article>';
+      return '<article class="growth-card talent-card' + (!cost ? ' mastered' : '') + '"><img class="talent-art" src="' + talent.art + '" alt="' + talent.name + '天赋插画" width="1254" height="1254"><div class="talent-copy"><small class="talent-category">全队永久天赋</small><strong>' + talent.name + '</strong><span>' + talent.description + '</span><div class="talent-progress"><small>研究 ' + level + ' / ' + talent.maxLevel + (!cost ? ' · 已满级' : '') + '</small><progress max="' + talent.maxLevel + '" value="' + level + '" aria-label="' + talent.name + '研究进度"></progress></div></div><button class="secondary" data-research="' + talent.id + '" ' + (!cost || !canAfford(cost) ? 'disabled' : '') + '>' + (!cost ? '研究已完成' : '研究 · ☀' + cost.seeds + ' ◆' + cost.cores) + '</button></article>';
     }).join('') + '</div>';
     showMenu('守卫集结', '英雄育成 / 永久成长', tabs + (heroTab === 'heroes' ? heroesHTML : talentsHTML), '<button class="primary" id="start">出战第 ' + selectedStage + ' 关</button><button class="secondary" id="backLobby">返回关卡</button>', 'heroes', '英雄、训练与研究自动保存 · 战斗中 E 施放专属技能');
     overlay.querySelectorAll('[data-growth-tab]').forEach(b => { b.onclick = () => showHeroes(b.dataset.growthTab); });
@@ -637,11 +671,11 @@
     return { seeds: 35 + level * 25, cores: 1 + Math.floor(level / 4) };
   }
   function equipGear(id) {
-    if (!currentAccount || !profile.inventory[id] || !gearDefs[id] || isRunActive()) return false;
+    if (!currentAccount || !featuresUnlocked() || !profile.inventory[id] || !gearDefs[id] || isRunActive()) return false;
     profile.equipped[gearDefs[id].slot] = id; saveProfile(); player = freshPlayer(); updateHUD(); return true;
   }
   function upgradeGear(id) {
-    if (!currentAccount) return false;
+    if (!currentAccount || !featuresUnlocked()) return false;
     const item = profile.inventory[id];
     if (!item || item.level >= 10 || isRunActive()) return false;
     const cost = gearCost(id);
@@ -662,7 +696,7 @@
     return '<div class="equipment-stats">' + stats.map(([label, value]) => '<div><small>' + label + '</small><b>' + value + '</b></div>').join('') + '</div>';
   }
   function showArmory(slot = selectedGearSlot) {
-    if (!currentAccount || isRunActive()) return false;
+    if (!currentAccount || !featuresUnlocked() || isRunActive()) return false;
     const listScroll = el('equipmentGrid')?.scrollTop || 0, sameSlot = slot === selectedGearSlot;
     if (['weapon', 'armor', 'charm'].includes(slot)) selectedGearSlot = slot;
     state = 'armory';
@@ -702,12 +736,12 @@
   function spriteCost(id) { const level = profile.spriteLevels[id] || 0; return { seeds: 20 + level * 22, cores: 1 + Math.floor(level / 4) }; }
   function canAfford(cost) { return profile.seeds >= cost.seeds && profile.cores >= cost.cores; }
   function upgradeOrchard() {
-    if (!currentAccount || profile.orchard.level >= 10 || isRunActive()) return false;
+    if (!currentAccount || !featuresUnlocked() || profile.orchard.level >= 10 || isRunActive()) return false;
     const cost = orchardCost(); if (!canAfford(cost)) return false;
     profile.seeds -= cost.seeds; profile.cores -= cost.cores; profile.orchard.level++; saveProfile(); player = freshPlayer(); updateHUD(); return true;
   }
   function upgradeSprite(id) {
-    if (!currentAccount || !Number.isInteger(id) || !profile.rescuedSprites.includes(id) || profile.spriteLevels[id] >= 5 || isRunActive()) return false;
+    if (!currentAccount || !featuresUnlocked() || !Number.isInteger(id) || !profile.rescuedSprites.includes(id) || profile.spriteLevels[id] >= 5 || isRunActive()) return false;
     const cost = spriteCost(id); if (!canAfford(cost)) return false;
     profile.seeds -= cost.seeds; profile.cores -= cost.cores; profile.spriteLevels[id] = (profile.spriteLevels[id] || 0) + 1;
     saveProfile(); player = freshPlayer(); updateHUD(); return true;
@@ -717,7 +751,7 @@
     return labels[type] + ' +' + (type === 'damage' || type === 'rate' ? Number((amount * 100).toFixed(1)) + '%' : Number(amount.toFixed(1)));
   }
   function showOrchard(gardenId = selectedGarden) {
-    if (!currentAccount) return false;
+    if (!currentAccount || !featuresUnlocked()) return false;
     if (isRunActive()) return false;
     state = 'orchard'; player = freshPlayer(); updateHUD();
     if (Number.isInteger(gardenId) && gardenId >= 1 && gardenId <= gardenDefs.length) selectedGarden = gardenId;
@@ -881,8 +915,8 @@
     if (!training || training.step < trainingCatalog.steps.length) return false;
     profile.trainingComplete = true; profile.tutorialSeen = true; saveProfile();
     exitTraining(); state = 'trainingDone';
-    showPanel('你已经是一位果园守护者了！', '晨芽练习场 / 10 项任务完成', '<div class="training-summary"><p>你已经完成移动、蓄力、击杀、经验升级、技能、饰品与地图练习，并击败了精英和虫王。接下来选一个英雄，把正式关卡的收获带回果园。</p>' + trainingFeatures() + '</div>',
-      '<button class="primary" id="trainingCampaign">挑战正式关卡</button><button class="secondary" id="trainingHeroes">选英雄</button><button class="secondary" id="trainingEquipment">看装备</button><button class="secondary" id="trainingOrchard">逛果园</button><button class="secondary" id="trainingBack">返回首页</button>',
+    showPanel('你已经是一位果园守护者了！', '晨芽练习场 / 10 项任务完成', '<div class="training-summary"><p>你已经完成移动、蓄力、击杀、经验升级、技能、饰品与地图练习，并击败了精英和虫王。接下来挑战第一关；首次通关后解锁装备、英雄、果园和世界。</p>' + trainingFeatures() + '</div>',
+      '<button class="primary" id="trainingCampaign">挑战正式关卡</button><button class="secondary" id="trainingHeroes" ' + (!featuresUnlocked() ? 'disabled' : '') + '>选英雄</button><button class="secondary" id="trainingEquipment" ' + (!featuresUnlocked() ? 'disabled' : '') + '>看装备</button><button class="secondary" id="trainingOrchard" ' + (!featuresUnlocked() ? 'disabled' : '') + '>逛果园</button><button class="secondary" id="trainingBack">返回首页</button>',
       '学习进度已保存 · 练习不消耗材料，也不计入正式关卡通关');
     arena.classList.add('is-lobby');
     el('trainingCampaign').onclick = start; el('trainingHeroes').onclick = () => showHeroes(); el('trainingEquipment').onclick = showArmory; el('trainingOrchard').onclick = showOrchard; el('trainingBack').onclick = startScreen;
@@ -1015,6 +1049,8 @@
       runRewarded = true;
       stageVictoryReady = true;
       const firstClear = !profile.clearedStages.includes(activeStage.id);
+      if (firstClear && profile.clearedStages.length === 0) { profile.featureGuideRound = 1; profile.featureGuideStep = 0; }
+      if (firstClear && activeStage.id === 2) { profile.featureGuideRound = 2; profile.featureGuideStep = 0; }
       const seeds = firstClear ? activeStage.reward.seeds : Math.max(1, Math.floor(activeStage.reward.seeds * .25));
       const cores = firstClear ? activeStage.reward.cores : Math.max(1, Math.floor(activeStage.reward.cores * .25));
       profile.seeds += seeds; profile.cores += cores;
@@ -1059,7 +1095,7 @@
       (win ? '本关 ' + activeStage.bossCount + ' 位虫王已全部击败，精灵已经回家。' : '虫群暂时占了上风。培养精灵、强化装备后，再试一次。') + '</p>' + (win ? victoryRewardHTML + worldRewardHTML() : '') +
       '<div class="result-stats"><div><b>' + kills + ' / ' + activeStage.enemyCount + '</b><span>驱赶害虫</span></div><div><b>' + player.level + '</b><span>本关成长等级</span></div></div>' +
       '</div>' + (win ? '<div class="endless-offer"><strong>∞ 无尽虫潮 · 突破成长</strong><span>保留本关构筑，补满生命，放开种类与等级上限。<br>每 8 秒一波，材料获得即保存，可随时结束。</span></div>' : '<div class="endless-offer"><strong>🌱 下一次，带着成长出发。</strong><span>到果园培养伙伴，或在工坊强化装备。局外成长永久保留。</span></div>') + '</div>',
-      (win ? '<button class="primary" id="startEndless">进入无尽模式 ∞</button>' : '') + (win && activeStage.id < stages.length ? '<button class="secondary" id="nextStage">挑战下一关</button>' : '<button class="secondary" id="restart">再挑战一次</button>') + '<button class="secondary" id="resultWorld">进入世界</button><button class="secondary" id="resultOrchard">看看果园</button><button class="secondary" id="resultArmory">装备与养成</button><button class="secondary" id="backLobby">选择关卡</button>', '奖励与关卡进度自动保存');
+      (win ? '<button class="primary" id="startEndless">进入无尽模式 ∞</button>' : '') + (win && activeStage.id < stages.length ? '<button class="secondary" id="nextStage">挑战下一关</button>' : '<button class="secondary" id="restart">再挑战一次</button>') + '<button class="secondary" id="resultWorld" ' + (!featuresUnlocked() ? 'disabled' : '') + '>进入世界</button><button class="secondary" id="resultOrchard" ' + (!featuresUnlocked() ? 'disabled' : '') + '>看看果园</button><button class="secondary" id="resultArmory" ' + (!featuresUnlocked() ? 'disabled' : '') + '>装备与养成</button><button class="' + (win && profile.featureGuideStep < featureGuideSteps().length ? 'primary' : 'secondary') + '" id="backLobby">' + (win && profile.featureGuideStep < featureGuideSteps().length ? profile.featureGuideRound === 2 ? '再练一次养成操作' : '新功能已解锁 · 开始指引' : '选择关卡') + '</button>', '奖励与关卡进度自动保存');
     if (win && activeStage.id < stages.length) el('nextStage').onclick = () => { selectStage(activeStage.id + 1); start(); };
     else el('restart').onclick = start;
     el('resultArmory').onclick = showArmory; el('backLobby').onclick = startScreen;
@@ -1282,7 +1318,8 @@
   function spawn() {
     const index = enemies.length, s = activeStage; let x, y;
     if (index >= s.normalCount + s.eliteCount) {
-      const bossOrder = index - s.normalCount - s.eliteCount, boss = bossDefs[s.bossIds[bossOrder] - 1];
+      const bossOrder = index - s.normalCount - s.eliteCount, baseBoss = bossDefs[s.bossIds[bossOrder] - 1];
+      const boss = baseBoss && s.beginner ? { ...baseBoss, hp: s.beginner.bossHp, damage: s.beginner.bossDamage, speed: s.beginner.bossSpeed, chargeSpeed: s.beginner.chargeSpeed, chargeInterval: s.beginner.chargeInterval } : baseBoss;
       if (!boss) return;
       enemies.push({ x: player.x, y: player.y, type: 2, boss: true, r: boss.radius, ...boss, maxHp: boss.hp, xp: s.fast.xp * 8,
         bossOrder, bossArrivalAt: s.bossSchedule[bossOrder], introduced: false,
@@ -1371,6 +1408,7 @@
     updateCamera(); const boost = still >= combat.standDelay; player.inv = Math.max(0, player.inv - dt); shake = Math.max(0, shake - dt * 20);
     player.sinceHit += dt;
     if (player.regen > 0 && player.sinceHit > player.regenDelay) player.hp = Math.min(player.maxHp, player.hp + player.regen * Math.min(dt, player.sinceHit - player.regenDelay));
+    if (runMode === 'stage' && activeStage.beginner && player.sinceHit > activeStage.beginner.regenerationDelay) player.hp = Math.min(player.maxHp, player.hp + activeStage.beginner.regeneration * Math.min(dt, player.sinceHit - activeStage.beginner.regenerationDelay));
     // Scheduled activation happens before targeting or collisions. Dormant enemies never interact.
     for (const e of enemies) {
       if (e.hp <= 0) continue;

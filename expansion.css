@@ -41,6 +41,53 @@
 .growth-card > small { margin-top: 6px; color: #e2d8a4; }
 .growth-card .hero-actions { margin-top: auto; }
 .growth-card > button { margin-top: auto; }
+.feature-guide { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: 0 0 auto; padding: 10px 14px; border: 1px solid #bdd47a; border-radius: 12px; background: #344d29; color: #eff5c9; }
+.feature-guide strong { display: block; font-size: 13px; }
+.feature-guide p { margin: 4px 0 0; font-size: 11px; line-height: 1.5; color: #d4e4bb; }
+.feature-guide button { flex-shrink: 0; }
+.feature-guide-target { outline: 3px solid #d6ed86; outline-offset: 3px; box-shadow: 0 0 22px #c9e77766; }
+.menu-body:has(.feature-guide) { overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
+.lobby-feature:disabled { opacity: .55; }
+.lobby-footer .feature-guide { margin-bottom: 9px; }
+.world-body > .feature-guide { margin-bottom: 12px; }
+@media (max-width: 700px) { .feature-guide { padding: 8px; gap: 8px; } .feature-guide strong { font-size: 11px; } .feature-guide p { font-size: 10px; } .feature-guide button { font-size: 10px; padding: 7px; } }
+/* Talent illustrations remain square and the cards follow their content height. */
+.menu-body:has(.talent-grid) { overflow-y: auto; overflow-x: hidden; padding-right: 3px; scrollbar-width: thin; }
+.growth-grid.talent-grid { flex: 0 0 auto; grid-template-rows: auto; align-content: start; gap: 12px; }
+.talent-grid .talent-card { display: grid; grid-template-columns: clamp(100px, 12vw, 164px) minmax(0, 1fr); gap: 14px; padding: 16px; background: linear-gradient(135deg, #344d35, #1c3025); box-shadow: 0 8px 20px #0c1c1626; }
+.talent-art { width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; align-self: start; border-radius: 12px; border: 1px solid #a6b76a80; box-shadow: 0 4px 14px #071b1660; }
+.talent-copy { display: flex; flex-direction: column; min-width: 0; gap: 8px; }
+.talent-copy .talent-category { color: #afc87d; font-size: 10px; letter-spacing: 1px; }
+.talent-copy > strong { color: #fff0ba; font-size: 19px; line-height: 1.3; }
+.talent-copy > span { color: #ccdbba; font-size: 12px; line-height: 1.65; }
+.talent-progress { margin-top: auto; padding-top: 8px; }
+.talent-progress small { display: block; color: #e5dba7; font-size: 11px; margin-bottom: 7px; }
+.talent-progress progress { display: block; appearance: none; width: 100%; height: 6px; border: 0; border-radius: 9px; overflow: hidden; background: #10281d; accent-color: #c1de76; }
+.talent-progress progress::-webkit-progress-bar { background: #10281d; }
+.talent-progress progress::-webkit-progress-value { background: linear-gradient(90deg, #80b663, #dbec95); border-radius: 9px; }
+.talent-progress progress::-moz-progress-bar { background: #c1de76; }
+.talent-grid .talent-card > button { grid-column: 1 / -1; margin-top: 0; min-height: 36px; }
+.talent-grid .mastered { border-color: #c0d97d; }
+@media (max-height: 800px) and (min-width: 701px) {
+  .talent-grid .talent-card { grid-template-columns: 110px minmax(0, 1fr); padding: 12px; gap: 10px; }
+  .talent-copy { gap: 5px; }
+  .talent-copy > strong { font-size: 17px; }
+  .talent-copy > span { font-size: 11px; line-height: 1.45; }
+  .talent-progress { padding-top: 5px; }
+}
+@media (max-width: 700px) {
+  .growth-grid.talent-grid { grid-template-columns: 1fr; gap: 10px; }
+  .talent-grid .talent-card { grid-template-columns: 108px minmax(0, 1fr); padding: 12px; gap: 12px; }
+  .talent-copy > strong { font-size: 17px; }
+  .talent-copy > span { font-size: 11px; }
+}
+@media (max-height: 540px) and (min-width: 701px) {
+  .talent-grid .talent-card { grid-template-columns: 82px minmax(0, 1fr); padding: 10px; gap: 9px; }
+  .talent-copy { gap: 4px; }
+  .talent-copy > strong { font-size: 15px; }
+  .talent-copy > span { font-size: 10px; line-height: 1.4; }
+  .talent-progress { padding-top: 3px; }
+}
 .growth-card .growth-level { color: #e3ec9c; }
 .stage-art { position: relative; overflow: hidden; flex: 0 1 42%; height: clamp(120px, 21vh, 225px); min-height: 70px; width: 100%; margin-bottom: 11px; border-radius: 10px; border: 1px solid #d5dca166; background: #405c46; }
 .stage-art > img { display: block; width: 100%; height: 100%; object-fit: cover; }
