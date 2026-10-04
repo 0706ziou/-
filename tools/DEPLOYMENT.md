@@ -15,6 +15,8 @@
 
 原 80 端口游戏的代理路径保留，新增的两条路径用于证书验证和 `/orchard/` 跳转。游戏使用单独的 HTTPS 配置、版本目录及原子链接；开始修改网站配置前进行备份，部署失败时自动恢复配置和之前版本。
 
+Nginx 重载后，新工作进程需要时间接管请求。脚本以有限次数的新连接检查 HTTP 验证文件和 HTTPS 游戏文件，收到 HTTP 200 且内容逐字节一致才继续；持续失败仍会回滚。重试部署 `036e28a9c0d61b2218e168a7c18ba4c9713a34a9` 时，会通过固定清单指纹、完整文件哈希及目录检查验证已下载的版本，验证成功后直接复用，避免再次下载美术源文件。
+
 ## HTTPS 与续期
 
 登录使用 Web Crypto，公网普通 HTTP 无法使用当前密码验证，所以直接部署 HTTPS。IP 证书使用 Certbot 5.8 的 `webroot` 和 `shortlived`，安装在独立 Python 虚拟环境，不替换已有 Certbot 2.8。证书配置也与已有 `/etc/letsencrypt` 分开。IP 证书有效期约六天，脚本测试续期后启用每天两次的 systemd 检查及 Nginx 重载 Hook。
@@ -37,6 +39,8 @@ journalctl -u orchard-certbot-renew.service -n 30 --no-pager
 node tools/package-site.cjs
 node tools/package-site-verify.cjs
 node tools/package-site-verify.cjs --site /实际发布目录
+python3 tools/deploy-config-verify.py
+python3 tools/deploy-readiness-verify.py --site /实际的036e28a版本发布目录
 ```
 
 发布包在 `deployment-artifacts/` 下，此目录不提交到 Git。`static-manifest.json` 记录每个运行文件的字节数与 SHA256。

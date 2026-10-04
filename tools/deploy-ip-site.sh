@@ -28,6 +28,22 @@ completed=0
 old_link=
 
 fail() { printf '%s\n' "ERROR: $*" >&2; exit 1; }
+# Reload sends a signal; old workers may still answer the first request.
+# Use fresh, bounded GETs and verify bytes instead of assuming reload is ready.
+wait_for_served_file() {
+  local url=$1 resolve=$2 expected=$3 output=$4 attempt
+  for attempt in {1..15}; do
+    if curl --noproxy '*' --fail --silent --show-error --connect-timeout 3 --max-time 5 \
+      --header 'Connection: close' --resolve "$resolve" "$url" -o "$output" \
+      --write-out '%{http_code}' > "$output.status" 2> "$output.error"; then
+      if [[ $(cat "$output.status") == 200 ]] && cmp -s "$expected" "$output"; then return 0; fi
+    fi
+    if [[ $attempt -lt 15 ]]; then sleep 1; fi
+  done
+  printf 'Route readiness failed after 15 attempts: %s (HTTP %s)\n' "$url" "$(cat "$output.status")" >&2
+  cat "$output.error" >&2
+  return 1
+}
 [[ $EUID -eq 0 ]] || fail 'Run in the root Tencent Cloud terminal.'
 [[ $commit =~ ^[0-9a-f]{40}$ ]] || fail 'Supply a full, reviewed 40-character Git commit SHA.'
 for binary in python3 node git curl openssl systemctl ss flock tar; do
@@ -136,6 +152,48 @@ if command -v getenforce >/dev/null && [[ $(getenforce) != Disabled ]]; then
   semanage fcontext -a -t cert_t "$cert_config(/.*)?" 2>/dev/null || semanage fcontext -m -t cert_t "$cert_config(/.*)?"
 fi
 
+release="$base/releases/$commit"
+if [[ $commit == 036e28a9c0d61b2218e168a7c18ba4c9713a34a9 && -d $release ]]; then
+  printf '%s\n' '1/6 Verifying and reusing the already downloaded, pinned game release.'
+  python3 - "$release" <<'PY'
+import hashlib, json, pathlib, sys
+EXPECTED_CACHE = 'f900084d2d41eda395e4619416d62c4e591086409b3f5b606f712655737bbc24'
+root = pathlib.Path(sys.argv[1])
+manifest_path = root / 'static-manifest.json'
+if root.is_symlink() or manifest_path.is_symlink() or not manifest_path.is_file() or manifest_path.stat().st_size > 1024 * 1024:
+    raise SystemExit('Cached release or manifest is invalid; nothing overwritten.')
+manifest = json.loads(manifest_path.read_text())
+signed = {key: manifest[key] for key in ('version', 'fileCount', 'totalBytes', 'files')}
+encoded = json.dumps(signed, separators=(',', ':'), ensure_ascii=False).encode()
+if hashlib.sha256(encoded).hexdigest() != EXPECTED_CACHE:
+    raise SystemExit('Cached release does not match the reviewed commit; nothing overwritten.')
+expected_files = {'static-manifest.json'}
+expected_dirs = set()
+for entry in manifest['files']:
+    relative = pathlib.PurePosixPath(entry['path'])
+    if relative.is_absolute() or '\\' in entry['path'] or any(part in ('.', '..') or part.startswith('.') for part in relative.parts):
+        raise SystemExit('Unsafe cached release path.')
+    expected_files.add(entry['path'])
+    expected_dirs.update(str(parent) for parent in relative.parents if str(parent) != '.')
+actual_files, actual_dirs = set(), set()
+for item in root.rglob('*'):
+    if item.is_symlink():
+        raise SystemExit('Cached release contains a symlink.')
+    name = item.relative_to(root).as_posix()
+    if item.is_file(): actual_files.add(name)
+    elif item.is_dir(): actual_dirs.add(name)
+    else: raise SystemExit('Cached release contains a special file.')
+if actual_files != expected_files or actual_dirs != expected_dirs:
+    raise SystemExit('Cached release contains missing or unexpected entries.')
+for entry in manifest['files']:
+    file = root / entry['path']
+    if not file.is_file() or file.is_symlink() or file.stat().st_size != entry['bytes']:
+        raise SystemExit('Cached release file is missing or changed: ' + entry['path'])
+    if hashlib.sha256(file.read_bytes()).hexdigest() != entry['sha256']:
+        raise SystemExit('Cached release hash mismatch: ' + entry['path'])
+print('Pinned cached release verified: all 53 runtime files are unchanged.')
+PY
+else
 printf '%s\n' '1/6 Downloading the reviewed game version and building a static-only release.'
 task_source=$(mktemp -d "$ops/source-XXXXXXXX")
 GIT_TERMINAL_PROMPT=0 git -C "$task_source" init -q
@@ -148,7 +206,6 @@ node "$task_source/tools/package-site.cjs" --out deployment-artifacts/server-rel
 site=$(find "$task_source/deployment-artifacts/server-release" -type d -name site -print -quit)
 [[ -n $site && -f $site/static-manifest.json ]] || fail 'Static release manifest is missing.'
 node "$task_source/tools/package-site-verify.cjs" --site "$site"
-release="$base/releases/$commit"
 install -d -m 755 "$base/releases"
 if [[ ! -e $release ]]; then
   incoming=$(mktemp -d "$base/releases/.incoming-$commit-XXXXXXXX")
@@ -167,6 +224,7 @@ a, b = [json.loads(pathlib.Path(p).read_text()) for p in sys.argv[1:]]
 if a['files'] != b['files']:
     raise SystemExit('This release already exists with different contents; no files overwritten.')
 PY
+fi
 fi
 find "$release" -type d -exec chmod 755 {} +
 find "$release" -type f -exec chmod 644 {} +
@@ -220,13 +278,14 @@ pos = matches[0].start()
 p.write_text(text[:pos] + insert + text[pos:])
 PY
 "$nginx" -t
-"$nginx" -s reload
 install -d -m 755 "$acme/.well-known/acme-challenge"
 challenge="orchard-preflight-$commit"
 printf '%s' "$commit" > "$acme/.well-known/acme-challenge/$challenge"
-served=$(curl --noproxy '*' --fail --silent --show-error --max-time 15 --retry 3 --retry-delay 1 --retry-connrefused --resolve "$ip:80:127.0.0.1" "http://$ip/.well-known/acme-challenge/$challenge")
+if [[ $selinux -eq 1 ]]; then restorecon -RF "$acme"; fi
+"$nginx" -s reload
+wait_for_served_file "http://$ip/.well-known/acme-challenge/$challenge" "$ip:80:127.0.0.1" \
+  "$acme/.well-known/acme-challenge/$challenge" "$backup/check-challenge" || fail 'The HTTP challenge route did not become ready; previous site will be restored.'
 rm -f -- "$acme/.well-known/acme-challenge/$challenge"
-[[ $served == "$commit" ]] || fail 'The HTTP challenge route did not serve the expected content.'
 
 printf '%s\n' '4/6 Requesting a trusted, short-lived IP certificate.'
 certbot=("$venv/bin/certbot" --config-dir "$cert_config" --work-dir "$cert_work" --logs-dir "$cert_logs")
@@ -276,8 +335,8 @@ NGINX
 "$nginx" -t
 "$nginx" -s reload
 for path in index.html auth-data.js game.js static-manifest.json; do
-  curl --noproxy '*' --fail --silent --show-error --max-time 30 --retry 3 --retry-delay 1 --retry-connrefused --resolve "$ip:443:127.0.0.1" "https://$ip/orchard/$path" -o "$backup/check-$path"
-  cmp -s "$release/$path" "$backup/check-$path" || fail "Served file differs: $path"
+  wait_for_served_file "https://$ip/orchard/$path" "$ip:443:127.0.0.1" \
+    "$release/$path" "$backup/check-$path" || fail "HTTPS file did not become ready: $path"
 done
 
 printf '%s\n' '6/6 Testing certificate renewal and enabling automatic twice-daily renewal checks.'
