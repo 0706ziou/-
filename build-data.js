@@ -20,6 +20,48 @@
   const gainScale = (p, id, rank = (p?.build?.levels?.[id] || 0) + 1) => isEndless(p) && rank > 5 ? 1 / Math.sqrt(1 + (rank - 5) / 8) : 1;
   // A capped build choice cannot erase a stronger hero / relic bonus already on the player.
   const add = (p, key, amount, cap = Infinity, fallback = 0) => { const before = value(p, key, fallback); p[key] = Math.max(before, Math.min(cap, before + amount)); };
+  const pictures = Object.freeze({
+    damage: 'assets/skills/damage.svg',
+    rate: 'assets/skills/rate.svg',
+    shots: 'assets/skills/shots.svg',
+    crit: 'assets/skills/crit.svg',
+    critDamage: 'assets/skills/critDamage.svg',
+    pierce: 'assets/skills/pierce.svg',
+    chain: 'assets/skills/chain.svg',
+    leafstorm: 'assets/skills/leafstorm.svg',
+    fireball: 'assets/skills/fireball.svg',
+    poison: 'assets/skills/poison.svg',
+    pulse: 'assets/skills/pulse.svg',
+    bees: 'assets/skills/bees.svg',
+    boomerang: 'assets/skills/boomerang.svg',
+    frostburst: 'assets/skills/frostburst.svg',
+    solar: 'assets/skills/solar.svg',
+    ricochet: 'assets/skills/ricochet.svg',
+    speed: 'assets/skills/speed.svg',
+    hp: 'assets/skills/hp.svg',
+    pickup: 'assets/skills/pickup.svg',
+    defense: 'assets/skills/defense.svg',
+    regen: 'assets/skills/regen.svg',
+    skillCooldown: 'assets/skills/skillCooldown.svg',
+    xp: 'assets/skills/xp.svg',
+    range: 'assets/skills/range.svg',
+    projectileSpeed: 'assets/skills/projectileSpeed.svg',
+    lifeSteal: 'assets/skills/lifeSteal.svg',
+    dodge: 'assets/skills/dodge.svg',
+    thorns: 'assets/skills/thorns.svg',
+    standPower: 'assets/skills/standPower.svg',
+    killHeal: 'assets/skills/killHeal.svg',
+    skillPower: 'assets/skills/skillPower.svg',
+    magnet: 'assets/skills/magnet.svg',
+    skyweb: 'assets/skills/skyweb.svg',
+    leafcyclone: 'assets/skills/leafcyclone.svg',
+    sunheart: 'assets/skills/sunheart.svg',
+    greenhouse: 'assets/skills/greenhouse.svg',
+    earthguard: 'assets/skills/earthguard.svg',
+    queenbees: 'assets/skills/queenbees.svg',
+    everturn: 'assets/skills/everturn.svg',
+    icegarden: 'assets/skills/icegarden.svg'
+  });
   const recipes = Object.freeze([
     ['skyweb', '天穹雷网', 'chain', 'range', '⚡', '#ffe998', '连锁 6 个目标，每个造成 250% 伤害，链距 260，冷却 3.8 秒。'],
     ['leafcyclone', '风暴叶轮', 'leafstorm', 'speed', '🍃', '#abef9b', '每 0.9 秒切割 210 范围内最多 12 个目标，造成 115% 伤害。'],
@@ -30,7 +72,7 @@
     ['everturn', '无尽回旋', 'boomerang', 'projectileSpeed', '↬', '#abddec', '每 2.4 秒发出回旋刃，扇形 700 范围内最多 10 个目标，各受 210% 伤害。'],
     ['icegarden', '极寒果域', 'frostburst', 'skillCooldown', '❄', '#bce9ff', '每 5.8 秒冻结 320 范围内最多 14 个目标，造成 190% 伤害；减速 45%（Boss 20%）3.2 秒。']
   ].map(([id, name, attack, attribute, icon, color, description]) => Object.freeze({ id, name, attack, attribute, icon, color,
-    description: description + ' 继承攻击词条品质：关卡额外伤害最多 +60%；无尽中继续升级原攻击会进一步增强超级伤害。枝脉共鸣另计。' })));
+    image: pictures[id], description: description + ' 继承攻击词条品质：关卡额外伤害最多 +60%；无尽中继续升级原攻击会进一步增强超级伤害。枝脉共鸣另计。' })));
   const superBasePower = Object.freeze({ skyweb: 2.5, leafcyclone: 1.15, sunheart: 4.8, greenhouse: .52, earthguard: 3.8, queenbees: 1.2, everturn: 2.1, icegarden: 1.9 });
   const superCadence = Object.freeze({ skyweb: [3.8, 1], leafcyclone: [.9, 1], sunheart: [4.2, 1], greenhouse: [5.5, 7], earthguard: [5.2, 1], queenbees: [2.6, 5], everturn: [2.4, 1], icegarden: [5.8, 1] });
   const defs = [];
@@ -111,6 +153,7 @@
       }, apply: () => {} });
   }
   for (const def of defs) {
+    def.image = pictures[def.id];
     def.available = p => available(p, def);
     const pair = recipes.find(r => r.attack === def.id || r.attribute === def.id);
     def.recipe = pair?.id || null;
@@ -158,6 +201,7 @@
         b.superSkills.push(r.id); b.timers[r.id] = 0; delete b.timers[r.attack]; newSuper.push(r);
       }
     }
+    noteChoice(p, id);
     return { applied: true, def: d, level: b.levels[id], newSuper };
   }
   function summary(p) {
@@ -255,5 +299,55 @@
       b.timers[a.id] = a.cooldown;
     }
   }
-  window.ORCHARD_BUILDS = Object.freeze({ defs, recipes, limits, endlessLimits, getLimits, setMode, init, get, available, pool, choose, summary, tick });
+  // Recipe goals only guide offers. They never spend XP, add slots, or grant skills.
+  function recipeState(p, recipeOrId) {
+    const r = recipes.find(item => item.id === (typeof recipeOrId === 'string' ? recipeOrId : recipeOrId?.id));
+    if (!r || !p) return null;
+    const b = ensure(p), attackLevel = b.levels[r.attack] || 0, attributeLevel = b.levels[r.attribute] || 0;
+    const crafted = b.superSkills.includes(r.id);
+    const remaining = Math.max(0, 5 - attackLevel) + Math.max(0, 5 - attributeLevel);
+    const blockedSlot = [[r.attack, 'attack'], [r.attribute, 'attribute']].find(([id, category]) => !b[category + 'Slots'].includes(id) && b[category + 'Slots'].length >= getLimits(p)[category + 'Slots']);
+    const budget = Math.max(0, 30 - b.attackChoices - b.attributeChoices);
+    const reason = crafted ? '已合成' : blockedSlot ? (blockedSlot[1] === 'attack' ? '攻击槽已满' : '属性槽已满') : !isEndless(p) && remaining > budget ? '本关升级次数不足' : '';
+    return { ...r, attackLevel, attributeLevel, crafted, remaining, reason, possible: !crafted && !reason, started: attackLevel > 0 || attributeLevel > 0 };
+  }
+  function goal(p) { return recipeState(p, ensure(p).goalRecipe); }
+  function setGoal(p, id) {
+    if (id === '') { ensure(p).goalRecipe = ''; ensure(p).goalDismissed = true; return true; }
+    const target = recipeState(p, id);
+    if (!target?.possible) return false;
+    ensure(p).goalRecipe = target.id; ensure(p).goalDismissed = false; return true;
+  }
+  function noteChoice(p, id) {
+    if (ensure(p).goalDismissed) return;
+    const target = goal(p);
+    if (target?.possible) return;
+    const pair = recipes.find(r => (r.attack === id || r.attribute === id) && recipeState(p, r)?.possible);
+    if (pair) ensure(p).goalRecipe = pair.id;
+  }
+  function recommended(p) {
+    const target = goal(p);
+    if (!target?.possible) return null;
+    const candidates = [target.attack, target.attribute].filter(id => (p.build.levels[id] || 0) < 5 && available(p, id));
+    candidates.sort((a, b) => (p.build.levels[a] || 0) - (p.build.levels[b] || 0));
+    return get(candidates[0]);
+  }
+  const attackBrief = { chain: '连锁3个目标', leafstorm: '切割身边6个目标', fireball: '爆炸命中8个目标', poison: '毒雾3秒，共5次伤害', pulse: '震击身边8个目标', bees: '追踪蜂击2次', boomerang: '前方扇形攻击4个目标', frostburst: '范围攻击，减速2秒', solar: '站定后释放范围光束', ricochet: '弹跳攻击4个目标' };
+  const recipeBriefs = { skyweb: '6目标雷链 · 每3.8秒', leafcyclone: '近身叶轮 · 每0.9秒', sunheart: '大范围爆炸 · 每4.2秒', greenhouse: '持续毒域 · 伤害＋减速', earthguard: '范围震击 · 回复2.5%生命', queenbees: '5次追踪蜂击 · 每2.6秒', everturn: '大范围回旋 · 每2.4秒', icegarden: '范围冰霜 · 减速3.2秒' };
+  const briefRecipe = id => recipeBriefs[id] || '';
+  function brief(defOrId, m, p) {
+    const d = typeof defOrId === 'string' ? get(defOrId) : defOrId;
+    if (!d) return '';
+    const text = d.describe(m, p);
+    if (text.includes('转为')) return text.slice(text.indexOf('转为') + 2).replace('开局', '').replace('，并恢复同量生命', '，同步回血');
+    if (attacks[d.id]) {
+      if (text.startsWith('强化')) return text.replace(' · 下一级超级伤害 ', ' · 伤害 ').replace(/（.*$/, '');
+      const power = text.match(/伤害 ([\d.]+%)/)?.[1], cooldown = text.match(/冷却 ([\d.]+)/)?.[1];
+      return attackBrief[d.id] + ' · ' + power + '伤害 · ' + cooldown + '秒';
+    }
+    return text.replace(/（[^）]*）/g, '').replace(/，构筑最高.*|，本构筑最多.*|，最多额外.*|，最多缩短.*|，关卡构筑最多.*|；.*|，本构筑额外.*|，无尽可持续提升.*/g, '')
+      .replace('基础伤害', '伤害').replace('基础射速', '射速').replace('开局移速', '移速').replace('开局拾取范围', '拾取范围').replace('英雄冷却减少开局值的 ', '英雄冷却 −')
+      .replace('经验提前释放增加开局倍率的 ', '升级速度 +').replace('经验收益增加开局倍率的 ', '经验收益 +').replace('英雄、饰品和构筑技能伤害', '技能伤害').replace('已进入拾取圈的经验飞向玩家速度', '经验吸附速度');
+  }
+  window.ORCHARD_BUILDS = Object.freeze({ defs, recipes, limits, endlessLimits, getLimits, setMode, init, get, available, pool, choose, summary, tick, recipeState, goal, setGoal, recommended, brief, briefRecipe });
 })();

@@ -36,3 +36,423 @@
 .arena .boss-hud{left:18px;width:30%;max-width:270px}
 @media(max-width:850px){.arena .boss-hud{left:10px}}
 @media(max-width:480px){.arena .boss-hud{left:7px;padding:6px 7px}.boss-hud strong{font-size:9px}.boss-hud small{font-size:8px}.boss-extra strong{font-size:8px}}
+
+/* Combat information: guardian and health at lower left, growth icons at right. */
+.layout { grid-template-columns: minmax(0, 1fr); }
+body.run-hud-active .layout { grid-template-columns: minmax(0, 1fr) 90px; gap: 12px; }
+.arena .guardian-hud {
+  position: absolute; left: 18px; bottom: 78px; z-index: 2;
+  width: 286px; max-width: 46%; padding: 11px 12px;
+  border: 1px solid #91ad5f99; border-radius: 13px;
+  background: linear-gradient(145deg, #20382bf2, #152b22f2);
+  box-shadow: 0 5px 20px #0a180f40; pointer-events: none;
+}
+.arena .guardian-hud.hidden, #combatRail.hidden { display: none; }
+.guardian-heading { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.guardian-hud .hero-icon {
+  display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px;
+  margin: 0; font-size: 31px; border: 1px solid #68824b99;
+  border-radius: 11px; background: #2f4931;
+}
+.guardian-hud .hero-icon > .hero-portrait { width: 42px; height: 42px; margin: 0; }
+.guardian-identity { min-width: 0; }
+.guardian-identity h2 {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin: 0; font-size: 14px; line-height: 1.4; letter-spacing: 0;
+}
+.guardian-hud .stage-title { margin-top: 3px; font-size: 10px; line-height: 1.4; color: #b9ce9b; }
+.guardian-hud .health { width: 100%; margin: 9px 0 0; }
+.guardian-health-label { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 5px; font-size: 9px; color: #c0d7a7; }
+.guardian-hud .guardian-health-label .health-text { margin: 0; }
+.guardian-hud .hud-label { margin-bottom: 5px; font-size: 9px; letter-spacing: .5px; }
+.guardian-hud .health .bar { height: 8px; background: #0f2118; border-color: #6d855c; }
+.guardian-hud .health .fill { background: linear-gradient(90deg, #ef9474, #ffc491); }
+.guardian-hud .health-text { margin-top: 4px; font-size: 11px; color: #f9e2bb; line-height: 1.3; }
+.guardian-hud .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px 8px; margin-top: 9px; }
+.guardian-hud .stat { flex-direction: column; gap: 2px; min-width: 0; font-size: 9px; line-height: 1.25; color: #a9c49d; }
+.guardian-hud .stat > b { color: #f0efc8; font-size: 12px; line-height: 1.3; white-space: nowrap; }
+.guardian-hud .loadout {
+  margin-top: 7px; padding-top: 6px; border-top-color: #5b755b80;
+  font-size: 9px; line-height: 1.4; color: #d1dea9;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.guardian-hud #runBuild { white-space: normal; overflow: visible; }
+
+#combatRail {
+  min-width: 0; min-height: 0; height: 100%; padding: 10px 8px;
+  display: flex; flex-direction: column; gap: 9px;
+  border: 1px solid #536b43; border-radius: 14px; background: #1a2c21;
+  overflow-x: hidden; overflow-y: auto; scrollbar-width: thin;
+  scrollbar-color: #789453 #1a2c21; overscroll-behavior: contain; touch-action: pan-y;
+}
+#combatRail .build-hud {
+  position: static; flex: 0 0 auto; width: 100%; max-width: none; padding: 0;
+  border: 0; border-radius: 0; background: none; pointer-events: auto;
+}
+#combatRail .combat-rail-title { color: #edf0bd; font-size: 10px; line-height: 1.4; letter-spacing: 1px; text-align: center; }
+#combatRail .build-row { margin-bottom: 10px; }
+#combatRail .build-row > strong { margin-bottom: 6px; font-size: 9px; line-height: 1.6; color: #c9dda5; text-align: center; }
+#combatRail .build-chips { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+#combatRail .build-chip {
+  position: relative; display: grid; place-items: center;
+  min-width: 0; width: 100%; height: 36px; padding: 4px 2px;
+  border-radius: 8px; border: 1px solid #69844e88;
+  background: #2b4330; color: #e1ebbb; line-height: 1;
+  overflow: visible; text-overflow: clip; cursor: pointer;
+}
+#combatRail .build-chip.attack { border-color: #b9905677; color: #f3c785; background: #433a28; }
+#combatRail .build-chip.attribute { border-color: #7bbb9977; color: #bce5c0; background: #264536; }
+#combatRail .build-chip.empty { opacity: .6; border-style: dashed; background: #1a3022; color: #9bac83; }
+#combatRail .build-chip:hover, #combatRail .super-chip:hover { border-color: #d5ec9d; background: #4c653b; }
+#combatRail .build-chip:focus-visible, #combatRail .super-chip:focus-visible { outline: 2px solid #fff2cd; outline-offset: 2px; }
+#combatRail .build-chip-icon { display: block; font-size: 20px; line-height: 1; }
+#combatRail .build-chip-level {
+  position: absolute; right: -2px; bottom: -3px; min-width: 14px; padding: 2px 3px;
+  border: 1px solid #9bad74; border-radius: 4px; background: #17291e;
+  color: #eef3bc; font-size: 9px; font-weight: 700; line-height: 1;
+}
+#combatRail .super-strip {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px;
+  padding-top: 9px; margin-top: 2px; border-top-color: #9483a65e; text-align: center;
+  color: #dbc6ed; font-size: 9px; line-height: 1.4;
+}
+#combatRail .super-strip > :is(strong, .super-empty) { grid-column: 1 / -1; font-size: 9px; line-height: 1.6; }
+#combatRail .super-chip {
+  display: grid; place-items: center; width: 100%; height: 32px; padding: 3px;
+  border: 1px solid #b394c5; border-radius: 8px; background: #493758;
+  color: #f0d9ff; font-size: 19px; cursor: pointer;
+}
+#combatRail #combatGuide {
+  flex: 0 0 auto; width: 100%; min-height: 36px; margin-top: auto; padding: 7px 3px;
+  border: 1px solid #8a9e66; border-radius: 8px; background: #31452c;
+  color: #e7ebbf; font-size: 10px; line-height: 1.4;
+}
+#combatRail #combatGuide:hover { background: #4d6339; border-color: #e1ecac; }
+#combatRail #combatGuide > span { margin-right: 4px; font-size: 14px; font-weight: 700; }
+#combatRail #combatGuide > small { font-size: inherit; }
+body.run-hud-blocked #combatRail { visibility: hidden; pointer-events: none; }
+body.run-hud-blocked .guardian-hud { visibility: hidden; }
+
+body.run-hud-active .arena > .hud {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) 40px; gap: 10px;
+  align-items: start;
+}
+body.run-hud-active .hud > .clock { grid-column: 2; }
+body.run-hud-active .hud > .hud-actions { grid-column: 3; display: flex; flex-direction: row; justify-content: flex-end; }
+body.run-hud-active .arena .touch-guide { display: none; }
+
+@media (max-width: 850px) {
+  body.run-hud-active .layout { grid-template-columns: minmax(0, 1fr) 76px; gap: 8px; }
+  .arena .guardian-hud { left: 10px; bottom: 68px; width: 246px; max-width: 47%; padding: 8px 9px; }
+  .guardian-hud .hero-icon { width: 38px; height: 38px; flex-basis: 38px; font-size: 28px; }
+  .guardian-hud .hero-icon > .hero-portrait { width: 36px; height: 36px; }
+  .guardian-identity h2 { font-size: 12px; }
+  .guardian-hud .stage-title { font-size: 9px; }
+  .guardian-hud .stats { gap: 6px; }
+  .guardian-hud .stat { font-size: 8px; }
+  .guardian-hud .stat > b { font-size: 11px; }
+  #combatRail { padding: 8px 6px; border-radius: 11px; }
+  #combatRail .build-chips, #combatRail .super-strip { gap: 4px; }
+  #combatRail .build-chip { height: 32px; }
+  #combatRail .build-chip-icon { font-size: 18px; }
+  #combatRail .build-chip-level { font-size: 8px; min-width: 12px; }
+}
+
+@media (max-width: 600px) {
+  body.run-hud-active .layout { grid-template-columns: minmax(0, 1fr) 58px; gap: 6px; }
+  .arena .guardian-hud { left: 7px; bottom: 64px; width: 196px; max-width: 54%; padding: 7px; border-radius: 10px; }
+  .guardian-heading { gap: 6px; }
+  .guardian-hud .hero-icon { width: 32px; height: 32px; flex-basis: 32px; font-size: 25px; border-radius: 8px; }
+  .guardian-hud .hero-icon > .hero-portrait { width: 30px; height: 30px; }
+  .guardian-identity h2 { font-size: 10px; }
+  .guardian-hud .stage-title { font-size: 8px; margin-top: 2px; }
+  .guardian-hud .health { margin-top: 6px; }
+  .guardian-hud .hud-label { margin-bottom: 3px; font-size: 8px; }
+  .guardian-hud .health .bar { height: 7px; }
+  .guardian-hud .health-text { font-size: 10px; margin-top: 3px; }
+  .guardian-hud .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 6px; margin-top: 6px; }
+  .guardian-hud .stat { flex-direction: row; align-items: baseline; gap: 3px; font-size: 8px; }
+  .guardian-hud .stat > b { font-size: 10px; }
+  .guardian-hud .loadout { font-size: 8px; margin-top: 5px; padding-top: 4px; }
+  #combatRail { padding: 7px 5px; gap: 7px; }
+  #combatRail .build-chips, #combatRail .super-strip { grid-template-columns: minmax(0, 1fr); }
+  #combatRail .build-row { margin-bottom: 9px; }
+  #combatRail .build-row > strong { font-size: 8px; line-height: 1.5; margin-bottom: 5px; }
+  #combatRail .build-chip { height: 32px; }
+  #combatRail .super-chip { height: 30px; }
+  #combatRail #combatGuide { min-height: 31px; font-size: 9px; padding: 5px 2px; }
+  body.run-hud-active .arena > .hud { left: 9px; right: 9px; top: 10px; grid-template-columns: 30px minmax(0, 1fr) 30px; gap: 4px; }
+  body.run-hud-active .hud .pause { width: 30px; height: 30px; }
+  body.run-hud-active .hud .clock { font-size: 24px; letter-spacing: 1px; }
+  body.run-hud-active .hud .clock small { font-size: 8px; margin-top: 3px; }
+  .arena .relic-hud { right: 7px; bottom: 64px; width: 150px; max-width: 37%; }
+  .arena .explore-controls { right: 7px; bottom: 177px; max-width: 37%; }
+  .arena .stance { bottom: 38px; max-width: calc(100% - 12px); padding: 6px 8px; font-size: 9px; }
+  .arena .xp { left: 9px; right: 9px; bottom: 14px; gap: 6px; font-size: 9px; }
+}
+
+@media (max-height: 500px) and (min-width: 601px) {
+  body.run-hud-active .layout { grid-template-columns: minmax(0, 1fr) 76px; gap: 8px; }
+  .arena .guardian-hud { left: 9px; bottom: 58px; width: 246px; max-width: 44%; padding: 7px 9px; }
+  .guardian-hud .hero-icon { flex-basis: 30px; width: 30px; height: 30px; font-size: 24px; }
+  .guardian-hud .hero-icon > .hero-portrait { width: 28px; height: 28px; }
+  .guardian-identity h2 { font-size: 11px; }
+  .guardian-hud .stage-title { font-size: 8px; margin-top: 1px; }
+  .guardian-hud .health { margin-top: 5px; }
+  .guardian-hud .hud-label { display: none; }
+  .guardian-hud .health .bar { height: 6px; }
+  .guardian-hud .health-text { font-size: 9px; margin-top: 3px; }
+  .guardian-hud .stats { margin-top: 5px; gap: 4px 7px; }
+  .guardian-hud .stat { font-size: 8px; }
+  .guardian-hud .stat > b { font-size: 10px; }
+  .guardian-hud .loadout { margin-top: 4px; padding-top: 3px; font-size: 8px; }
+  #combatRail { padding: 6px; gap: 5px; }
+  #combatRail .build-chips, #combatRail .super-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; }
+  #combatRail .build-row { margin-bottom: 5px; }
+  #combatRail .build-row > strong { font-size: 8px; line-height: 1.2; margin-bottom: 4px; }
+  #combatRail .build-chip { height: 26px; border-radius: 6px; }
+  #combatRail .build-chip-icon { font-size: 16px; }
+  #combatRail .build-chip-level { font-size: 7px; padding: 1px 2px; }
+  #combatRail .super-strip { padding-top: 5px; }
+  #combatRail .super-chip { height: 25px; font-size: 16px; border-radius: 6px; }
+  #combatRail #combatGuide { min-height: 28px; padding: 4px 2px; font-size: 9px; }
+  body.run-hud-active .arena > .hud { top: 8px; }
+  body.run-hud-active .arena .boss-hud { left: 50%; top: 76px; transform: translateX(-50%); width: 28%; padding: 6px 8px; }
+  body.run-hud-active .arena .boss-hud strong { font-size: 9px; }
+  .arena .stance { bottom: 31px; padding: 5px 10px; font-size: 10px; }
+  .arena .xp { bottom: 10px; }
+}
+
+/* Growth details keep every effect readable without covering the resume button. */
+#combatRail .build-row > strong > span,
+#combatRail .build-row > strong > small { display: block; }
+#combatRail .build-row > strong > small { margin-top: 1px; color: #9fb78b; font-size: 8px; font-weight: 400; letter-spacing: .3px; }
+#combatRail .build-more {
+  display: block; width: 100%; min-height: 32px; margin-top: 7px; padding: 5px 2px;
+  border: 1px solid #8a9b68; border-radius: 7px; background: #314631;
+  color: #e0e8bc; font-size: 9px; line-height: 1.4;
+}
+#combatRail .build-more:hover { background: #4b633a; border-color: #d0e79d; }
+#combatRail .build-more:focus-visible { outline: 2px solid #fff2cd; outline-offset: 2px; }
+#combatRail .build-more:disabled { opacity: .45; cursor: default; }
+.help-overlay .build-detail-list {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: max-content; align-content: start; gap: 10px;
+  flex: 1 1 0; min-width: 0; min-height: 0; padding: 2px 3px 5px 1px;
+  overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+  touch-action: pan-y; scrollbar-width: thin; scrollbar-color: #8da76a #172d22;
+}
+.help-overlay .build-detail {
+  display: flex; align-items: flex-start; gap: 10px; min-width: 0;
+  padding: 13px 12px; border: 1px solid #79955788; border-radius: 11px;
+  background: linear-gradient(140deg, #314730, #223b2b); text-align: left;
+}
+.help-overlay .build-detail > span {
+  display: grid; place-items: center; flex: 0 0 33px; width: 33px; height: 33px;
+  border: 1px solid #a6bd7066; border-radius: 9px; background: #203424;
+  color: #ecdda6; font-size: 23px; line-height: 1;
+}
+.help-overlay .build-detail > div { min-width: 0; }
+.help-overlay .build-detail strong { display: block; color: #f1edc3; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.help-overlay .build-detail p { max-width: none; margin: 5px 0 0; color: #c5d4b7; font-size: 11px; line-height: 1.65; overflow-wrap: anywhere; }
+.help-overlay .build-detail small { display: block; margin-top: 7px; padding-top: 6px; border-top: 1px solid #94a87555; color: #d3c5e4; font-size: 10px; line-height: 1.65; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  #combatRail .build-more { min-height: 36px; margin-top: 6px; font-size: 8px; }
+  .help-overlay .build-detail-list { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .help-overlay .build-detail { padding: 11px; gap: 9px; }
+  .help-overlay .build-detail strong { font-size: 13px; }
+  .help-overlay .build-detail p { font-size: 11px; line-height: 1.55; }
+  .help-overlay .build-detail small { font-size: 10px; line-height: 1.55; }
+}
+@media (max-height: 500px) {
+  .help-overlay .build-detail-list { gap: 7px; }
+  .help-overlay .build-detail { padding: 9px; gap: 7px; }
+  .help-overlay .build-detail > span { width: 28px; height: 28px; flex-basis: 28px; font-size: 21px; }
+  .help-overlay .build-detail strong { font-size: 12px; }
+  .help-overlay .build-detail p { font-size: 10px; line-height: 1.5; margin-top: 3px; }
+  .help-overlay .build-detail small { font-size: 9px; line-height: 1.5; margin-top: 5px; padding-top: 4px; }
+}
+
+/* A practice chapter teaches one action at a time, with room to play beneath it. */
+.arena .training-hud {
+  position: absolute; top: 88px; left: 18px; z-index: 3;
+  width: 290px; max-width: 46%; padding: 11px 12px;
+  border: 1px solid #c8df89; border-radius: 12px;
+  background: linear-gradient(145deg, #29492df2, #173b2df2);
+  box-shadow: 0 5px 18px #071b1040; pointer-events: none;
+}
+.arena .training-hud.hidden { display: none; }
+.training-task { display: flex; align-items: flex-start; gap: 9px; min-width: 0; }
+.training-task > span {
+  display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px;
+  border: 1px solid #b5d07780; border-radius: 9px; background: #354f31;
+  color: #edf6bd; font-size: 23px; line-height: 1;
+}
+.training-task > div { min-width: 0; }
+.training-task small { display: block; color: #c4df9b; font-size: 9px; line-height: 1.5; letter-spacing: .6px; }
+.training-task strong { display: block; margin-top: 2px; color: #fff2c6; font-size: 14px; line-height: 1.4; }
+.training-task p { max-width: none; margin: 5px 0 0; color: #d2e4c1; font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
+.training-hud #trainingTarget {
+  display: block; margin-top: 7px; padding-top: 6px; border-top: 1px solid #b4d0894d;
+  color: #f1e3a7; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere;
+}
+.training-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+.training-actions button {
+  min-height: 30px; padding: 5px 10px; border: 1px solid #a3ba7866;
+  border-radius: 7px; background: #294630; color: #d9e6bf; font-size: 10px;
+  line-height: 1.4; pointer-events: auto;
+}
+.training-actions button:hover { background: #4c6539; border-color: #d2e9a2; }
+.training-actions button:focus-visible { outline: 2px solid #fff2cd; outline-offset: 2px; }
+body.training-active.run-hud-blocked .training-hud { visibility: hidden; }
+body.training-active .arena .boss-hud {
+  top: 88px; left: auto; right: 198px; width: 28%; max-width: 260px; transform: none;
+}
+body.training-active .arena .boss-forecast { top: 58px; }
+body.training-active .arena .loot-ticker { top: 235px; left: auto; right: 18px; width: 42%; max-width: 350px; }
+
+.lobby-footer .training-entry {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-width: 0; padding: 7px 11px; border: 1px solid #8cae5766; border-radius: 9px;
+  background: #29452b; text-align: left;
+}
+.training-entry > div { min-width: 0; }
+.training-entry strong { display: block; color: #ecf0b6; font-size: 11px; line-height: 1.4; }
+.training-entry span, .training-entry p, .training-entry small { color: #b7cfa4; font-size: 10px; line-height: 1.45; }
+.training-entry small { display: block; margin-top: 2px; }
+.training-entry p { margin: 2px 0 0; max-width: none; }
+.training-entry #startTraining {
+  flex: 0 0 auto; min-height: 33px; padding: 7px 15px;
+  border: 1px solid #b4d577; border-radius: 8px; background: #496639;
+  color: #f4efbd; font-size: 11px; line-height: 1.4; white-space: nowrap;
+}
+.training-entry #startTraining:hover { background: #607f44; border-color: #e4f4ae; }
+
+.menu-body > .training-summary {
+  display: flex; flex-direction: column; gap: 13px; flex: 1 1 0; min-height: 0;
+  padding: 1px 7px 6px 1px; overflow-x: hidden; overflow-y: auto;
+  overscroll-behavior: contain; touch-action: pan-y; scrollbar-width: thin;
+  scrollbar-color: #86a259 #1a3325;
+}
+.training-summary > p {
+  flex: 0 0 auto; max-width: none; margin: 0; color: #d0dfbd; font-size: 12px;
+  line-height: 1.65; overflow-wrap: anywhere;
+}
+.training-summary .training-features {
+  display: grid; flex: 0 0 auto; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
+}
+.training-features article {
+  position: relative; min-width: 0; padding: 13px 12px;
+  border: 1px solid #78954f80; border-radius: 11px; background: #2b442e;
+}
+.training-features article > span {
+  display: inline-grid; place-items: center; width: 31px; height: 31px; margin-bottom: 8px;
+  border: 1px solid #a7c47166; border-radius: 8px; background: #203d29;
+  color: #e9eda8; font-size: 22px; line-height: 1;
+}
+.training-features article strong { display: block; color: #f2ecc1; font-size: 13px; line-height: 1.45; }
+.training-features article p { max-width: none; margin: 5px 0 0; color: #bed0ad; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.training-summary .training-path { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px; }
+.training-path button { min-height: 35px; flex: 1 1 130px; }
+
+@media (max-width: 850px) {
+  .arena .training-hud { left: 10px; top: 78px; width: 260px; padding: 9px 10px; }
+  .training-task { gap: 7px; }
+  .training-task strong { font-size: 12px; }
+  .training-task p { font-size: 10px; }
+  body.training-active .arena .boss-hud { top: 78px; right: 187px; width: 27%; padding: 7px; }
+  body.training-active .arena .loot-ticker { right: 10px; top: 229px; padding: 7px 9px; }
+  .training-summary .training-features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .arena .training-hud { top: 70px; left: 7px; width: 226px; max-width: 65%; padding: 8px; border-radius: 10px; }
+  .training-task { gap: 6px; }
+  .training-task > span { width: 26px; height: 26px; flex-basis: 26px; font-size: 19px; border-radius: 7px; }
+  .training-task small { font-size: 8px; letter-spacing: 0; }
+  .training-task strong { font-size: 11px; }
+  .training-task p { margin-top: 4px; font-size: 9px; line-height: 1.5; }
+  .training-hud #trainingTarget { margin-top: 5px; padding-top: 4px; font-size: 9px; }
+  .training-actions { margin-top: 6px; }
+  .training-actions button { min-height: 31px; padding: 5px 8px; font-size: 9px; }
+  body.training-active .arena .boss-hud { top: 218px; left: 7px; right: auto; width: 175px; max-width: 65%; padding: 6px 8px; }
+  body.training-active .arena .boss-forecast { top: 48px; font-size: 9px; }
+  body.training-active .arena .loot-ticker { top: 220px; right: 7px; width: 57%; max-width: 240px; padding: 6px 8px; }
+  .lobby-footer .training-entry { padding: 6px 8px; gap: 8px; border-radius: 8px; }
+  .training-entry strong { display: block; font-size: 10px; }
+  .training-entry span, .training-entry p, .training-entry small { font-size: 9px; line-height: 1.35; }
+  .training-entry #startTraining { min-height: 35px; padding: 6px 10px; font-size: 10px; }
+  .menu-body > .training-summary { gap: 10px; padding-right: 5px; }
+  .training-summary > p { font-size: 11px; line-height: 1.55; }
+  .training-summary .training-features { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .training-features article { padding: 10px 11px 10px 49px; }
+  .training-features article > span { position: absolute; left: 10px; top: 11px; width: 28px; height: 28px; margin: 0; font-size: 20px; }
+  .training-features article strong { font-size: 12px; }
+  .training-features article p { font-size: 10px; line-height: 1.5; }
+  .training-summary .training-path { gap: 6px; }
+  .training-path button { flex-basis: 105px; min-height: 36px; font-size: 10px; }
+}
+@media (max-height: 500px) {
+  .arena .training-hud { top: 70px; padding: 7px 9px; }
+  .training-task > span { width: 26px; height: 26px; flex-basis: 26px; font-size: 19px; }
+  .training-task strong { font-size: 11px; }
+  .training-task p { font-size: 9px; line-height: 1.4; margin-top: 3px; }
+  .training-hud #trainingTarget { margin-top: 4px; padding-top: 4px; font-size: 9px; }
+  .training-actions { margin-top: 5px; }
+  .training-actions button { min-height: 27px; padding: 4px 8px; font-size: 9px; }
+  body.training-active .arena .loot-ticker { top: 217px; }
+  .lobby-footer .training-entry { padding: 4px 8px; }
+  .training-entry strong { font-size: 10px; }
+  .training-entry span, .training-entry p, .training-entry small { font-size: 8px; }
+  .training-entry #startTraining { min-height: 27px; padding: 4px 9px; font-size: 9px; }
+  .menu-body > .training-summary { gap: 8px; }
+  .training-summary > p { font-size: 10px; line-height: 1.5; }
+  .training-summary .training-features { gap: 7px; }
+  .training-features article { padding-top: 8px; padding-bottom: 8px; }
+  .training-features article strong { font-size: 11px; }
+  .training-features article p { font-size: 10px; line-height: 1.45; margin-top: 3px; }
+  .training-path button { min-height: 29px; padding: 5px 9px; font-size: 10px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  body.training-active .shell > header { padding-bottom: 0; }
+  body.training-active .header-help { display: none; }
+  body.training-active .arena .training-hud {
+    top: 54px; left: auto; right: 9px; width: 300px; max-width: 46%; padding: 7px 9px;
+  }
+  body.training-active .training-hud .training-task strong { padding-right: 55px; }
+  body.training-active .training-hud .training-actions { position: absolute; top: 6px; right: 7px; margin: 0; }
+  body.training-active .training-hud .training-actions button { min-height: 26px; padding: 4px 6px; font-size: 8px; }
+  body.training-active .arena .guardian-hud { bottom: 52px; width: 215px; max-width: 30%; padding: 6px 8px; }
+  body.training-active .guardian-hud #runBuild { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.training-active .arena .explore-controls {
+    right: 9px; bottom: 52px; left: auto; width: 244px; max-width: 44%;
+    flex-direction: row; flex-wrap: nowrap; gap: 6px; justify-content: flex-end;
+  }
+  body.training-active .explore-controls > button { flex: 1; min-width: 0; min-height: 32px; padding: 6px 4px; font-size: 9px; }
+  body.training-active .arena .relic-hud { left: 34%; right: auto; bottom: 55px; width: 130px; max-width: 19%; padding: 5px; }
+  body.training-active .relic-hud > strong { font-size: 8px; line-height: 1.4; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.training-active .relic-slots { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  body.training-active .relic-slots .relic-slot { height: 27px; font-size: 16px; padding: 2px; }
+  body.training-active .relic-slot b { font-size: 8px; }
+  body.training-active .relic-empty { display: none; }
+  body.training-active .arena .boss-hud { top: 8px; left: 9px; right: auto; width: 215px; max-width: 30%; padding: 5px 7px; }
+  body.training-active .arena .boss-hud strong { font-size: 9px; margin-bottom: 4px; }
+  body.training-active .arena .boss-hud small { font-size: 8px; margin-top: 3px; }
+  body.training-active .arena .loot-ticker { top: auto; bottom: 91px; right: 9px; left: auto; width: 244px; max-width: 44%; padding: 6px 8px; }
+  body.training-active .arena .stance { bottom: 29px; padding: 4px 8px; max-width: calc(100% - 16px); font-size: 9px; }
+}
+@media (max-height: 400px) and (orientation: landscape) {
+  body.training-active .arena .training-hud { top: 50px; padding: 6px 8px; }
+  body.training-active .training-task > span { display: none; }
+  body.training-active .training-task > div { width: 100%; }
+  body.training-active .training-task small { font-size: 8px; line-height: 1.3; }
+  body.training-active .training-task p { font-size: 9px; line-height: 1.35; }
+  body.training-active .training-hud #trainingTarget { font-size: 8px; line-height: 1.35; }
+  body.training-active .guardian-hud .hero-icon { flex-basis: 25px; width: 25px; height: 25px; }
+  body.training-active .guardian-hud .hero-icon > .hero-portrait { width: 23px; height: 23px; }
+  body.training-active .guardian-heading { gap: 5px; }
+  body.training-active .guardian-hud .stats { gap: 3px 4px; }
+  body.training-active .guardian-hud .stat { font-size: 7px; }
+  body.training-active .guardian-hud .stat > b { font-size: 9px; }
+  body.training-active .guardian-hud .loadout { margin-top: 3px; padding-top: 3px; font-size: 7px; }
+  body.training-active .arena .boss-hud { top: 7px; }
+}

@@ -8,10 +8,11 @@ const { spawnSync } = require('node:child_process');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const ROOT_FILES = new Set([
-  'index.html', 'auth-data.js', 'experience-data.js', 'progression.js', 'orchard-data.js',
+  'rogue-guide.css', 'index.html', 'auth-data.js', 'experience-data.js', 'progression.js', 'orchard-data.js',
   'relic-data.js', 'relic-effects.js', 'build-data.js', 'growth-data.js', 'world-data.js',
   'art-catalog.js', 'map-data.js', 'navigation.js', 'map-renderer.js', 'conversation-data.js',
-  'game.js', 'screen.css', 'expansion.css', 'run-expansion.css', 'lobby-ui.css', 'cover-ui.css'
+  'game.js', 'training-data.js', 'frontier-ui.js', 'frontier-rewards.js', 'frontier-ui.css',
+  'screen.css', 'expansion.css', 'run-expansion.css', 'lobby-ui.css', 'cover-ui.css'
 ]);
 const ASSET_EXTENSION = /\.(?:png|webp|svg|jpe?g|gif|avif|ico|woff2?|ttf|ogg|mp3|wav)$/i;
 const MAX_FILE_BYTES = 50 * 1024 * 1024;

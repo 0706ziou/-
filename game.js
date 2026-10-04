@@ -12,6 +12,7 @@
   const legacyRelics = new Set(['lightning', 'orbit', 'dash', 'frost', 'shield', 'bees']);
   const growth = window.ORCHARD_GROWTH, world = window.ORCHARD_WORLD, art = window.ORCHARD_ART;
   const mapCatalog = window.ORCHARD_MAPS, mapRenderer = window.ORCHARD_MAP_RENDER;
+  const trainingCatalog = window.ORCHARD_TRAINING;
   const mapCache = new Map();
   let mapLayout, obstacles, navigator;
   function setMap(id) {
@@ -33,6 +34,11 @@
   const gearGrowth = Object.freeze({ damage: .06, rate: .02, hp: 8, defense: .5, speed: 3, pickup: 6 });
   const SAVE_KEY = 'orchard-save-v1';
   let currentSaveKey = SAVE_KEY, currentAccount = null, loginBusy = false, loginAttempt = 0, sessionGreeting = '';
+  const frontierRewards = window.ORCHARD_FRONTIER_REWARDS?.create({
+    getClient: () => window.ORCHARD_FRONTIER,
+    getName: () => currentAccount?.nickname || '', getOwner: () => currentAccount?.id || '',
+    storage: window.localStorage, onChange: updateWorldRewardMessage
+  });
   let authService = null;
   try { authService = window.ORCHARD_AUTH.create({ storage: window.localStorage, crypto: window.crypto }); } catch {}
   const keys = new Set(), camera = { x: 0, y: 0 };
@@ -40,12 +46,13 @@
   let elapsed = 0, kills = 0, shotClock = 0, still = 0, lastTime = 0, choices = [], shake = 0;
   let pointer = null, audioCtx = null, selectedStage = 1, activeStage = stages[0], runRewarded = false;
   let storageAvailable = true;
-  let previewStage = 1, helpReturnState = 'playing', helpTab = 'conversation', tutorialStep = 0, tutorialIsFirstRun = false;
+  let previewStage = 1, helpReturnState = 'playing', helpTab = 'conversation', tutorialStep = 0, tutorialIsFirstRun = false, helpFocusReturn = null;
   let cinematicTime = 0, bossIndex = 0, bossKills = 0, nonBossKills = 0;
   let nextBossAllowedAt = 0;
   let bossArrivalUntil = 0;
   let victoryRewardHTML = '';
   let runMode = 'stage', stageVictoryReady = false, endlessEntered = false;
+  let training = null;
   let stageXP = experience.create(stages[0]);
   let selectedGearSlot = 'weapon', selectedSprite = 0;
   let endlessWave = 0, waveClock = 0, endlessCreditedSeeds = 0, endlessCreditedCores = 0;
@@ -70,7 +77,7 @@
     charm_harvest: { slot: 'charm', name: '丰收徽记', icon: '🌻', desc: '移速 220，拾取范围 140，经验提前释放 +15%', speed: 220, pickup: 140, xpMult: 1.15 }
   };
   function freshProfile() {
-    const base = { version: 1, unlockedStage: 1, clearedStages: [], seeds: 0, cores: 0, tutorialSeen: false,
+    const base = { version: 1, unlockedStage: 1, clearedStages: [], seeds: 0, cores: 0, tutorialSeen: false, trainingComplete: false,
       rescuedSprites: [], spriteLevels: {}, orchard: { level: 0 },
       inventory: { weapon_seed: { level: 0 }, armor_leaf: { level: 0 }, charm_sprout: { level: 0 } },
       equipped: { weapon: 'weapon_seed', armor: 'armor_leaf', charm: 'charm_sprout' } };
@@ -85,6 +92,7 @@
       const raw = JSON.parse(window.localStorage.getItem(currentSaveKey) || 'null');
       if (!raw || raw.version !== 1) return result;
       result.tutorialSeen = raw.tutorialSeen === true;
+      result.trainingComplete = raw.trainingComplete === true;
       result.unlockedStage = integer(raw.unlockedStage, 1, stages.length);
       result.seeds = integer(raw.seeds, 0, 999999); result.cores = integer(raw.cores, 0, 999999);
       result.clearedStages = [...new Set((Array.isArray(raw.clearedStages) ? raw.clearedStages : []).filter(n => Number.isInteger(n) && n >= 1 && n <= stages.length))];
@@ -133,6 +141,7 @@
   player = freshPlayer();
   function el(id) { return document.getElementById(id); }
   function showCover() {
+    window.ORCHARD_FRONTIER?.close();
     state = 'cover'; keys.clear(); pointer = null; overlay.classList.add('hidden');
     document.body.classList.add('is-cover'); el('coverScreen').classList.remove('hidden'); el('playerAccount').classList.add('hidden');
     el('loginAccount').value = authService?.getLastAccount() || '';
@@ -142,13 +151,15 @@
     el('loginAccount').focus?.();
   }
   function resetAccountSession() {
+    frontierRewards?.reset(); window.ORCHARD_FRONTIER?.close();
+    training = null;
     keys.clear(); pointer = null; selectedStage = profile.unlockedStage; previewStage = selectedStage; activeStage = stage();
     enemies = []; bullets = []; gems = []; particles = []; choices = []; heroEffects = []; skillEffects = [];
     elapsed = 0; kills = 0; shotClock = 0; still = 0; shake = 0; cinematicTime = 0; bossIndex = 0; bossKills = 0; nonBossKills = 0; nextBossAllowedAt = 0; bossArrivalUntil = 0;
     runRewarded = false; victoryRewardHTML = ''; runMode = 'stage'; stageVictoryReady = false; endlessEntered = false;
     endlessWave = 0; waveClock = 0; endlessCreditedSeeds = 0; endlessCreditedCores = 0;
     selectedGearSlot = 'weapon'; selectedSprite = profile.rescuedSprites[0] || 0; inspectedHero = profile.selectedHero; heroTab = 'heroes'; heroSkillView = 'active';
-    mapReturnState = 'lobby'; helpReturnState = 'playing'; helpTab = 'conversation'; tutorialStep = 0; tutorialIsFirstRun = false;
+    mapReturnState = 'lobby'; helpReturnState = 'playing'; helpTab = 'conversation'; tutorialStep = 0; tutorialIsFirstRun = false; helpFocusReturn = null;
     relicHudSignature = ''; buildHudSignature = ''; runRelicDefs = []; challengeStarted = false;
     setMap(selectedStage); player = freshPlayer(); stageXP = experience.create(activeStage); resetRelics(true); updateCamera();
   }
@@ -158,7 +169,14 @@
     sessionGreeting = (created ? '注册成功，欢迎 ' : '欢迎回来，') + user.nickname + (legacyClaimed ? ' · 已保留原有进度' : '');
     el('playerName').textContent = user.nickname; el('playerAccount').classList.remove('hidden');
     document.body.classList.remove('is-cover'); el('coverScreen').classList.add('hidden'); el('loginPassword').value = '';
-    startScreen(); return true;
+    startScreen(); prepareWorldSession(); return true;
+  }
+  function prepareWorldSession() {
+    if (!currentAccount || !window.ORCHARD_FRONTIER) return;
+    const name = currentAccount.nickname;
+    window.ORCHARD_FRONTIER.prepareSession?.(name)?.then(() => {
+      if (currentAccount?.nickname === name) frontierRewards?.retry();
+    }).catch(() => {});
   }
   async function submitLogin() {
     if (state !== 'cover' || loginBusy) return false;
@@ -191,6 +209,7 @@
     resetAccountSession(); showCover(); return true;
   }
   function show(html, menu = false) {
+    window.ORCHARD_FRONTIER?.close();
     overlay.classList.remove('upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay');
     arena.classList.remove('is-lobby');
     for (const attribute of ['role', 'aria-modal', 'aria-label']) overlay.removeAttribute?.(attribute);
@@ -199,12 +218,23 @@
   }
   function showMenu(title, subtitle, body, actions, activeTab, note = '进度自动保存 · 所有操作无需滚轮') {
     if (!currentAccount) return false;
-    const tabs = [['stages', '关卡挑战', 'navStages'], ['armory', '装备工坊', 'navArmory'], ['heroes', '英雄育成', 'navHeroes'], ['orchard', '我的果园', 'navOrchard'], ['map', '投放地图', 'navMap']];
+    const tabs = [['stages', '关卡挑战', 'navStages'], ['armory', '装备工坊', 'navArmory'], ['heroes', '英雄育成', 'navHeroes'], ['orchard', '我的果园', 'navOrchard'], ['world', '共享世界', 'navWorld'], ['map', '投放地图', 'navMap']];
     show('<div class="menu-top"><div><div class="tag">' + subtitle + '</div><h2 class="menu-title">' + title + '</h2></div><div class="wallet">☀ 阳光籽 ' + profile.seeds + '　◆ 果核 ' + profile.cores + '<small>通关 ' + profile.clearedStages.length + ' / ' + stages.length + ' · 精灵 ' + profile.rescuedSprites.length + ' / 20</small></div></div>' +
       '<div class="menu-body">' + body + '</div><div class="menu-footer"><div class="menu-actions">' + actions + '</div>' +
       '<nav class="menu-nav" aria-label="果园功能">' + tabs.map(([tab, name, id]) => '<button class="nav-button ' + (activeTab === tab ? 'active' : '') + '" id="' + id + '" aria-pressed="' + (activeTab === tab) + '">' + name + '</button>').join('') + '</nav>' +
       '<div class="micro">' + (!storageAvailable ? '浏览器存储不可用，进度仅在当前页面中保留' : note) + '</div></div>', true);
-    el('navStages').onclick = startScreen; el('navHeroes').onclick = () => showHeroes(); el('navArmory').onclick = showArmory; el('navOrchard').onclick = showOrchard; el('navMap').onclick = showRelicMap;
+    el('navStages').onclick = startScreen; el('navHeroes').onclick = () => showHeroes(); el('navArmory').onclick = showArmory; el('navOrchard').onclick = showOrchard; el('navWorld').onclick = showWorld; el('navMap').onclick = showRelicMap;
+  }
+  function showWorld() {
+    if (!currentAccount || isRunActive()) return false;
+    state = 'world'; keys.clear(); pointer = null;
+    if (!window.ORCHARD_FRONTIER) {
+      showPanel('世界暂未载入', '共享世界 / 家园与公会', '<p>请刷新游戏后再次进入世界。</p>', '<button class="secondary" id="worldBackLobby">返回关卡</button>');
+      el('worldBackLobby').onclick = startScreen;
+    } else {
+      window.ORCHARD_FRONTIER.open({ overlay, name: currentAccount.nickname, onExit: startScreen, onAuthenticated: () => frontierRewards?.retry() });
+    }
+    updateHUD(); return true;
   }
   function showPanel(title, subtitle, body, actions, note = '') {
     if (!currentAccount) return false;
@@ -434,6 +464,7 @@
       mapReturnState = state; state = 'relicMap'; keys.clear(); pointer = null; still = 0;
     }
     const battle = ['playing', 'paused'].includes(mapReturnState), def = runRelicDefs.find(d => String(d.id) === String(selectedRelic)) || runRelicDefs[0];
+    if (training && trainingCatalog.steps[training.step].id === 'map' && battle) training.mapOpened = true;
     selectedRelic = def.id;
     const points = relicDrops;
     const selected = points.find(d => d.id === def.id), distance = Math.round(Math.hypot(selected.x - player.x, selected.y - player.y));
@@ -475,11 +506,12 @@
       '<div class="chapter-caption"><strong>守护这片果园</strong><span>' + s.description + '</span></div></section>' +
       '<div class="campaign-picker"><label>篇章 <select id="chapterJump" aria-label="选择远征篇章">' + ['青叶启程', '月露群岛', '赤焰山林', '霜晶高原', '星辉王庭'].map((name, index) => '<option value="' + (index * 20 + 1) + '" ' + (Math.floor((id - 1) / 20) === index ? 'selected' : '') + '>' + (index + 1) + ' · ' + name + '</option>').join('') + '</select></label><label>关卡 <select id="stageJump" aria-label="选择篇章关卡">' + stages.slice(Math.floor((id - 1) / 20) * 20, Math.floor((id - 1) / 20) * 20 + 20).map(item => '<option value="' + item.id + '" ' + (item.id === id ? 'selected' : '') + '>第 ' + item.id + ' 关 · ' + (profile.clearedStages.includes(item.id) ? '✓' : item.id <= profile.unlockedStage ? '可挑战' : '未解锁') + '</option>').join('') + '</select></label></div>' +
       '<div class="chapter-brief"><span class="chapter-chip">普通 ' + s.normalCount + ' · 精英 ' + s.eliteCount + ' · Boss ' + s.bossCount + '</span><span class="chapter-chip">虫王 ' + s.bossSchedule[0] + ' 秒起 · 逐位登场</span><span class="chapter-chip">首通 ☀ ' + s.reward.seeds + ' · ◆ ' + s.reward.cores + reward + '</span></div></div>' +
-      '<div class="menu-footer lobby-footer"><div class="lobby-actions"><button class="lobby-play primary" id="start" ' + (!unlocked ? 'disabled' : '') + '><span class="action-icon">▶</span><strong>' + (unlocked ? '进入游戏' : '关卡未解锁') + '</strong><small>' + (unlocked ? '挑战第 ' + id + ' 关' : '先通关第 ' + (id - 1) + ' 关') + '</small></button>' +
-      '<button class="lobby-feature secondary" id="navArmory"><span class="action-icon">⚒</span><strong>装备</strong><small>搭配与强化</small></button><button class="lobby-feature secondary" id="navHeroes"><span class="action-icon">✦</span><strong>英雄</strong><small>13 位初始解锁</small></button><button class="lobby-feature secondary" id="navOrchard"><span class="action-icon">♧</span><strong>果园</strong><small>精灵与养成</small></button></div>' +
+      '<div class="menu-footer lobby-footer"><div class="training-entry"><div><strong>🌱 新手引导关 · 晨芽练习场</strong><small>' + (profile.trainingComplete ? '已完成 · 随时回来复习操作' : '10 项实操任务，认识战斗与全部养成功能') + '</small></div><button class="secondary" id="startTraining">' + (profile.trainingComplete ? '再练一次' : '开始引导') + '</button></div><div class="lobby-actions"><button class="lobby-play primary" id="start" ' + (!unlocked ? 'disabled' : '') + '><span class="action-icon">▶</span><strong>' + (unlocked ? '进入游戏' : '关卡未解锁') + '</strong><small>' + (unlocked ? '挑战第 ' + id + ' 关' : '先通关第 ' + (id - 1) + ' 关') + '</small></button>' +
+      '<button class="lobby-feature secondary" id="navArmory"><span class="action-icon">⚒</span><strong>装备</strong><small>搭配与强化</small></button><button class="lobby-feature secondary" id="navHeroes"><span class="action-icon">✦</span><strong>英雄</strong><small>13 位初始解锁</small></button><button class="lobby-feature secondary" id="navOrchard"><span class="action-icon">♧</span><strong>果园</strong><small>精灵与养成</small></button><button class="lobby-feature secondary" id="navWorld"><span class="action-icon">⚑</span><strong>世界</strong><small>建家 · 造兵 · 公会</small></button></div>' +
       '<div class="lobby-bottom"><span class="lobby-note">' + (!storageAvailable ? '浏览器存储不可用，进度仅在当前页面中保留' : escapeHTML(sessionGreeting) + (sessionGreeting ? ' · ' : '') + '出战：' + growth.hero(profile.selectedHero).name) + '</span><button class="chapter-map-link" id="navMap" ' + (!unlocked ? 'disabled' : '') + '>本关地形与饰品 ↗</button></div></div>', true);
     overlay.classList.add('lobby-overlay'); arena.classList.add('is-lobby');
     el('start').onclick = () => { if (unlocked && state === 'lobby') start(); };
+    el('startTraining').onclick = showTrainingIntro;
     el('previousStage').onclick = () => browseStage(-1); el('nextStagePreview').onclick = () => browseStage(1);
     for (const key of ['chapterJump', 'stageJump']) el(key).onchange = () => {
       if (state !== 'lobby') return;
@@ -489,6 +521,7 @@
       renderLobby(target);
     };
     el('navArmory').onclick = showArmory; el('navHeroes').onclick = () => { inspectedHero = profile.selectedHero; showHeroes('heroes'); }; el('navOrchard').onclick = showOrchard;
+    el('navWorld').onclick = showWorld;
     el('navMap').onclick = () => { if (unlocked && state === 'lobby') showRelicMap(); };
   }
   function browseStage(direction) {
@@ -499,6 +532,7 @@
     renderLobby(id); return true;
   }
   function startScreen() {
+    if (training) return exitTraining();
     if (!currentAccount) { showCover(); return false; }
     state = 'lobby'; keys.clear(); pointer = null; enemies = []; bullets = []; gems = []; particles = []; still = 0; shake = 0;
     bossIndex = 0; bossKills = 0; nonBossKills = 0; nextBossAllowedAt = 0; bossArrivalUntil = 0; heroEffects = [];
@@ -672,7 +706,11 @@
       for (const def of available) { roll -= weight(def); if (roll <= 0) { chosen = def; break; } }
       picked.push(chosen); pool.splice(pool.indexOf(chosen), 1);
     }
-    take('attack'); take('attribute'); if (picked.length < 3) take();
+    const recommendation = builds.recommended(player);
+    if (recommendation && pool.includes(recommendation)) { picked.push(recommendation); pool.splice(pool.indexOf(recommendation), 1); }
+    if (!picked.some(d => d.category === 'attack')) take('attack');
+    if (!picked.some(d => d.category === 'attribute')) take('attribute');
+    while (picked.length < 3 && pool.length) take();
     return picked.map(u => {
       const roll = Math.random(), rarity = rarities[roll < .65 ? 0 : roll < .93 ? 1 : 2];
       return { ...u, rarity, desc: u.describe(rarity.mult, player) };
@@ -680,12 +718,14 @@
   }
   function start() {
     if (!currentAccount) { showCover(); return false; }
+    if (training) exitTraining(false);
     activeStage = stage(); setMap(activeStage.id); player = freshPlayer(); enemies = []; bullets = []; gems = []; particles = [];
     resetRelics(challengeStarted); challengeStarted = true;
     heroEffects = [];
     elapsed = 0; kills = 0; shotClock = 0; still = 0; shake = 0; choices = []; runRewarded = false;
     cinematicTime = 0; bossIndex = 0; bossKills = 0; nonBossKills = 0; nextBossAllowedAt = 0; bossArrivalUntil = 0; victoryRewardHTML = '';
     runMode = 'stage'; stageVictoryReady = false; endlessEntered = false; endlessWave = 0;
+    frontierRewards?.begin(activeStage.id);
     stageXP = experience.create(activeStage);
     keys.clear(); pointer = null;
     for (let i = 0; i < activeStage.enemyCount; i++) spawn();
@@ -695,10 +735,108 @@
     updateHUD();
     if (!profile.tutorialSeen) openTutorial(true);
   }
+  function trainingFeatures() {
+    return '<div class="training-features">' + trainingCatalog.features.map(item => '<article><span aria-hidden="true">' + item.icon + '</span><strong>' + escapeHTML(item.title) + '</strong><p>' + escapeHTML(item.description) + '</p></article>').join('') + '</div>';
+  }
+  function showTrainingIntro() {
+    if (!currentAccount || isRunActive()) return false;
+    state = 'trainingIntro'; keys.clear(); pointer = null;
+    showPanel('欢迎来到' + trainingCatalog.name, '新手引导关 / 10 项实操', '<div class="training-summary"><p>跟着任务学会操作，再出发守护果园。虫群只在对应步骤出现，练习生命最低保留 50%，可以随时退出、重玩。</p><p>先移动、蓄力、击杀和升级，再练英雄技能、饰品、地图、精英与虫王。下面这些功能都会在正式游戏中用到：</p>' + trainingFeatures() + '</div>', '<button class="primary" id="beginTraining">进入练习场</button><button class="secondary" id="backTrainingLobby">返回关卡</button>', '练习升级和饰品只在本次练习生效 · 完成后记录学习进度');
+    arena.classList.add('is-lobby');
+    el('beginTraining').onclick = startTraining; el('backTrainingLobby').onclick = startScreen; updateHUD(); return true;
+  }
+  function trainingPoint(dx, dy, radius = 25) {
+    const x = Math.max(training.center.x - 360, Math.min(training.center.x + 360, player.x + dx));
+    const y = Math.max(training.center.y - 240, Math.min(training.center.y + 240, player.y + dy));
+    return world.safePoint(x, y, radius + 20, obstacles, WORLD_W, WORLD_H);
+  }
+  function trainingEnemy(kind, index = 0) {
+    const point = trainingPoint(index ? -170 : 170, index ? 80 : -50, kind === 'boss' ? 40 : 25);
+    const enemy = { ...point, type: 0, r: 19, hp: Math.max(22, player.damage * 1.5), speed: 45, damage: 3,
+      xp: kind === 'normal' && trainingCatalog.steps[training.step].id === 'combat' ? experienceNeed(1) / 2 : 0, pursuitAt: 0, aggro: true, phase: 0, flash: 0, elite: kind === 'elite' };
+    if (kind === 'elite') { enemy.r = 25; enemy.hp = Math.max(70, player.damage * 4); enemy.speed = 55; }
+    if (kind === 'boss') Object.assign(enemy, bossDefs[0], { ...point, boss: true, elite: false, type: 2, name: '练习虫王 · 青叶甲王',
+      r: 37, hp: Math.max(160, player.damage * 10), speed: 45, damage: 5, chargeSpeed: 180, chargeInterval: 6,
+      bossOrder: 0, bossArrivalAt: elapsed, introduced: true, pursuitAt: 0, aggro: true, xp: 0,
+      chargeClock: 3, windup: 0, dashTime: 0, dashX: 0, dashY: 0 });
+    enemy.maxHp = enemy.hp; enemies.push(enemy); return enemy;
+  }
+  function enterTrainingStep() {
+    if (!training || training.step >= trainingCatalog.steps.length) return finishTraining();
+    const id = trainingCatalog.steps[training.step].id;
+    const droppedExperience = id === 'xp' ? gems : [];
+    enemies = []; bullets = []; gems = droppedExperience; heroEffects = []; skillEffects = [];
+    training.lastKills = kills; training.lastElites = nonBossKills; training.lastBosses = bossKills;
+    training.lastCasts = player.heroCasts; training.standTime = 0; still = 0;
+    if (id === 'combat') { trainingEnemy('normal'); trainingEnemy('normal', 1); }
+    if (id === 'skill') { player.heroClock = 0; trainingEnemy('normal'); trainingEnemy('normal', 1); }
+    if (id === 'relic') { const point = trainingPoint(155, 60, 44); Object.assign(relicDrops[0], point); mapLayout = { ...mapLayout, relics: [{ ...point, id: 'training-relic' }] }; }
+    if (id === 'elite') trainingEnemy('elite');
+    if (id === 'boss') { trainingEnemy('boss'); bossArrivalUntil = elapsed + 3; }
+    updateHUD(); return true;
+  }
+  function startTraining() {
+    if (!currentAccount || !trainingCatalog || isRunActive() || training) return false;
+    const saved = { selectedStage, previewStage, defs: [...runRelicDefs], drops: relicDrops.map(drop => ({ ...drop })) };
+    setMap(1);
+    const center = { ...mapLayout.spawn };
+    mapLayout = { ...mapLayout, name: trainingCatalog.name, obstacles: mapLayout.obstacles.filter(o => Math.hypot(o.x - center.x, o.y - center.y) > 750),
+      landmarks: mapLayout.landmarks.filter(o => Math.hypot(o.x - center.x, o.y - center.y) > 750) };
+    mapLayout.obstacles.push({ id: 'training-rock', kind: 'rock', shape: 'circle', x: center.x - 280, y: center.y + 145, r: 30, variant: 0 },
+      { id: 'training-crate', kind: 'crate', shape: 'rect', x: center.x + 280, y: center.y - 180, w: 50, h: 50, variant: 0 });
+    obstacles = mapLayout.obstacles; navigator = window.ORCHARD_NAV.create(mapLayout, world);
+    activeStage = { ...stages[0], name: trainingCatalog.name, enemyCount: 4, normalCount: 2, fastCount: 0, eliteCount: 1, bossCount: 1, bossSchedule: [Infinity] };
+    runMode = 'training'; training = { step: 0, distance: 0, standTime: 0, xpCollected: 0, mapOpened: false, center, saved };
+    player = freshPlayer(); enemies = []; bullets = []; gems = []; particles = []; heroEffects = []; skillEffects = [];
+    keys.clear(); pointer = null; elapsed = 0; kills = 0; shotClock = 0; still = 0; shake = 0; choices = [];
+    bossKills = 0; nonBossKills = 0; bossIndex = 0; nextBossAllowedAt = 0; bossArrivalUntil = 0;
+    runRewarded = false; stageVictoryReady = false; endlessEntered = false; victoryRewardHTML = '';
+    runRelicDefs = [relicDefs.find(def => def.key === 'lightning')]; selectedRelic = runRelicDefs[0].id;
+    relicDrops = [{ id: selectedRelic, key: 'lightning', slotId: 'training-relic', slotIndex: 0, x: center.x + 1000, y: center.y, claimed: false }];
+    noticeQueue = []; currentNotice = null; noticeClock = 0; relicHudSignature = ''; buildHudSignature = '';
+    state = 'playing'; overlay.classList.add('hidden'); arena.classList.remove('is-lobby'); el('pause').textContent = 'Ⅱ';
+    try { audioCtx ??= new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume().catch(() => {}); } catch {}
+    updateCamera(); enterTrainingStep(); return true;
+  }
+  function exitTraining(returnToLobby = true) {
+    if (!training) return false;
+    const saved = training.saved; training = null; runMode = 'stage'; state = 'lobby';
+    selectedStage = saved.selectedStage; setMap(selectedStage); activeStage = stage();
+    runRelicDefs = saved.defs; relicDrops = saved.drops; challengeStarted = false;
+    keys.clear(); pointer = null; noticeQueue = []; currentNotice = null; noticeClock = 0;
+    heroEffects = []; skillEffects = []; relicHudSignature = ''; buildHudSignature = '';
+    if (returnToLobby) { startScreen(); renderLobby(saved.previewStage); }
+    return true;
+  }
+  function finishTraining() {
+    if (!training || training.step < trainingCatalog.steps.length) return false;
+    profile.trainingComplete = true; profile.tutorialSeen = true; saveProfile();
+    exitTraining(); state = 'trainingDone';
+    showPanel('你已经是一位果园守护者了！', '晨芽练习场 / 10 项任务完成', '<div class="training-summary"><p>你已经完成移动、蓄力、击杀、经验升级、技能、饰品与地图练习，并击败了精英和虫王。接下来选一个英雄，把正式关卡的收获带回果园。</p>' + trainingFeatures() + '</div>',
+      '<button class="primary" id="trainingCampaign">挑战正式关卡</button><button class="secondary" id="trainingHeroes">选英雄</button><button class="secondary" id="trainingEquipment">看装备</button><button class="secondary" id="trainingOrchard">逛果园</button><button class="secondary" id="trainingBack">返回首页</button>',
+      '学习进度已保存 · 练习不消耗材料，也不计入正式关卡通关');
+    arena.classList.add('is-lobby');
+    el('trainingCampaign').onclick = start; el('trainingHeroes').onclick = () => showHeroes(); el('trainingEquipment').onclick = showArmory; el('trainingOrchard').onclick = showOrchard; el('trainingBack').onclick = startScreen;
+    updateHUD(); return true;
+  }
+  function trainingTick(dt = 0, distance = 0) {
+    if (!training || state !== 'playing' || runMode !== 'training') return false;
+    const id = trainingCatalog.steps[training.step].id;
+    player.x = Math.max(training.center.x - 400, Math.min(training.center.x + 400, player.x));
+    player.y = Math.max(training.center.y - 260, Math.min(training.center.y + 260, player.y));
+    if (id === 'move') training.distance += distance;
+    if (id === 'stand') training.standTime = movementVector().moving ? 0 : training.standTime + dt;
+    const complete = id === 'move' ? training.distance >= 140 : id === 'stand' ? training.standTime >= 1.2 && still >= combat.standDelay : id === 'combat' ? kills - training.lastKills >= 2 :
+      id === 'xp' ? training.xpCollected >= experienceNeed(1) - 1e-6 : id === 'upgrade' ? player.level >= 2 : id === 'skill' ? player.heroCasts > training.lastCasts :
+      id === 'relic' ? relicDrops.some(drop => drop.claimed) : id === 'map' ? training.mapOpened : id === 'elite' ? nonBossKills > training.lastElites : id === 'boss' ? bossKills > training.lastBosses : false;
+    if (complete) { training.step++; enterTrainingStep(); }
+    updateCamera(); return complete;
+  }
   function escapeHTML(value) {
     return String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
   }
   function tutorialSteps() {
+    if (training) return trainingCatalog.steps.map(step => ({ icon: step.icon, title: step.title, text: step.description + ' ' + step.hint }));
     const hero = growth.hero(player.heroId);
     return [
       { icon: '↔', title: '先移动，果子会自动攻击', text: '电脑使用 WASD 或方向键移动。手机按住场地拖动，松手停止。武器会自动攻击虫群，先保持距离，绕开果树与石块。' },
@@ -730,14 +868,34 @@
     (guide ? el('nextTutorial') : el('closeGameHelp')).focus?.();
   }
   function openGameHelp() {
-    if (!currentAccount || !['lobby', 'heroes', 'armory', 'orchard', 'relicMap', 'playing', 'paused'].includes(state) || (state === 'relicMap' && isRunActive())) return false;
-    helpReturnState = state; helpTab = 'conversation'; tutorialStep = 0; tutorialIsFirstRun = false;
+    if (!currentAccount || !['lobby', 'heroes', 'armory', 'orchard', 'world', 'relicMap', 'playing', 'paused'].includes(state) || (state === 'relicMap' && isRunActive())) return false;
+    helpReturnState = state; helpTab = 'conversation'; tutorialStep = 0; tutorialIsFirstRun = false; helpFocusReturn = el('gameHelp');
     state = 'help'; keys.clear(); pointer = null; renderGameHelp(); updateHUD(); return true;
   }
   function openTutorial(firstRun = false) {
     if (!['playing', 'paused'].includes(state)) return false;
-    helpReturnState = state; helpTab = 'guide'; tutorialStep = 0; tutorialIsFirstRun = firstRun;
+    helpReturnState = state; helpTab = 'guide'; tutorialStep = 0; tutorialIsFirstRun = firstRun; helpFocusReturn = firstRun ? null : el('combatGuide');
     state = 'help'; keys.clear(); pointer = null; renderGameHelp(); updateHUD(); return true;
+  }
+  function openBuildDetails(category, sourceButton) {
+    if (!['playing', 'paused'].includes(state) || !['attack', 'attribute', 'super'].includes(category)) return false;
+    const build = builds.summary(player), superView = category === 'super';
+    const entries = superView ? build.supers : build[category];
+    const label = superView ? '超级技能' : category === 'attack' ? '攻击词条' : '属性词条';
+    const content = entries.length ? '<div class="build-detail-list">' + entries.map(def => {
+      const recipe = superView ? def : builds.recipes.find(r => r.attack === def.id || r.attribute === def.id);
+      const progress = recipe && !superView ? '<small>合成：' + escapeHTML(builds.get(recipe.attack).name) + ' ' + (player.build.levels[recipe.attack] || 0) + '/5 ＋ ' + escapeHTML(builds.get(recipe.attribute).name) + ' ' + (player.build.levels[recipe.attribute] || 0) + '/5 → ' + escapeHTML(recipe.name) + (player.build.superSkills.includes(recipe.id) ? '（已合成）' : '') + '</small>' : '';
+      const effect = superView ? def.description : build.mode !== 'endless' && def.level >= def.maxLevel ? '已达关卡满级，进入无尽模式后可继续强化。' : '下次普通品质升级预览：' + def.describe(1, player);
+      const short = superView ? builds.briefRecipe(def.id) : build.mode !== 'endless' && def.level >= def.maxLevel ? '本关已满级' : '下次升级：' + builds.brief(def, 1, player);
+      return '<article class="build-detail"><img src="' + def.image + '" alt="' + escapeHTML(def.name) + '技能图示" width="48" height="48"><div><strong>' + escapeHTML(def.name) + (superView ? '' : ' · Lv.' + def.level) + '</strong><p>' + escapeHTML(short) + '</p>' + progress + '<details class="skill-numbers"><summary>详细数值</summary><p>' + escapeHTML(effect) + '</p></details></div></article>';
+    }).join('') + '</div>' : '<p>目前还没有' + label + '。击杀虫子、拾取经验后，在升级三选一中学习。</p>';
+    helpReturnState = state; helpTab = 'build'; tutorialIsFirstRun = false; helpFocusReturn = sourceButton || null;
+    state = 'help'; keys.clear(); pointer = null;
+    showPanel(label, '本局成长 / ' + (superView ? '已合成 ' + entries.length + ' 种' : entries.length + ' 种 · ' + build[category + 'Choices'] + ' 次成长'), content,
+      '<button class="primary" id="closeGameHelp">返回' + (helpReturnState === 'paused' ? '暂停菜单' : '游戏') + '</button>', '查看期间战斗暂停 · Esc 返回 · 实际属性显示在左下角');
+    overlay.classList.add('help-overlay'); overlay.setAttribute?.('role', 'dialog'); overlay.setAttribute?.('aria-modal', 'true'); overlay.setAttribute?.('aria-label', label);
+    el('closeGameHelp').onclick = closeGameHelp;
+    updateHUD(); el('closeGameHelp').focus?.(); return true;
   }
   function nextTutorial() {
     if (state !== 'help' || helpTab !== 'guide') return false;
@@ -747,6 +905,7 @@
   }
   function closeGameHelp() {
     if (state !== 'help') return false;
+    const focusReturn = helpFocusReturn; helpFocusReturn = null;
     if (tutorialIsFirstRun) { profile.tutorialSeen = true; saveProfile(); tutorialIsFirstRun = false; }
     keys.clear(); pointer = null; overlay.classList.remove('help-overlay');
     if (helpReturnState === 'paused') { state = 'playing'; pause(); }
@@ -754,9 +913,10 @@
     else if (helpReturnState === 'heroes') showHeroes();
     else if (helpReturnState === 'armory') showArmory();
     else if (helpReturnState === 'orchard') showOrchard();
+    else if (helpReturnState === 'world') showWorld();
     else if (helpReturnState === 'relicMap') { state = 'relicMap'; showRelicMap(); }
-    else { resume(); el('gameHelp').focus?.(); }
-    updateHUD(); return true;
+    else resume();
+    updateHUD(); focusReturn?.focus?.(); return true;
   }
   function sound(freq, length = .05, volume = .015) {
     if (!audioCtx || audioCtx.state !== 'running') return;
@@ -771,11 +931,18 @@
       showPanel('喘口气，再出发。', '果园小憩 / 第 ' + activeStage.id + ' 关', '<p>战斗与虫群苏醒已暂停。</p>', '<button class="primary" id="resume">继续清剿</button><button class="secondary" id="leave">放弃本次挑战</button>', '放弃本次挑战不会获得通关奖励');
       if (runMode === 'endless') showPanel('喘口气，再出发。', '无尽虫潮 / 第 ' + endlessWave + ' 波', '<p>无尽波次与战斗已暂停，已获得的材料已经保存。</p>', '<button class="primary" id="resume">继续无尽</button><button class="secondary" id="leave">结束无尽并结算</button>');
       el('resume').onclick = resume; el('leave').onclick = runMode === 'endless' ? () => finishEndless(true) : startScreen; el('pause').textContent = '▶';
+      if (training) {
+        showPanel('练习随时可以继续。', '晨芽练习场 / 暂停', '<p>当前任务进度和练习战斗已暂停。</p>', '<button class="primary" id="resume">继续练习</button><button class="secondary" id="leave">退出练习</button>', '退出后可从首页重新开始');
+        el('resume').onclick = resume; el('leave').onclick = () => exitTraining();
+      }
+      updateHUD();
     } else if (state === 'paused') resume();
   }
-  function resume() { state = 'playing'; overlay.classList.add('hidden'); el('pause').textContent = 'Ⅱ'; }
+  function resume() { state = 'playing'; overlay.classList.add('hidden'); el('pause').textContent = 'Ⅱ'; updateHUD(); }
   function grantVictoryRewards() {
+    if (runMode === 'training') return;
     if (!runRewarded) {
+      frontierRewards?.victory();
       runRewarded = true;
       stageVictoryReady = true;
       const firstClear = !profile.clearedStages.includes(activeStage.id);
@@ -799,21 +966,33 @@
         '<br>' + resident.icon + ' ' + resident.name + (newResident ? '已安置到果园' : '的家园再次得到守护') + '<small>' + (storageAvailable ? '奖励、精灵和关卡进度已保存' : '存储不可用，请保持本页面打开') + '</small></div>';
     }
   }
+  function worldRewardHTML() {
+    const info = frontierRewards?.status() || { text: '先进入世界登录，再挑战关卡即可领取世界专属物资。', canRetry: false };
+    return '<div class="world-reward-box"><strong>⚑ 世界专属物资</strong><p id="worldRewardStatus">' + escapeHTML(info.text) + '</p><button class="secondary" id="retryWorldReward" ' + (!info.canRetry ? 'hidden' : '') + '>重试入库</button></div>';
+  }
+  function updateWorldRewardMessage(info) {
+    if (state !== 'ended' || runMode !== 'stage') return;
+    const message = el('worldRewardStatus'), retry = el('retryWorldReward');
+    if (message) message.textContent = info.text;
+    if (retry) retry.hidden = !info.canRetry;
+  }
   function finish(win) {
     if (!currentAccount) return false;
+    if (runMode === 'training') { exitTraining(); return false; }
     if (runMode === 'endless') { finishEndless(win); return; }
     if (state === 'ended') return;
     state = 'ended'; keys.clear(); pointer = null;
     if (win) grantVictoryRewards();
     showPanel(win ? '青叶果园，平安无恙。' : '小果子，歇一歇。', '第 ' + activeStage.id + ' 关 / ' + activeStage.name, '<div class="result-layout"><div class="result-summary"><p>' +
-      (win ? '本关 ' + activeStage.bossCount + ' 位虫王已全部击败，精灵已经回家。' : '虫群暂时占了上风。培养精灵、强化装备后，再试一次。') + '</p>' + (win ? victoryRewardHTML : '') +
+      (win ? '本关 ' + activeStage.bossCount + ' 位虫王已全部击败，精灵已经回家。' : '虫群暂时占了上风。培养精灵、强化装备后，再试一次。') + '</p>' + (win ? victoryRewardHTML + worldRewardHTML() : '') +
       '<div class="result-stats"><div><b>' + kills + ' / ' + activeStage.enemyCount + '</b><span>驱赶害虫</span></div><div><b>' + player.level + '</b><span>本关成长等级</span></div></div>' +
       '</div>' + (win ? '<div class="endless-offer"><strong>∞ 无尽虫潮 · 突破成长</strong><span>保留本关构筑，补满生命，放开种类与等级上限。<br>每 8 秒一波，材料获得即保存，可随时结束。</span></div>' : '<div class="endless-offer"><strong>🌱 下一次，带着成长出发。</strong><span>到果园培养伙伴，或在工坊强化装备。局外成长永久保留。</span></div>') + '</div>',
-      (win ? '<button class="primary" id="startEndless">进入无尽模式 ∞</button>' : '') + (win && activeStage.id < stages.length ? '<button class="secondary" id="nextStage">挑战下一关</button>' : '<button class="secondary" id="restart">再挑战一次</button>') + '<button class="secondary" id="resultOrchard">看看果园</button><button class="secondary" id="resultArmory">装备与养成</button><button class="secondary" id="backLobby">选择关卡</button>', '奖励与关卡进度自动保存');
+      (win ? '<button class="primary" id="startEndless">进入无尽模式 ∞</button>' : '') + (win && activeStage.id < stages.length ? '<button class="secondary" id="nextStage">挑战下一关</button>' : '<button class="secondary" id="restart">再挑战一次</button>') + '<button class="secondary" id="resultWorld">进入世界</button><button class="secondary" id="resultOrchard">看看果园</button><button class="secondary" id="resultArmory">装备与养成</button><button class="secondary" id="backLobby">选择关卡</button>', '奖励与关卡进度自动保存');
     if (win && activeStage.id < stages.length) el('nextStage').onclick = () => { selectStage(activeStage.id + 1); start(); };
     else el('restart').onclick = start;
     el('resultArmory').onclick = showArmory; el('backLobby').onclick = startScreen;
-    el('resultOrchard').onclick = showOrchard; updateHUD();
+    el('resultOrchard').onclick = showOrchard; el('resultWorld').onclick = showWorld; updateHUD();
+    if (win) el('retryWorldReward').onclick = () => frontierRewards?.retry();
     if (win) el('startEndless').onclick = startEndless;
     sound(win ? 660 : 180, .3, .03);
   }
@@ -921,14 +1100,36 @@
       state = 'playing'; overlay.classList.add('hidden'); updateHUD(); return;
     }
     state = 'upgrade'; keys.clear(); pointer = null;
+    renderUpgrade(); sound(620, .14);
+  }
+  function recipeGuideHTML() {
+    const target = builds.goal(player), recommendation = builds.recommended(player);
+    const picture = (id, name) => '<img src="assets/skills/' + id + '.svg" alt="' + name + '技能图示" width="48" height="48">';
+    const progress = r => builds.get(r.attack).name + ' ' + Math.min(5, r.attackLevel) + '/5 ＋ ' + builds.get(r.attribute).name + ' ' + Math.min(5, r.attributeLevel) + '/5';
+    const banner = target ? '<div class="recipe-goal ' + (target.crafted ? 'complete' : '') + '">' + picture(target.id, target.name) + '<div><strong>' + (target.crafted ? '✓ 已合成 · ' : '目标 · ') + target.name + '</strong><span>' + progress(target) + '</span><small>' + (target.crafted ? builds.briefRecipe(target.id) : target.reason || (recommendation ? '推荐下一步：' + builds.get(recommendation.id).name : '配方材料均已齐备')) + '</small></div></div>' : '<p class="recipe-intro">选一条合成路线，逐步练成超级技能。</p>';
+    return '<div class="recipe-guide">' + banner + '<details class="recipe-picker"><summary>选择超级技能' + (target ? ' · 更换目标' : ' · 8种路线') + '</summary><div class="recipe-options">' + builds.recipes.map(recipe => {
+      const r = builds.recipeState(player, recipe), selected = target?.id === r.id;
+      return '<button type="button" class="recipe-option' + (selected ? ' selected' : '') + '" data-recipe-goal="' + r.id + '" aria-pressed="' + selected + '" ' + (!r.possible ? 'disabled' : '') + '>' + picture(r.id, r.name) + '<div><strong>' + r.name + '</strong><span>' + builds.briefRecipe(r.id) + '</span><small>' + progress(r) + '</small><b>' + (r.reason || (selected ? '当前目标' : r.started ? '已有材料 · 选择此路线' : '选择此路线')) + '</b></div></button>';
+    }).join('') + '</div>' + (target ? '<button type="button" class="recipe-clear" id="clearRecipeGoal">取消目标，自由搭配</button>' : '') + '</details></div>';
+  }
+  function renderUpgrade() {
+    if (state !== 'upgrade') return false;
     const b = player.build, endless = runMode === 'endless';
     const rule = endless ? '无尽突破：攻击 ' + b.attackSlots.length + ' 种 · 属性 ' + b.attributeSlots.length + ' 种 · 词条等级持续成长' : '攻击 ' + b.attackSlots.length + ' / 4 种 · 属性 ' + b.attributeSlots.length + ' / 4 种 · 每种最高 5 级';
-    showPanel(endless ? '继续突破成长' : '选择你的成长', 'LEVEL UP / LV. ' + (player.level + 1), '<div class="build-limit">' + rule + '<br>配对攻击与属性达到 5 级，自动合成。' + (endless ? '合成后继续升级攻击可强化超级技能。' : '已有词条与配方伙伴更容易出现。') + '</div><div class="cards" style="--choices:' + choices.length + '">' + choices.map((u, i) => {
+    const target = builds.goal(player), recommendation = builds.recommended(player);
+    showPanel(training ? '选出你的第一枚词条' : endless ? '继续突破成长' : '选择你的成长', 'LEVEL UP / LV. ' + (player.level + 1), '<div class="build-limit">' + rule + ' · 配方两项均5级自动合成</div>' + recipeGuideHTML() + '<div class="cards" style="--choices:' + choices.length + '">' + choices.map((u, i) => {
       const level = b.levels[u.id] || 0, recipe = builds.recipes.find(r => r.id === u.recipe);
-      return '<button class="card" data-choice="' + i + '" style="border-color:' + u.rarity.color + '"><div class="build-category" style="color:' + (u.category === 'attack' ? '#f6c18a' : '#aee3c0') + '">' + (u.category === 'attack' ? '攻击 · 火力技能' : '属性 · 生存成长') + '</div><div class="card-icon" style="color:' + u.rarity.color + '">' + u.icon + '</div><strong>' + u.name + '</strong><span>' + u.desc + '</span><small style="color:' + u.rarity.color + '">' + u.rarity.name + ' · ' + level + ' → ' + (level + 1) + (endless ? ' 级 · ' : ' / 5 级 · ') + (level ? '继续培养' : '学习新词条') + '<br>按 ' + (i + 1) + ' 选择</small>' + (recipe ? '<div class="recipe-progress">' + (b.superSkills.includes(recipe.id) ? '✓ 已合成 ' + recipe.icon + ' ' + recipe.name + (endless ? ' · 可继续强化' : '') : builds.get(recipe.attack).name + ' ' + (b.levels[recipe.attack] || 0) + '/5 ＋ ' + builds.get(recipe.attribute).name + ' ' + (b.levels[recipe.attribute] || 0) + '/5<br>→ ' + recipe.icon + ' ' + recipe.name) + '</div>' : '') + '</button>';
-    }).join('') + '</div>', '', (endless ? '无尽随机成长 · 等级持续提升' : '本关总经验 ' + stageXP.budget.toLocaleString('en-US') + ' · ' + experience.choices + ' 次升级' + (stageXP.settled ? ' · 完成成长后救援' : '')) + ' · 战斗已暂停 · 按 1 / 2 / 3 选择');
+      const recommended = target?.possible && [target.attack, target.attribute].includes(u.id);
+      return '<button class="card' + (recommended ? ' recommended' : '') + '" data-choice="' + i + '" style="border-color:' + u.rarity.color + '" title="' + escapeHTML(u.desc) + '"><div class="build-category">' + (recommended ? '✦ 推荐 · ' + target.name : u.category === 'attack' ? '攻击' : '属性') + '</div><div class="card-icon"><img src="' + u.image + '" alt="' + u.name + '技能图示" width="72" height="72"></div><strong>' + u.name + '</strong><span>' + escapeHTML(builds.brief(u, u.rarity.mult, player)) + '</span><small style="color:' + u.rarity.color + '">' + u.rarity.name + ' · Lv.' + level + ' → ' + (level + 1) + '<br>按 ' + (i + 1) + ' 选择</small>' + (recipe ? '<div class="recipe-progress">' + (b.superSkills.includes(recipe.id) ? '✓ ' : '合成 → ') + recipe.name + '</div>' : '') + '</button>';
+    }).join('') + '</div>', '', (training ? '180 经验完成第一次成长 · 本次词条仅在练习中生效' : endless ? '无尽随机成长 · 等级持续提升' : '本关总经验 ' + stageXP.budget.toLocaleString('en-US') + ' · ' + experience.choices + ' 次升级' + (stageXP.settled ? ' · 完成成长后救援' : '')) + ' · 战斗已暂停 · 按 1 / 2 / 3 选择');
     overlay.classList.add('upgrade-overlay');
-    overlay.querySelectorAll('[data-choice]').forEach(b => b.onclick = () => choose(Number(b.dataset.choice))); sound(620, .14);
+    overlay.querySelectorAll('[data-choice]').forEach(b => b.onclick = () => choose(Number(b.dataset.choice)));
+    overlay.querySelectorAll('[data-recipe-goal]').forEach(button => button.onclick = () => {
+      if (state !== 'upgrade' || !builds.setGoal(player, button.dataset.recipeGoal)) return;
+      renderUpgrade();
+    });
+    if (el('clearRecipeGoal')) el('clearRecipeGoal').onclick = () => { if (state !== 'upgrade') return; builds.setGoal(player, ''); renderUpgrade(); };
+    updateHUD(); return true;
   }
   function choose(i) {
     if (state !== 'upgrade' || !choices[i]) return;
@@ -936,6 +1137,7 @@
     for (const recipe of result.newSuper) queueNotice(recipe.name, recipe.description, recipe.icon, recipe.color, 'super');
     player.xp -= player.need; player.level++; player.need = experienceNeed(player.level);
     state = 'playing'; still = 0; overlay.classList.add('hidden'); updateHUD();
+    if (training) { trainingTick(); updateHUD(); return; }
     if (player.xp >= player.need) upgrade(); else checkStageCompletion();
   }
   el('pause').onclick = () => state === 'help' ? closeGameHelp() : pause();
@@ -951,8 +1153,16 @@
   el('openRelicMap').onclick = showRelicMap;
   el('dashSkill').onclick = activateDash;
   el('heroSkill').onclick = activateHeroSkill;
+  el('combatGuide').onclick = () => openTutorial(false);
+  el('trainingExit').onclick = () => exitTraining();
   addEventListener('keydown', e => {
     if (state === 'cover') return;
+    if (state === 'world') {
+      if (e.target?.closest?.('input, select, textarea')) return;
+      if (e.key.toLowerCase() === 'h') openGameHelp();
+      else if (e.key === 'Escape') startScreen();
+      return;
+    }
     if (state !== 'help' && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
     if (e.repeat) return;
     const k = e.key.toLowerCase();
@@ -1074,6 +1284,7 @@
     enemy.x = point.x; enemy.y = point.y;
   }
   function update(dt) {
+    const trainingOrigin = training ? { x: player.x, y: player.y } : null;
     elapsed += dt;
     if (runMode === 'endless') {
       waveClock -= dt;
@@ -1123,7 +1334,7 @@
         if (player.shield > 0) {
           relicEffects.consumeShield(player, runRelicDefs.filter(def => player.skills[def.key]));
           relicEffect('shield', { type: 'ring', x: player.x, y: player.y, radius: 45 }); sound(900, .1, .02);
-        } else { const guard = elapsed < player.guardUntil ? player.guardDefense : 0; const before = player.hp; player.hp = Math.max(0, player.hp - Math.max(1, e.damage - player.defense - guard)); lifeDamage = before - player.hp; player.sinceHit = 0; }
+        } else { const guard = elapsed < player.guardUntil ? player.guardDefense : 0; const before = player.hp; player.hp = Math.max(training ? player.maxHp * .5 : 0, player.hp - Math.max(1, e.damage - player.defense - guard)); lifeDamage = before - player.hp; player.sinceHit = 0; }
         if (lifeDamage > 0 && player.hp > 0 && player.thorns > 0) skillHit(e, player.damage * player.thorns, '#d6be8c');
         player.inv = .7; shake = 5;
         burst(player.x, player.y, '#ffc286', 8); sound(130, .12, .025);
@@ -1159,36 +1370,59 @@
         healPlayer(amount); if (amount) player.killHealEvents.push({ at: elapsed, amount });
       }
       if (e.boss) { bossKills++; nextBossAllowedAt = elapsed + combat.bossRecovery; } else nonBossKills++;
-      const reward = runMode === 'stage' ? stageXP.grant(e.xp, player.xpMult, e) : e.xp * player.xpMult;
+      const reward = runMode === 'training' ? e.xp : runMode === 'stage' ? stageXP.grant(e.xp, player.xpMult, e) : e.xp * player.xpMult;
       if (e.boss) player.xp += runMode === 'stage' ? stageXP.collect(reward, e) : reward;
       else if (reward > 0) dropExperience(e.x, e.y, reward);
       burst(e.x, e.y, e.boss ? e.color : e.elite ? '#f6c26b' : e.type ? '#e1aa80' : '#aec582', e.boss ? 36 : e.elite ? 16 : 8); return false;
     });
     gems = gems.filter(g => {
+      if (training && trainingCatalog.steps[training.step].id === 'combat') return true;
       const dx = player.x - g.x, dy = player.y - g.y, d = Math.hypot(dx, dy);
       if (d < player.pickup) { g.x += dx / (d || 1) * Math.min(d, 320 * player.magnetMult * dt); g.y += dy / (d || 1) * Math.min(d, 320 * player.magnetMult * dt); }
-      if (d < 19) { player.xp += runMode === 'stage' ? stageXP.collect(g.value, g) : g.value; return false; } return true;
+      if (d < 19) { const value = runMode === 'stage' ? stageXP.collect(g.value, g) : g.value; player.xp += value; if (training) training.xpCollected += value; return false; } return true;
     });
     for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; }
     particles = particles.filter(p => p.life > 0);
     if (runMode === 'endless') bankEndlessRewards();
+    if (training) {
+      const distance = Math.hypot(player.x - trainingOrigin.x, player.y - trainingOrigin.y);
+      trainingTick(dt, distance); updateHUD();
+      if (training && state === 'playing' && player.xp >= player.need) upgrade();
+      return;
+    }
     updateHUD();
     if (checkStageCompletion()) return;
     if (player.xp >= player.need) { upgrade(); return; }
     if (runMode === 'stage') announceBossArrival();
   }
   function updateHUD() {
+    const activeHUD = isRunActive(), hudButtonsReady = ['playing', 'paused'].includes(state);
+    document.body.classList.toggle('run-hud-active', activeHUD);
+    document.body.classList.toggle('run-hud-blocked', activeHUD && !hudButtonsReady);
+    document.body.classList.toggle('training-active', !!training && activeHUD);
+    el('trainingHud').classList.toggle('hidden', !training || !activeHUD || !hudButtonsReady);
+    el('trainingExit').disabled = !training || !hudButtonsReady;
+    if (training) {
+      const step = trainingCatalog.steps[training.step];
+      el('trainingIcon').textContent = step.icon; el('trainingProgress').textContent = '晨芽练习场 · ' + (training.step + 1) + ' / 10';
+      el('trainingTitle').textContent = step.title; el('trainingHint').textContent = step.hint;
+      const target = { upgrade: '选择一次升级', skill: '施放一次英雄技能', relic: '走近发光饰品', map: '打开投放图并返回', elite: '击败这只精英虫', boss: '击败训练虫王' };
+      el('trainingTarget').textContent = step.id === 'move' ? '已移动 ' + Math.min(140, Math.floor(training.distance)) + ' / 140' : step.id === 'stand' ? '站定 ' + Math.min(1.2, training.standTime).toFixed(1) + ' / 1.2 秒' : step.id === 'xp' ? '已拾取 ' + Math.round(training.xpCollected) + ' / 180 经验' : step.id === 'combat' ? '已击杀 ' + (kills - training.lastKills) + ' / 2' : '目标：' + target[step.id];
+    }
+    el('guardianHud').classList.toggle('hidden', !activeHUD); el('combatRail').classList.toggle('hidden', !activeHUD);
+    el('combatGuide').disabled = !hudButtonsReady;
     el('logoutAccount').disabled = !currentAccount || isRunActive();
     el('logoutAccount').title = isRunActive() ? '先结束或放弃当前挑战，再切换账号' : '保存进度并切换账号';
-    const outsideHelp = !!currentAccount && !isRunActive() && ['lobby', 'heroes', 'armory', 'orchard', 'relicMap', 'help'].includes(state);
+    const outsideHelp = !!currentAccount && !isRunActive() && ['lobby', 'heroes', 'armory', 'orchard', 'world', 'relicMap', 'help'].includes(state);
     el('gameHelp').classList.toggle('hidden', !outsideHelp);
     el('gameHelp').disabled = !outsideHelp;
     el('endEndless').disabled = !['playing', 'paused'].includes(state);
     const s = isRunActive() || state === 'ended' ? activeStage : stage();
-    el('hpFill').style.width = player.hp / player.maxHp * 100 + '%'; el('hpText').textContent = Math.ceil(player.hp) + ' / ' + player.maxHp;
+    el('hpFill').style.width = Math.max(0, Math.min(100, player.hp / player.maxHp * 100)) + '%'; el('hpText').textContent = Math.ceil(player.hp) + ' / ' + player.maxHp;
+    el('hpMeter').setAttribute?.('aria-valuemax', String(player.maxHp)); el('hpMeter').setAttribute?.('aria-valuenow', String(Math.max(0, Math.ceil(player.hp))));
     const inRun = isRunActive() || state === 'ended';
-    el('remaining').textContent = inRun ? enemies.length : s.enemyCount;
-    el('populationLabel').textContent = runMode === 'endless' && inRun ? '无尽第 ' + endlessWave + ' 波' : '剩余害虫';
+    el('remaining').textContent = training ? (training.step + 1) + ' / 10' : inRun ? enemies.length : s.enemyCount;
+    el('populationLabel').textContent = training ? '练习进度' : runMode === 'endless' && inRun ? '无尽第 ' + endlessWave + ' 波' : '剩余害虫';
     el('pursuing').textContent = inRun ? enemies.filter(e => e.aggro && e.hp > 0).length : s.initialPursuers;
     el('enemyTypes').textContent = runMode === 'endless' && inRun ? '无尽虫潮 · 连续增援' : '普通 ' + (inRun ? enemies.filter(e => !e.boss && !e.elite).length : s.normalCount) + ' · 精英 ' + (inRun ? enemies.filter(e => e.elite).length : s.eliteCount) + ' · Boss ' + (inRun ? bossKills : 0) + ' / ' + s.bossCount;
     el('level').textContent = 'LV. ' + player.level + (runMode === 'stage' && inRun ? ' / ' + experience.levelCap : '');
@@ -1198,7 +1432,7 @@
     el('stance').classList.toggle('active', boost && inRun);
     el('damageStat').textContent = seedDamage().toFixed(1); el('rateStat').textContent = player.rate.toFixed(1) + ' / 秒';
     el('speedStat').textContent = Math.round(player.speed); el('shotsStat').textContent = player.shots; el('pickupStat').textContent = Math.round(player.pickup); el('killsStat').textContent = inRun ? kills : 0;
-    el('stageName').textContent = '第 ' + s.id + ' / ' + stages.length + ' 关 · ' + (runMode === 'endless' && inRun ? '无尽虫潮' : s.name);
+    el('stageName').textContent = training ? '新手引导关 · ' + trainingCatalog.name : '第 ' + s.id + ' / ' + stages.length + ' 关 · ' + (runMode === 'endless' && inRun ? '无尽虫潮' : s.name);
     el('pursuitRule').innerHTML = runMode === 'endless' && inRun ? '每 8 秒一波，数量与强度持续增加<br>可随时结束，材料获得即保存' : '普通：开局 ' + s.initialPursuers + '，每 ' + s.pursuitInterval + ' 秒 +' + s.batchSize + '<br>精英：' + s.eliteFirstAt + ' 秒首批，每 ' + s.eliteInterval + ' 秒 +' + s.eliteBatchSize + '<br>Boss ' + s.bossSchedule[0] + ' 秒起与小怪混合登场 · 同时最多 ' + s.bossActiveCap + ' 位';
     el('loadout').textContent = gearDefs[profile.equipped.weapon].name + ' · ' + gearDefs[profile.equipped.armor].name + ' · ' + gearDefs[profile.equipped.charm].name;
     const hero = growth.hero(player.heroId);
@@ -1232,12 +1466,12 @@
     el('dashSkill').disabled = state !== 'playing' || (player.skillTimers.dash || 0) > 0;
     el('dashSkill').textContent = (player.skillTimers.dash || 0) > 0 ? '闪步 · ' + player.skillTimers.dash.toFixed(1) + 's' : '闪步 · Space';
     const claimed = relicDrops.filter(d => d.claimed).length;
-    el('relicStatus').textContent = '本局饰品 ' + claimed + ' / 6 · 50 件随机投放';
+    el('relicStatus').textContent = training ? '训练饰品 ' + claimed + ' / 1 · 正式每局随机 6 件' : '本局饰品 ' + claimed + ' / 6 · 50 件随机投放';
     const ownedDefs = runRelicDefs.filter(def => player.skills[def.key]);
-    const relicSignature = ownedDefs.map(def => def.id).join(',') || 'empty';
+    const relicSignature = (training ? 'training:' : '') + (ownedDefs.map(def => def.id).join(',') || 'empty');
     if (relicSignature !== relicHudSignature) {
       relicHudSignature = relicSignature;
-      el('relicSlots').innerHTML = ownedDefs.length ? ownedDefs.map(def => '<button class="relic-slot active" data-owned-relic="' + def.id + '" title="' + def.name + '：' + def.description + '" aria-label="查看' + def.name + '效果">' + def.icon + '<b>' + def.name + '</b></button>').join('') : '<span class="relic-empty">探索亮光投放点，拾取后显示于此<br>M 查看本局 6 件的位置与效果</span>';
+      el('relicSlots').innerHTML = ownedDefs.length ? ownedDefs.map(def => '<button class="relic-slot active" data-owned-relic="' + def.id + '" title="' + def.name + '：' + def.description + '" aria-label="查看' + def.name + '效果">' + def.icon + '<b>' + def.name + '</b></button>').join('') : '<span class="relic-empty">' + (training ? '饰品将在第 7 步出现<br>M 可查看位置和效果' : '探索亮光投放点，拾取后显示于此<br>M 查看本局 6 件的位置与效果') + '</span>';
       el('relicSlots').querySelectorAll('[data-owned-relic]').forEach(button => { button.onclick = () => { selectedRelic = button.dataset.ownedRelic; showRelicMap(); }; });
     }
     el('lootTicker').classList.toggle('hidden', !currentNotice || !isRunActive());
@@ -1248,12 +1482,18 @@
       buildHudSignature = buildSignature; const build = builds.summary(player);
       el('buildSlots').innerHTML = ['attack', 'attribute'].map(category => {
         const endless = build.mode === 'endless', entries = build[category], visible = entries.slice(-4);
-        return '<div class="build-row"><strong title="' + entries.map(def => def.name + ' Lv.' + def.level).join('、') + '">' + (category === 'attack' ? '⚔ 攻击' : '🌿 属性') + ' ' + entries.length + (endless ? ' 种 · ' + build[category + 'Choices'] + ' 次成长' : '/4 种 · ' + build[category + 'Choices'] + '/20 次') + (entries.length > 4 ? '（近4种）' : '') + '</strong><div class="build-chips">' + Array.from({ length: 4 }, (_, i) => {
-          const def = visible[i]; return def ? '<span class="build-chip ' + category + '" title="' + def.name + ' Lv.' + def.level + '">' + def.icon + ' ' + (endless ? 'Lv.' + def.level : def.level + '/5') + '</span>' : '<span class="build-chip empty">空槽</span>';
-        }).join('') + '</div></div>';
+        const name = category === 'attack' ? '攻击' : '属性';
+        return '<div class="build-row"><strong title="' + name + ' ' + entries.length + ' 种 · ' + build[category + 'Choices'] + ' 次成长"><span>' + name + '</span><small>' + entries.length + (endless ? ' 种' : '/4') + '</small></strong><div class="build-chips">' + Array.from({ length: 4 }, (_, i) => {
+          const def = visible[i], hint = def ? def.name + ' · Lv.' + def.level + (endless ? '' : ' / 5') + ' · 点击查看' + name + '构筑' : name + '空槽 · 点击查看构筑说明';
+          return '<button type="button" class="build-chip ' + (def ? category : 'empty') + '" data-build-category="' + category + '" title="' + hint + '" aria-label="' + hint + '"><span class="build-chip-icon" aria-hidden="true">' + (def ? def.icon : '＋') + '</span>' + (def ? '<small class="build-chip-level">' + def.level + '</small>' : '') + '</button>';
+        }).join('') + '</div>' + (entries.length > 4 ? '<button type="button" class="build-more" data-build-category="' + category + '" aria-label="查看全部' + entries.length + '种' + name + '词条">全部 ' + entries.length + ' 种</button>' : '') + '</div>';
       }).join('');
-      el('superSkills').innerHTML = build.supers.length ? '<div class="super-strip">' + build.supers.map(recipe => '<span title="' + recipe.description + '">' + recipe.icon + ' ' + recipe.name + '</span>').join(' · ') + '</div>' : '';
+      el('superSkills').innerHTML = build.supers.length ? '<div class="super-strip"><strong>超级</strong>' + build.supers.map(recipe => '<button type="button" class="super-chip" data-build-category="super" title="' + recipe.name + '：' + recipe.description + '" aria-label="查看' + recipe.name + '效果"><span aria-hidden="true">' + recipe.icon + '</span></button>').join('') + '</div>' : '';
+      el('buildSlots').querySelectorAll('[data-build-category]').forEach(button => { button.onclick = () => openBuildDetails(button.dataset.buildCategory, button); });
+      el('superSkills').querySelectorAll('[data-build-category]').forEach(button => { button.onclick = () => openBuildDetails('super', button); });
     }
+    el('buildSlots').querySelectorAll('[data-build-category]').forEach(button => { button.disabled = !hudButtonsReady; });
+    el('superSkills').querySelectorAll('[data-build-category]').forEach(button => { button.disabled = !hudButtonsReady; });
   }
   function ellipse(x, y, rx, ry, color) { ctx.fillStyle = color; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); ctx.fill(); }
   function drawSprite(key, x, y, width, height = width, angle = 0) {
@@ -1276,6 +1516,7 @@
   }
   function onScreen(o, margin = 40) { return o.x > camera.x - margin && o.x < camera.x + W + margin && o.y > camera.y - margin && o.y < camera.y + H + margin; }
   function minimap() {
+    if (training) return;
     const x = W - 177, y = 95, w = 150, h = 106, sx = w / WORLD_W, sy = h / WORLD_H;
     ctx.fillStyle = '#12261ee8'; ctx.fillRect(x - 9, y - 24, w + 18, h + 61); ctx.strokeStyle = '#88a75888'; ctx.lineWidth = 1; ctx.strokeRect(x, y, w, h);
     ctx.fillStyle = '#d8e7b5'; ctx.font = '11px "Microsoft YaHei",sans-serif'; ctx.fillText(mapLayout.id + ' · ' + mapLayout.name, x, y - 9);

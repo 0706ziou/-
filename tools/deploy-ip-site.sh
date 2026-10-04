@@ -87,6 +87,91 @@ for pair in "tls:$tls_conf" "service:$service" "timer:$timer" "reload:$ops/reloa
   name=${pair%%:*}; file=${pair#*:}
   [[ ! -e $file ]] || cp -p "$file" "$backup/$name"
 done
+# Validate the optional world proxy before changing any running configuration.
+# Keep its original bytes; static upgrades must not disconnect the shared world.
+python3 - "$backup/tls" "$backup/world-api.conf" <<'PY'
+import pathlib, re, sys
+source, output = map(pathlib.Path, sys.argv[1:])
+if not source.exists():
+    output.write_bytes(b'')
+    raise SystemExit(0)
+raw = source.read_bytes()
+text = raw.decode('utf-8')
+world_begin, world_end = '# BEGIN ORCHARD WORLD API', '# END ORCHARD WORLD API'
+WORLD_PROXY_REQUIREMENTS = {'proxy_pass', 'header:Host', 'header:X-Real-IP', 'header:X-Forwarded-Proto'}
+if text.count(world_begin) != text.count(world_end) or text.count(world_begin) > 1:
+    raise SystemExit('World API marker is duplicated or incomplete; no configuration changed.')
+if world_begin not in text:
+    if '/api/world' in text:
+        raise SystemExit('An unmanaged world API route exists; inspect it before static deployment.')
+    output.write_bytes(b'')
+    raise SystemExit(0)
+pattern = r'^[ \t]*' + re.escape(world_begin) + r'[ \t]*\n(.*?)^[ \t]*' + re.escape(world_end) + r'[ \t]*(?:\n|$)'
+matches = list(re.finditer(pattern, text, re.M | re.S))
+if len(matches) != 1:
+    raise SystemExit('World API marker is malformed or reversed; no configuration changed.')
+match = matches[0]
+if '/api/world' in text[:match.start()] + text[match.end():]:
+    raise SystemExit('Another unmanaged world API route exists; no configuration changed.')
+if len(re.findall(r'^\s*server\s*\{', text, re.M)) != 1:
+    raise SystemExit('World API must belong to the one managed HTTPS server.')
+# Track braces without treating quotes or comments as configuration structure.
+depth, quote, comment, escaped = 0, None, False, False
+levels = {}
+for offset, char in enumerate(text):
+    if offset in (match.start(), match.end()): levels[offset] = depth
+    if comment:
+        if char == '\n': comment = False
+        continue
+    if escaped:
+        escaped = False
+        continue
+    if char == '\\': escaped = True; continue
+    if quote:
+        if char == quote: quote = None
+        continue
+    if char in ('"', "'"): quote = char
+    elif char == '#': comment = True
+    elif char == '{': depth += 1
+    elif char == '}':
+        depth -= 1
+        if depth < 0: raise SystemExit('World API configuration has invalid braces.')
+levels[len(text)] = depth
+if depth or quote or levels.get(match.start()) != 1 or levels.get(match.end()) != 1:
+    raise SystemExit('World API block is not a complete route within the managed server.')
+inner = re.sub(r'#[^\n]*', '', match.group(1))
+route = re.fullmatch(r'\s*location\s+\^~\s+/api/world/\s*\{([^{}]*)\}\s*', inner, re.S)
+if not route:
+    raise SystemExit('World API block must contain exactly one complete /api/world/ proxy location.')
+pieces = route.group(1).split(';')
+if pieces[-1].strip(): raise SystemExit('World API directive is missing its semicolon.')
+seen = set()
+for piece in pieces[:-1]:
+    words = piece.split()
+    if not words: raise SystemExit('World API contains an empty directive.')
+    directive, values = words[0], words[1:]
+    if directive == 'proxy_pass':
+        valid = values in (['http://127.0.0.1:8766'], ['http://localhost:8766'])
+        key = directive
+    elif directive == 'proxy_set_header' and len(values) == 2:
+        key = 'header:' + values[0]
+        allowed = {'Host': ('$host',), 'X-Real-IP': ('$remote_addr',), 'X-Forwarded-Proto': ('$scheme', 'https')}
+        valid = values[0] in allowed and values[1] in allowed[values[0]]
+    elif directive in ('proxy_connect_timeout', 'proxy_read_timeout'):
+        key = directive
+        valid = len(values) == 1 and re.fullmatch(r'[1-9][0-9]?s', values[0]) and int(values[0][:-1]) <= 60
+    elif directive == 'client_max_body_size':
+        key = directive
+        valid = values == ['8k']
+    else:
+        raise SystemExit('World API block contains an unreviewed directive; inspect it before deployment.')
+    if not valid or key in seen:
+        raise SystemExit('World API block contains an unsafe or duplicated proxy directive.')
+    seen.add(key)
+if not WORLD_PROXY_REQUIREMENTS.issubset(seen):
+    raise SystemExit('World API proxy is missing required upstream or authenticated origin/IP headers.')
+output.write_bytes(text[match.start():match.end()].encode('utf-8'))
+PY
 if systemctl is-enabled --quiet orchard-certbot-renew.timer 2>/dev/null; then touch "$backup/timer-enabled"; fi
 if systemctl is-active --quiet orchard-certbot-renew.timer 2>/dev/null; then touch "$backup/timer-active"; fi
 
@@ -301,7 +386,7 @@ mv -Tf "$base/.orchard-publish-$$" "$base/orchard"
 if [[ $selinux -eq 1 ]]; then restorecon "$base/orchard"; fi
 
 printf '%s\n' '5/6 Enabling HTTPS and validating the actual served game files.'
-cat > "$tls_conf" <<NGINX
+cat > "$backup/new-tls.conf" <<NGINX
 $marker. Do not add another default listener on port 443.
 server {
     listen 443 ssl default_server;
@@ -333,6 +418,18 @@ server {
     location / { return 404; }
 }
 NGINX
+# Insert only the previously validated complete world block; otherwise publish
+# the ordinary static-only server. Both inputs stay in the rollback backup.
+python3 - "$backup/new-tls.conf" "$backup/world-api.conf" "$tls_conf" <<'PY'
+import pathlib, sys
+template, world_block, output = map(pathlib.Path, sys.argv[1:])
+text = template.read_bytes()
+block = world_block.read_bytes()
+if not text.endswith(b'}\n') or b'# BEGIN ORCHARD WORLD API' in text:
+    raise SystemExit('Unexpected generated TLS template; configuration not overwritten.')
+if block and not block.endswith(b'\n'): block += b'\n'
+output.write_bytes(text[:-2] + block + text[-2:])
+PY
 "$nginx" -t
 "$nginx" -s reload
 for path in index.html auth-data.js game.js static-manifest.json; do

@@ -42,9 +42,20 @@ node tools/package-site.cjs
 node tools/package-site-verify.cjs
 node tools/package-site-verify.cjs --site /实际发布目录
 python3 tools/deploy-config-verify.py
+python3 tools/deploy-world-config-verify.py
 python3 tools/deploy-readiness-verify.py --site /实际的036e28a版本发布目录
 ```
 
 发布包在 `deployment-artifacts/` 下，此目录不提交到 Git。`static-manifest.json` 记录每个运行文件的字节数与 SHA256。
 
-当前账号和存档仍保存在浏览器本地。`file://`、HTTP、HTTPS 是不同存储来源，部署不会自动把本地文件版的进度搬到新网址，也没有建立联网账号、跨设备存档或真人世界服务。
+关卡账号和存档仍保存在浏览器本地。`file://`、HTTP、HTTPS 是不同存储来源，部署不会自动把本地文件版的进度搬到新网址。新版共享世界使用单独的服务器账号和 SQLite 城池存档；关卡进度不会因接入世界服务而自动变成云存档。
+
+## 共享世界的部署衔接
+
+先使用本脚本发布包含 `frontier-ui.js` 和 `frontier-rewards.js` 的新静态版本，再使用同一固定提交中的 `tools/deploy-world-server.sh 完整SHA` 安装世界 API。它使用专用无登录用户、`orchard-world.service`、本机 8766 端口，以及独立的 `/opt/orchard-world` 和 `/var/lib/orchard-world` 目录。完整步骤及账号、数据、多人验收见 [WORLD-SERVER.md](WORLD-SERVER.md)。
+
+世界代理使用受管 `# BEGIN ORCHARD WORLD API` / `# END ORCHARD WORLD API` 块。新版静态部署在开始改配置前验证它的完整性、所属 server 和固定本机 upstream、Origin/IP 头等指令；有效块保留原始字节并插入新 HTTPS 配置。首次未接入世界时照常发布静态游戏；重复、残缺、不安全或未托管的世界路由会中止部署，不会把它们静默丢弃。
+
+后续升级仍先发布静态资源，再按需升级对应世界服务代码。数据库与静态版本目录独立，切换网页版本或回滚服务不会删除城池存档。旧版静态脚本可能覆盖世界代理，所以不能混用旧脚本升级有世界功能的新站点。
+
+静态脚本的 `DEPLOY_OK` 与世界脚本的 `WORLD_API_READY` 只代表各自检查完成；对外报告新版完整上线前，仍需从公网验证正常 HTTPS、固定版本清单、全部运行资源，并使用两名玩家核对注册建家、通关领物资、征兵、公会及攻城。

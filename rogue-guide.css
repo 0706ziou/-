@@ -1,0 +1,38 @@
+/* Illustrated upgrades and optional super-skill goals. */
+.overlay.upgrade-overlay{height:min(630px,calc(100dvh - 100px))}
+.upgrade-overlay .menu-body{overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#86a259 #1a3325;padding-right:5px;touch-action:pan-y}
+.upgrade-overlay .menu-dialog .cards{flex:0 0 auto;height:auto;grid-auto-rows:auto}
+.upgrade-overlay .menu-dialog .card{min-width:0;min-height:215px;height:auto;overflow-wrap:anywhere}
+.upgrade-overlay .menu-dialog .card-icon{display:block;margin-bottom:7px}
+.upgrade-overlay .card-icon img{width:64px;height:64px;display:block;margin:auto}
+.upgrade-overlay .card.recommended{background:linear-gradient(160deg,#4a4b32,#283d2a);box-shadow:inset 0 0 0 2px #f5da9755}
+.upgrade-overlay .card.recommended .build-category{color:#f5dfa1}
+.recipe-guide{flex:0 0 auto;border:1px solid #77945a80;border-radius:12px;background:#203b2bc9;padding:10px}
+.recipe-intro{font-size:12px;margin:0 0 7px!important;color:#d6e4bf}
+.recipe-goal{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.recipe-goal>img{width:48px;height:48px;flex:0 0 auto}
+.recipe-goal>div,.recipe-option>div{min-width:0}
+.recipe-goal strong,.recipe-goal span,.recipe-goal small{display:block;line-height:1.5}
+.recipe-goal strong{color:#edd3fe;font-size:14px}.recipe-goal span{font-size:11px;color:#d3dfbd}.recipe-goal small{font-size:11px;color:#e8d597}.recipe-goal.complete strong{color:#c7ec9e}
+.recipe-picker>summary{cursor:pointer;color:#ddeab9;font-size:12px;min-height:28px;line-height:28px}
+.recipe-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding-top:7px}
+.recipe-option{display:flex;align-items:center;gap:8px;padding:9px;min-width:0;min-height:96px;border:1px solid #66844e;border-radius:9px;background:#2b4430;text-align:left;color:#dae7c4}
+.recipe-option>img{width:43px;height:43px;flex:0 0 auto}
+.recipe-option strong,.recipe-option span,.recipe-option small,.recipe-option b{display:block;line-height:1.5}
+.recipe-option strong{font-size:12px;color:#efd7ff}.recipe-option span,.recipe-option small{font-size:10px}.recipe-option b{font-size:10px;color:#d3e9a2;margin-top:3px}
+.recipe-option.selected{border-color:#d7b2ef;background:#444039}.recipe-option:disabled{cursor:default;opacity:.6}
+.recipe-clear{margin-top:9px;min-height:32px;border:1px solid #779361;border-radius:7px;padding:5px 10px;background:#2b4331;color:#d9e4bc;font-size:11px}
+.recipe-picker>summary:focus-visible,.recipe-option:focus-visible,.recipe-clear:focus-visible{outline:2px solid #fff2cd;outline-offset:2px}
+.build-detail>img{width:48px;height:48px;flex:0 0 auto;border-radius:10px}
+.skill-numbers{font-size:11px;color:#b9caaa;margin-top:7px}.skill-numbers summary{cursor:pointer}.skill-numbers p{font-size:11px;margin-top:5px}
+@media(max-width:480px){
+ .overlay.upgrade-overlay{height:calc(100dvh - 110px);padding:10px}
+ .upgrade-overlay .menu-dialog .cards{grid-template-columns:1fr;grid-template-rows:none;gap:8px}
+ .upgrade-overlay .menu-dialog .card{display:grid;grid-template-columns:48px minmax(0,1fr) auto;min-height:98px;padding:9px;column-gap:8px}
+ .upgrade-overlay .menu-dialog .card-icon{display:block;grid-column:1;grid-row:1/5;margin:0;align-self:center}
+ .upgrade-overlay .card-icon img{width:46px;height:46px}
+ .upgrade-overlay .menu-dialog .card span{grid-column:2/4}
+ .recipe-option{gap:6px;padding:7px}.recipe-option>img{width:31px;height:31px}.recipe-option strong{font-size:11px}.recipe-option span,.recipe-option small{font-size:9px}
+}
+@media(max-width:360px){.recipe-options{grid-template-columns:1fr}}
+@media(max-height:500px){.overlay.upgrade-overlay{height:calc(100dvh - 88px);max-height:calc(100dvh - 88px)}.upgrade-overlay .menu-dialog .card{min-height:175px}.upgrade-overlay .card-icon img{width:42px;height:42px}.recipe-goal>img{width:36px;height:36px}}

@@ -18,13 +18,16 @@ const navigationSource = fs.readFileSync(__dirname+'/navigation.js','utf8');
 const mapRendererSource = fs.readFileSync(__dirname+'/map-renderer.js','utf8');
 const conversationSource = fs.readFileSync(__dirname+'/conversation-data.js','utf8');
 const authSource = fs.readFileSync(__dirname+'/auth-data.js','utf8');
+const trainingSource = fs.readFileSync(__dirname+'/training-data.js','utf8');
+const frontierRewardsSource = fs.readFileSync(__dirname+'/frontier-rewards.js','utf8');
 let gameSource = fs.readFileSync(__dirname+'/game.js','utf8');
 const boot = 'showCover();requestAnimationFrame(frame);';
 assert(gameSource.includes(boot), 'Keep the game bootstrap available for the test hook.');
 gameSource = gameSource.replace(boot,
   `globalThis.test={start,update,frame,pause,resume,choose,upgrade,draw,spawn,shoot,upgradeDefs,keys,
-  stages,gearDefs,gearGrowth,combat,gearCost,gearStats,equipGear,upgradeGear,selectStage,finish,saveProfile,loadProfile,freshProfile,startScreen,showArmory,browseStage,
+  stages,gearDefs,gearGrowth,combat,gearCost,gearStats,equipGear,upgradeGear,selectStage,finish,saveProfile,loadProfile,freshProfile,startScreen,showArmory,browseStage,showWorld,frontierRewards,
   openGameHelp,closeGameHelp,openTutorial,nextTutorial,tutorialSteps,
+  startTraining,finishTraining,exitTraining,trainingTick,get training(){return training},
   submitLogin,acceptAccount,logoutAccount,showCover,
   get currentAccount(){return currentAccount},get currentSaveKey(){return currentSaveKey},get loginBusy(){return loginBusy},
   get previewStage(){return previewStage},get helpTab(){return helpTab},get tutorialStep(){return tutorialStep},get helpReturnState(){return helpReturnState},
@@ -82,7 +85,7 @@ function createGame(storage = new Map(), options = {}) {
         this._innerHTML=value;this._buttons=[];
         for(const m of value.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)){
           const attrs=m[1],buttonId=attrs.match(/(?:^|\s)id=["']([^"']+)["']/)?.[1];
-          const button=buttonId?element(buttonId):{style:{},dataset:{},onclick:null};
+          const button=buttonId?element(buttonId):{style:{},dataset:{},onclick:null,focus(){sandbox.document.activeElement=this}};
           button.dataset={};button.disabled=/\bdisabled(?:\s|=|$)/.test(attrs);
           button.textContent=m[2].replace(/<[^>]*>/g,'');button.onclick=null;
           button.attributes=attrs;
@@ -137,6 +140,9 @@ function createGame(storage = new Map(), options = {}) {
   vm.runInContext(navigationSource,sandbox,{filename:'navigation.js'});
   vm.runInContext(mapRendererSource,sandbox,{filename:'map-renderer.js'});
   vm.runInContext(conversationSource,sandbox,{filename:'conversation-data.js'});
+  vm.runInContext(trainingSource,sandbox,{filename:'training-data.js'});
+  vm.runInContext(frontierRewardsSource,sandbox,{filename:'frontier-rewards.js'});
+  if(options.frontierClient)sandbox.window.ORCHARD_FRONTIER=options.frontierClient;
   if(options.conversation)sandbox.window.ORCHARD_CONVERSATION=options.conversation;
   vm.runInContext(gameSource,sandbox,{filename:'game.js'});
   // This fixture-only identity keeps old save-key checks independent of the login module.
@@ -1971,7 +1977,8 @@ test('New UI: conversation content is escaped and its snapshot is declared befor
   const game=createGame(new Map(),{conversation:{description:'<script>bad</script>',messages:[{role:'user',text:'<img src=x onerror=bad()> & "quoted"'}]}});
   game.t.start();assert(game.t.openGameHelp());const markup=game.element('overlay').innerHTML;
   assert(markup.includes('&lt;img'));assert(markup.includes('&lt;script&gt;'));assert(!markup.includes('<script>bad'));assert(!markup.includes('<img src=x'));
-  assert(html.indexOf('src="conversation-data.js"')<gameScriptIndex);assert(/href="lobby-ui\.css(?:\?[^" ]*)?"/.test(html));assert(html.includes('id="gameHelp"'));
+  const conversationScriptIndex=html.search(/<script\b[^>]*src="conversation-data\.js(?:\?[^" ]*)?"/);
+  assert(conversationScriptIndex>=0&&conversationScriptIndex<gameScriptIndex);assert(/href="lobby-ui\.css(?:\?[^" ]*)?"/.test(html));assert(html.includes('id="gameHelp"'));
 },{start:false});
 test('New UI: help is unavailable in conflicting overlays and endless waves freeze during reading',(game)=>{
   const {t}=game;t.showRelicMap();assert(!t.openGameHelp());t.closeRelicMap();t.upgrade();assert(!t.openGameHelp());t.choose(0);
@@ -1989,6 +1996,161 @@ test('New UI: help isolates keyboard focus and cannot activate the background en
   listeners.keydown({key:'Tab',preventDefault(){}});assert.equal(document.activeElement,element('viewConversation'));
   t.closeGameHelp();assert.equal(t.state,'playing');assert(!element('endEndless').disabled);element('endEndless').onclick();assert.equal(t.state,'ended');
 });
+test('Combat HUD: build icons freeze battle clocks and restore focus when details close',(game)=>{
+  const {t,element,listeners,document}=game;quietField(t);
+  assert(t.builds.choose(t.player,'chain').applied);t.update(.01);t.player.heroClock=4;t.keys.add('d');
+  listeners['arena:pointerdown']({pointerId:7,clientX:300,clientY:300,target:{closest:()=>null}});
+  listeners['arena:pointermove']({pointerId:7,clientX:370,clientY:300});
+  const button=element('buildSlots').querySelectorAll('[data-build-category="attack"]')[0];
+  assert.equal(typeof button.onclick,'function');assert(button.onclick());assert.equal(t.state,'help');
+  assert(element('overlay').innerHTML.includes(t.builds.get('chain').name));assert.equal(t.keys.size,0);
+  const elapsed=t.elapsed,player=JSON.stringify(t.player),field=JSON.stringify(t.enemies);
+  for(let i=0;i<30;i++)t.frame(1000+i*40);
+  assert.equal(t.elapsed,elapsed);assert.equal(JSON.stringify(t.player),player);assert.equal(JSON.stringify(t.enemies),field);
+  click(game,'closeGameHelp');assert.equal(t.state,'playing');assert.equal(document.activeElement,button);
+  const x=t.player.x;t.update(.01);assert.equal(t.player.x,x,'Reading clears both keyboard and touch movement');
+  assert(t.builds.choose(t.player,'chain').applied);t.update(.01);
+  const upgraded=element('buildSlots').querySelectorAll('[data-build-category="attack"]')[0];
+  assert.notEqual(upgraded,button);assert(upgraded.onclick());assert(element('overlay').innerHTML.includes('Lv.2'));
+  listeners.keydown({key:'Escape',preventDefault(){}});assert.equal(t.state,'playing');assert.equal(document.activeElement,upgraded);
+});
+test('Combat HUD: attribute details opened during pause return to pause with Escape',(game)=>{
+  const {t,element,listeners,document}=game;quietField(t);assert(t.builds.choose(t.player,'speed').applied);t.update(.01);t.pause();
+  const button=element('buildSlots').querySelectorAll('[data-build-category="attribute"]')[0];
+  assert(button.onclick());assert.equal(t.state,'help');assert.equal(t.helpReturnState,'paused');
+  assert(element('overlay').innerHTML.includes(t.builds.get('speed').name));const elapsed=t.elapsed;
+  for(let i=0;i<20;i++)t.frame(1000+i*40);assert.equal(t.elapsed,elapsed);
+  listeners.keydown({key:'Escape',preventDefault(){}});assert.equal(t.state,'paused');assert.equal(document.activeElement,button);
+  assert(element('overlay').innerHTML.includes('id="resume"'));t.frame(2500);assert.equal(t.elapsed,elapsed);
+  click(game,'resume');assert.equal(t.state,'playing');
+});
+test('Combat HUD: synthesized skill icons show effects and reject conflicting overlays',(game)=>{
+  const {t,element}=game;quietField(t);const recipe=t.builds.recipes[0];
+  for(let i=0;i<5;i++)for(const id of [recipe.attack,recipe.attribute])assert(t.builds.choose(t.player,id).applied);
+  t.update(.01);const button=element('superSkills').querySelectorAll('[data-build-category="super"]')[0];
+  assert(button);assert.equal(typeof button.onclick,'function');assert(button.onclick());
+  assert(element('overlay').innerHTML.includes(recipe.name));assert(element('overlay').innerHTML.includes(recipe.description));
+  assert(button.disabled);assert.equal(button.onclick(),false,'A second panel cannot replace an active detail dialog');
+  click(game,'closeGameHelp');assert(!button.disabled);t.upgrade();
+  const upgrade=element('overlay').innerHTML;assert(button.disabled);assert.equal(button.onclick(),false);assert.equal(t.state,'upgrade');assert.equal(element('overlay').innerHTML,upgrade);
+  t.choose(0);assert(t.showRelicMap());const map=element('overlay').innerHTML;
+  assert(button.disabled);assert.equal(button.onclick(),false);assert.equal(t.state,'relicMap');assert.equal(element('overlay').innerHTML,map);
+  t.closeRelicMap();assert.equal(t.state,'playing');assert(!element('combatGuide').disabled);assert(element('combatGuide').onclick());
+  assert.equal(t.state,'help');assert.equal(t.helpTab,'guide');click(game,'closeGameHelp');assert.equal(t.state,'playing');
+});
+function trainingUntil(t,condition,seconds=25) {
+  for(let frame=0;!condition()&&frame<Math.ceil(seconds/.04);frame++) {
+    assert.equal(t.state,'playing','A training task must remain playable until its actual objective is completed');
+    t.update(.04);
+  }
+  assert(condition(),'The current training objective must be reachable through gameplay');
+}
+function trainingToExperience(t) {
+  assert.equal(t.training.step,0);t.keys.add('d');trainingUntil(t,()=>t.training.step===1,3);t.keys.clear();
+  trainingUntil(t,()=>t.training.step===2,3);assert.equal(t.enemies.length,2);
+  trainingUntil(t,()=>t.training.step===3);assert.equal(t.kills,2);
+}
+function trainingToMap(t) {
+  trainingToExperience(t);
+  assert.equal(t.gems.length,2);
+  for(const gem of [...t.gems]) {t.player.x=gem.x;t.player.y=gem.y;t.update(.001);}
+  assert.equal(t.state,'upgrade');assert.equal(t.training.step,4);assert.equal(t.choices.length,3);
+  assert.equal(t.training.xpCollected,t.experienceNeed(1));const level=t.player.level;t.choose(0);
+  assert.equal(t.player.level,level+1);assert.equal(t.builds.summary(t.player).totalChoices,1);assert.equal(t.training.step,5);
+  assert(t.activateHeroSkill());t.update(.001);assert.equal(t.training.step,6);
+  const relic=t.relicDrops[0];t.player.x=relic.x;t.player.y=relic.y;t.update(.001);
+  assert(relic.claimed);assert.equal(t.player.skills.lightning,true);assert.equal(t.training.step,7);
+}
+function completeTrainingRun(t) {
+  trainingToMap(t);assert(t.showRelicMap());assert.equal(t.state,'relicMap');assert(t.closeRelicMap());t.update(.001);
+  assert.equal(t.state,'playing');assert.equal(t.training.step,8);assert.equal(t.enemies.filter(e=>e.elite).length,1);
+  trainingUntil(t,()=>t.training.step===9);assert.equal(t.enemies.filter(e=>e.boss).length,1);
+  assert.equal(t.bossKills,0);trainingUntil(t,()=>t.state==='trainingDone');
+  assert.equal(t.training,null);assert.equal(t.state,'trainingDone');
+}
+function permanentTrainingSnapshot(profile) {
+  const saved=JSON.parse(JSON.stringify(profile));delete saved.trainingComplete;delete saved.tutorialSeen;return JSON.stringify(saved);
+}
+test('Training: the lobby entrance starts an isolated course and prevents premature completion',(game)=>{
+  const {t,element}=game;t.startScreen();click(game,'startTraining');assert.equal(t.state,'trainingIntro');
+  const before=JSON.stringify(t.profile);click(game,'beginTraining');assert.equal(t.runMode,'training');assert.equal(t.state,'playing');
+  assert.equal(t.training.step,0);assert.equal(t.enemies.length,0);assert.equal(t.elapsed,0);assert.equal(t.player.level,1);
+  assert(!t.startTraining());assert(!t.finishTraining());assert(!t.startEndless());assert(!t.completeRescue());assert(!t.checkStageCompletion());
+  assert.equal(JSON.stringify(t.profile),before);
+  assert(!t.selectStage(1));assert(!t.selectHero('cherry'));assert(!t.upgradeOrchard());assert(!t.trainHero('orange'));
+  assert(!element('trainingHud').classList.contains('hidden'));t.finish(true);assert.equal(t.state,'lobby');assert.equal(t.training,null);assert.equal(JSON.stringify(t.profile),before);
+},{start:false});
+test('Training: actual movement, standing, auto attacks, XP, choice, skill, relic, map and bosses complete the course',()=>{
+  const game=createGame(new Map(),{tutorial:true}),{t,storage,element}=game;
+  const before=permanentTrainingSnapshot(t.profile);assert(t.startTraining());completeTrainingRun(t);
+  assert.equal(permanentTrainingSnapshot(t.profile),before,'Practice cannot award currency, gear, residents or campaign unlocks');
+  assert.equal(t.profile.trainingComplete,true);assert.equal(t.profile.tutorialSeen,true);
+  const saved=JSON.parse(storage.get(t.currentSaveKey));assert.equal(saved.trainingComplete,true);assert.equal(saved.tutorialSeen,true);
+  assert(element('overlay').innerHTML.includes('id="trainingCampaign"'));assert(!t.finishTraining());assert(!t.startEndless());
+  const loaded=createGame(storage,{tutorial:true});assert.equal(loaded.t.profile.trainingComplete,true);
+  click(game,'trainingCampaign');assert.equal(t.state,'playing');assert.equal(t.runMode,'stage');assert.equal(t.player.level,1);
+  assert.equal(t.player.need,t.experienceNeed(1));assert.equal(t.enemies.length,t.activeStage.enemyCount);assert.equal(t.training,null);
+},{start:false});
+test('Training: pause and help freeze task progress, combat clocks and guarded actions',(game)=>{
+  const {t,element}=game;assert(t.startTraining());t.keys.add('d');t.update(.2);t.keys.clear();t.frame(1000);t.pause();
+  const progress=JSON.stringify(t.training),player=JSON.stringify(t.player),elapsed=t.elapsed;
+  assert(!t.trainingTick(100,100000));assert(!t.activateHeroSkill());assert(!t.claimRelic(t.relicDrops[0].id));assert(!t.finishTraining());
+  for(let i=0;i<60;i++)t.frame(1040+i*40);
+  assert.equal(JSON.stringify(t.training),progress);assert.equal(JSON.stringify(t.player),player);assert.equal(t.elapsed,elapsed);
+  click(game,'resume');assert(t.openTutorial(false));assert.equal(t.tutorialSteps().length,10);
+  const helpProgress=JSON.stringify(t.training),helpElapsed=t.elapsed;
+  for(let i=0;i<60;i++)t.frame(4000+i*40);assert.equal(JSON.stringify(t.training),helpProgress);assert.equal(t.elapsed,helpElapsed);
+  click(game,'closeGameHelp');assert.equal(t.state,'playing');t.keys.add('d');trainingUntil(t,()=>t.training.step===1,3);t.keys.clear();
+  t.update(.6);assert.equal(t.training.step,1);t.keys.add('a');t.update(.05);t.keys.clear();
+  assert.equal(t.training.standTime,0,'Moving restarts the continuous standing objective');
+  t.update(.6);assert.equal(t.training.step,1);trainingUntil(t,()=>t.training.step===2,2);
+  assert(!element('trainingHud').classList.contains('hidden'));assert(t.exitTraining());
+},{start:false});
+test('Training: the distribution map pauses learning and closing it advances only the map objective',(game)=>{
+  const {t}=game;assert(t.startTraining());trainingToMap(t);assert(t.showRelicMap());
+  assert.equal(t.training.step,7);const elapsed=t.elapsed,progress=JSON.stringify(t.training),field=JSON.stringify(t.enemies);
+  assert(!t.trainingTick(100,100000));assert(!t.activateHeroSkill());
+  for(let i=0;i<80;i++)t.frame(1000+i*40);
+  assert.equal(t.elapsed,elapsed);assert.equal(JSON.stringify(t.training),progress);assert.equal(JSON.stringify(t.enemies),field);
+  assert(t.closeRelicMap());t.update(.001);assert.equal(t.training.step,8);assert.equal(t.state,'playing');assert.equal(t.enemies.filter(e=>e.elite).length,1);
+  assert(!t.closeRelicMap());assert.equal(t.training.step,8);assert(t.exitTraining());
+},{start:false});
+test('Training: quitting restores the selected stage, relic draft and normal run values',()=>{
+  const game=createGame(new Map(),{randomRelics:true});
+  const {t,element}=game;t.profile.unlockedStage=7;assert(t.selectStage(7));t.startScreen();
+  const draft=JSON.stringify(t.runRelicDefs),drops=JSON.stringify(t.relicDrops),before=JSON.stringify(t.profile);
+  assert(t.startTraining());trainingToMap(t);assert.equal(t.player.level,2);assert(t.player.skills.lightning);
+  element('trainingExit').onclick();assert.equal(t.state,'lobby');assert.equal(t.training,null);assert.equal(t.runMode,'stage');
+  assert.equal(t.selectedStage,7);assert.equal(t.previewStage,7);assert.equal(t.mapLayout.id,7);
+  assert.equal(JSON.stringify(t.runRelicDefs),draft);assert.equal(JSON.stringify(t.relicDrops),drops);assert.equal(JSON.stringify(t.profile),before);
+  assert(t.startTraining());assert.equal(t.training.step,0);assert.equal(t.training.distance,0);assert.equal(t.player.level,1);assert(!t.player.skills.lightning);
+  t.start();assert.equal(t.training,null);assert.equal(t.runMode,'stage');assert.equal(t.activeStage.id,7);
+  assert.equal(t.player.level,1);assert.equal(t.player.xp,0);assert.equal(t.player.need,t.experienceNeed(1));assert(!t.player.skills.lightning);
+  assert.equal(t.enemies.length,t.activeStage.enemyCount);assert.equal(JSON.stringify(t.runRelicDefs),draft);assert.equal(JSON.stringify(t.profile),before);
+},{start:false});
+test('Training: learning completion belongs to the logged-in account and legacy saves remain valid',()=>{
+  const storage=new Map(),game=createGame(storage,{auth:true,tutorial:true}),{t}=game;
+  t.acceptAccount(Object.freeze({id:'sprouta',account:'sprouta',nickname:'芽芽'}));assert.equal(t.profile.trainingComplete,false);
+  assert(t.startTraining());completeTrainingRun(t);const aKey=t.currentSaveKey;assert.equal(JSON.parse(storage.get(aKey)).trainingComplete,true);
+  t.startScreen();assert(t.logoutAccount());t.acceptAccount(Object.freeze({id:'sproutb',account:'sproutb',nickname:'叶叶'}));
+  assert.notEqual(t.currentSaveKey,aKey);assert.equal(t.profile.trainingComplete,false);assert.equal(t.profile.tutorialSeen,false);
+  t.startScreen();assert(t.logoutAccount());t.acceptAccount(Object.freeze({id:'sprouta',account:'sprouta',nickname:'芽芽'}));assert.equal(t.profile.trainingComplete,true);
+  const legacy=createGame(new Map([['orchard-save-v1',JSON.stringify({version:1,unlockedStage:3,seeds:17,cores:4,tutorialSeen:true})]]));
+  assert.equal(legacy.t.profile.trainingComplete,false);assert.equal(legacy.t.profile.unlockedStage,3);assert.equal(legacy.t.profile.seeds,17);assert.equal(legacy.t.profile.cores,4);
+},{start:false});
+test('Training: experience bonuses cannot skip the pickup lesson or trigger a second practice upgrade',()=>{
+  const {t}=createGame(new Map(),{randomRelics:true});assert(t.startTraining());t.player.xpMult=4;
+  trainingToMap(t);assert.equal(t.training.xpCollected,t.experienceNeed(1));assert.equal(t.player.level,2);assert.equal(t.player.xp,0);
+  assert.equal(t.builds.summary(t.player).totalChoices,1);assert.equal(t.state,'playing');t.update(.2);assert.equal(t.state,'playing');
+  assert.equal(t.player.level,2);assert.equal(t.training.step,7);assert(t.exitTraining());
+},{start:false});
+test('Training: incoming hits preserve the practice health floor without granting a clear',(game)=>{
+  const {t}=game;assert(t.startTraining());t.keys.add('d');trainingUntil(t,()=>t.training.step===1,3);t.keys.clear();
+  trainingUntil(t,()=>t.training.step===2,3);const before=JSON.stringify(t.profile);t.shotClock=Infinity;
+  t.enemies=[enemy(t.player.x+1,t.player.y,{hp:1e9,maxHp:1e9,damage:9999,xp:0})];
+  for(let hit=0;hit<4;hit++){t.player.inv=0;t.update(.01);assert.equal(t.player.hp,t.player.maxHp*.5);assert.equal(t.state,'playing');}
+  assert.equal(t.training.step,2);assert.equal(t.kills,0);assert.equal(JSON.stringify(t.profile),before);assert(t.exitTraining());
+},{start:false});
 test('Prompt placement: out-of-combat menus open help and return without starting a run',({t,element})=>{
   const saved=JSON.stringify(t.profile);t.startScreen();
   for(const [open,expected] of [[()=>t.startScreen(),'lobby'],[()=>t.showHeroes(),'heroes'],[()=>t.showArmory(),'armory'],[()=>t.showOrchard(),'orchard'],[()=>t.showRelicMap(),'relicMap']]){
