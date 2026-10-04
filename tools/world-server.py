@@ -154,7 +154,13 @@ class WorldStore:
             row = connection.execute("SELECT value FROM metadata WHERE key='schema'").fetchone()
             require(not row or row[0] == "1", "schema_mismatch", "世界数据库版本不兼容。", 500)
             connection.execute("INSERT OR IGNORE INTO metadata VALUES('schema','1')")
+            connection.execute("INSERT OR IGNORE INTO metadata VALUES('player_data_epoch','initial')")
             connection.commit()
+
+    def data_epoch(self):
+        with contextlib.closing(self.connect()) as connection:
+            row = connection.execute("SELECT value FROM metadata WHERE key='player_data_epoch'").fetchone()
+        return row[0] if row else "initial"
 
     def connect(self):
         connection = sqlite3.connect(self.database, timeout=15)
@@ -895,7 +901,8 @@ class WorldHandler(BaseHTTPRequestHandler):
             if path == "/api/world/health":
                 with contextlib.closing(self.server.store.connect()) as connection:
                     connection.execute("SELECT 1 FROM metadata LIMIT 1").fetchone()
-                self.send_json({"ok": True, "version": VERSION, "storage": "sqlite"})
+                self.send_json({"ok": True, "version": VERSION, "storage": "sqlite",
+                                "dataEpoch": self.server.store.data_epoch()})
             elif path == "/api/world/state":
                 self.server.rate_limit((self.client_ip(), "read"), 240, 60)
                 self.send_json(self.server.store.state(self.server.store.session_player(self.token())))
@@ -957,6 +964,9 @@ class WorldHandler(BaseHTTPRequestHandler):
             self.csrf()
             payload = self.body()
             path = urlsplit(self.path).path
+            epoch = self.server.store.data_epoch()
+            require(epoch == "initial" or self.headers.get("X-Orchard-Data-Epoch") == epoch,
+                    "data_reset", "游戏数据已重置，请刷新页面后重新注册。", 409)
             ip = self.client_ip()
             self.server.rate_limit((ip, "write"), 120, 60)
             if path in ("/api/world/register", "/api/world/login", "/api/world/enter", "/api/world/link"):

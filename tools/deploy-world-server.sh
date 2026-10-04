@@ -326,9 +326,11 @@ wait_health() {
       --header 'Connection: close' "$@" "$url" -o "$output" \
       --write-out '%{http_code}' > "$output.status" 2> "$output.error"; then
       if [[ $(cat "$output.status") == 200 ]] && python3 - "$output" <<'PY'
-import json, pathlib, sys
+import json, pathlib, re, sys
 response = json.loads(pathlib.Path(sys.argv[1]).read_text())
-assert response == {'ok': True, 'version': 'orchard-world-1', 'storage': 'sqlite'}, 'Unexpected health response'
+assert response.get('ok') is True and response.get('version') == 'orchard-world-1' and response.get('storage') == 'sqlite', 'Unexpected health response'
+epoch = response.get('dataEpoch')
+assert epoch == 'initial' or isinstance(epoch, str) and re.fullmatch(r'reset-[0-9a-f]{32}', epoch), 'Unexpected player data epoch'
 PY
       then return 0; fi
     fi

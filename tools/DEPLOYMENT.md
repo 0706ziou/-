@@ -63,7 +63,7 @@ python3 tools/deploy-readiness-verify.py --site /实际的036e28a版本发布目
 
 ## GitHub Git 传输故障恢复
 
-若 Git 拉取反复超时或返回 `Empty reply from server`，而 GitHub 官方 Contents API 可以下载，使用 `deploy-api-recovery.py` 和经过独立校验的 `deploy-api-release.json`。当前恢复数据固定发布游戏版本 `c149fdea10d9fb3257da5e26ae77625713a39fb4`，包含排行榜、木材石料图片、Boss 与界面调整；后续游戏代码改变时必须重新生成并审查恢复数据，不能把旧恢复包当作新版本。
+若 Git 拉取反复超时或返回 `Empty reply from server`，而 GitHub 官方 Contents API 可以下载，使用 `deploy-api-recovery.py` 和经过独立校验的 `deploy-api-release.json`。恢复数据固定一个完整的已审查提交，版本和原始字节证据在生成时记录；后续游戏代码改变时必须重新生成并审查恢复数据，不能把旧恢复包当作新版本。使用 `generate-api-release.py 完整提交SHA --node /node路径 --output deployment-artifacts/独立证据目录` 生成原始 Git 对象、清单与指纹，然后同步审查恢复程序里的固定提交、树、资源数量/大小、脚本哈希。小型精灵插画随清单内嵌，逐一校验原始 SHA256 和 Git blob，避免逐图下载消耗 API 请求额度。
 
 程序先核对恢复数据的 SHA256、原始 Git 提交和树对象、所有文件的原始字节哈希，再检查旧发布目录的可信清单、完整文件哈希和目录。验证通过的旧文件直接复用，只通过正常验证证书的官方 API 下载变更文件。
 
@@ -72,3 +72,9 @@ python3 tools/deploy-readiness-verify.py --site /实际的036e28a版本发布目
 两个脚本分别报告状态。若网页成功而后台失败，不能报告整体上线；保留恢复工作目录和输出，修复失败部分后再次验证公网清单、全部运行资源及排行榜接口。
 
 静态脚本的 `DEPLOY_OK` 与世界脚本的 `WORLD_API_READY` 只代表各自检查完成；对外报告新版完整上线前，仍需从公网验证正常 HTTPS、固定版本清单、全部运行资源，并使用两名玩家核对注册建家、通关领物资、征兵、公会及攻城。
+
+## 已授权的线上清档
+
+只有用户明确要求清空线上玩家数据时，才运行 `reset-online-data.py --commit 已部署SHA --manifest-sha256 原始清单指纹 --backend-sha256 原始后端SHA256`。程序仅接受固定生产站点、数据库及服务目录；先核对已经部署的版本、完整资源和带纪元保护的后端，再停止服务并用 SQLite 一致性备份保存恢复点，清空八张玩家数据表、更新 `player_data_epoch`，重启并核对空世界、空排行榜和旧纪元写入失效。任一步失败会恢复备份和服务；清档工具不进入公开网页目录。
+
+浏览器里的账号、关卡进度、果园、养成和待同步记录在返回新版网页时按服务器纪元清理，重置后的数据改用独立存储名字空间。尚未联网的关闭页面无法远程清除物理存储，但其旧记录和旧票据不会进入新档；旧标签页也不能重新创建旧服务器账号或写回新纪元进度。本机 file/localhost 开发存档和其他网站不受线上清档影响。

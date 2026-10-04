@@ -50,11 +50,14 @@
     if (!validStoredAccount(userId)) {
       throw new AuthError('INVALID_ACCOUNT', '玩家名称需为 1～7 个汉字、字母、数字或下划线。');
     }
-    return `${LEGACY_PROFILE_KEY}:user:${userId}`;
+    const base = window.ORCHARD_ONLINE_RESET?.storageKey(LEGACY_PROFILE_KEY) || LEGACY_PROFILE_KEY;
+    return `${base}:user:${userId}`;
   }
 
   function create({ storage, crypto: cryptoProvider } = {}) {
     let busy = false;
+    const accountKey = () => window.ORCHARD_ONLINE_RESET?.storageKey(ACCOUNTS_KEY) || ACCOUNTS_KEY;
+    const lastAccountKey = () => window.ORCHARD_ONLINE_RESET?.storageKey(LAST_ACCOUNT_KEY) || LAST_ACCOUNT_KEY;
 
     function read(key) {
       try {
@@ -86,7 +89,7 @@
     }
 
     function readRegistry() {
-      const raw = read(ACCOUNTS_KEY);
+      const raw = read(accountKey());
       if (raw === null) return { version: 1, accounts: [], legacyClaimed: false };
       let data;
       try {
@@ -150,6 +153,9 @@
       if (busy) throw new AuthError('LOGIN_BUSY', '正在验证账号，请稍候再试。');
       busy = true;
       try {
+        await window.ORCHARD_ONLINE_RESET?.ensure({ force: true });
+        const loginEpoch = window.ORCHARD_ONLINE_RESET?.currentEpoch();
+        const assertEpoch = () => window.ORCHARD_ONLINE_RESET?.assertCurrent(loginEpoch);
         const enteredName = displayName(account), normalized = normalizeAccount(enteredName);
         const isNewName = validNewName(enteredName);
         const isLegacyInput = typeof account === 'string' && /^[A-Za-z0-9_]{3,24}$/.test(account.trim());
@@ -165,6 +171,7 @@
         const existing = initial.accounts.find(record => record.account === normalized);
         if (existing) {
           const passwordHash = await derive(password, existing.salt, existing.iterations);
+          assertEpoch();
           if (!equalHash(passwordHash, existing.passwordHash)) {
             throw new AuthError('WRONG_PASSWORD', '密码不正确，请重新填写。已有账号不会自动重新注册。');
           }
@@ -173,7 +180,7 @@
               latest.iterations !== existing.iterations) {
             throw new AuthError('ACCOUNT_CHANGED', '账号记录在验证期间发生变化，请重新登录。');
           }
-          write(LAST_ACCOUNT_KEY, normalized);
+          write(lastAccountKey(), normalized);
           return Object.freeze({ created: false, user: publicUser(latest), legacyClaimed: false });
         }
 
@@ -190,6 +197,7 @@
           throw new AuthError('SECURE_LOGIN_UNAVAILABLE', '浏览器无法生成安全密码信息，请更新浏览器后重新登录。');
         }
         const passwordHash = await derive(password, salt, ITERATIONS);
+        assertEpoch();
         // 哈希异步计算后重新读取，保留期间由另一登录实例新增的账号。
         const registry = readRegistry();
         if (registry.accounts.some(record => record.account === normalized)) {
@@ -202,9 +210,9 @@
           salt, passwordHash, iterations: ITERATIONS, createdAt: Date.now() };
         const targetKey = profileKey(record.id);
         const firstAccount = registry.accounts.length === 0 && !registry.legacyClaimed;
-        const legacyProfile = firstAccount ? read(LEGACY_PROFILE_KEY) : null;
+        const legacyProfile = firstAccount && !loginEpoch?.startsWith('reset-') ? read(LEGACY_PROFILE_KEY) : null;
         const originalProfile = read(targetKey);
-        const originalLast = read(LAST_ACCOUNT_KEY);
+        const originalLast = read(lastAccountKey());
         const claimLegacy = firstAccount && legacyProfile !== null && originalProfile === null;
         let profileWritten = false;
         let lastWritten = false;
@@ -213,12 +221,13 @@
             write(targetKey, legacyProfile);
             profileWritten = true;
           }
-          write(LAST_ACCOUNT_KEY, normalized);
+          assertEpoch();
+          write(lastAccountKey(), normalized);
           lastWritten = true;
-          write(ACCOUNTS_KEY, JSON.stringify({ version: 1, accounts: [...registry.accounts, record],
+          write(accountKey(), JSON.stringify({ version: 1, accounts: [...registry.accounts, record],
             legacyClaimed: registry.legacyClaimed || firstAccount }));
         } catch (error) {
-          if (lastWritten) restore(LAST_ACCOUNT_KEY, originalLast);
+          if (lastWritten) restore(lastAccountKey(), originalLast);
           if (profileWritten) restore(targetKey, originalProfile);
           throw error;
         }
@@ -230,7 +239,7 @@
 
     function getLastAccount() {
       try {
-        const value = read(LAST_ACCOUNT_KEY);
+        const value = read(lastAccountKey());
         return validStoredAccount(value) ? value : '';
       } catch (_) {
         return '';

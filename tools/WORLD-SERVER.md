@@ -90,6 +90,8 @@ location ^~ /api/world/ {
 
 服务器使用 PBKDF2 保存密码校验值，HttpOnly 会话 Cookie 用于后续请求。写操作要求 JSON、合法会话与精确同源 Origin，服务器不开放跨域接口。
 
+健康接口同时返回玩家数据纪元 `dataEpoch`，初始为 `initial`。用户授权清档后，纪元变为新的 `reset-...`；所有写操作必须携带匹配的 `X-Orchard-Data-Epoch`，旧客户端、旧会话和旧挑战凭证不能恢复已删除的玩家数据。生产网页在登录前核对纪元，清理旧账号及关卡存档，并将新存档和待同步队列放进纪元名字空间；开发页面仍使用原有本机键。清档与备份流程见 [DEPLOYMENT.md](DEPLOYMENT.md)。
+
 `POST /api/world/enter` 接收 `{name,password}`，供游戏登录后自动登记或接入世界。已存在同名记录时，只有正确密码或同名有效会话才能进入；后者允许把已经证明归属的家园连接到当前游戏密码。需要旧密码验证时返回 `world_link_required`，不改变存档。`POST /api/world/link` 接收 `{name,password,worldPassword}`，验证原世界密码后保存新的游戏密码，撤销原有会话并签发新会话。原密码错误时不改变家园或凭证。旧版 `register`、`login` 接口继续兼容，前端不再提供第二套常规登录表单。
 
 所有资源成本、地块归属、建造等级、训练队列、公会权限、保护时间与攻城结果在服务器校验。`/api/world/action` 写入必须携带 `accountName`（当前世界名字）、唯一 `requestId` 及操作 `type`；会话账号与 `accountName` 不一致时拒绝操作，防止其它标签页切换 Cookie 后修改错账号。写入按请求编号与操作内容幂等处理；重试不会再次扣除同一笔资源，同编号改成其它操作会被拒绝。

@@ -32,12 +32,24 @@
     { id: 20, name: '椰子船船', icon: '🥥', color: '#d4baa0', personality: '驾着果壳小船守住溪口，梦想让整座果园安宁。', bonusType: 'damage', bonusPerLevel: .006 }
   ];
 
+  // Local portraits avoid relying on newer emoji fonts for rescued companions.
+  const spriteImages = [
+    'assets/sprites/apple.svg', 'assets/sprites/pea.svg', 'assets/sprites/pear.svg',
+    'assets/sprites/strawberry.svg', 'assets/sprites/blueberry.svg', 'assets/sprites/orange.svg',
+    'assets/sprites/cherry.svg', 'assets/sprites/peach.svg', 'assets/sprites/grape.svg',
+    'assets/sprites/watermelon.svg', 'assets/sprites/lemon.svg', 'assets/sprites/corn.svg',
+    'assets/sprites/kiwi.svg', 'assets/sprites/banana.svg', 'assets/sprites/pineapple.svg',
+    'assets/sprites/carrot.svg', 'assets/sprites/tomato.svg', 'assets/sprites/pumpkin.svg',
+    'assets/sprites/mango.svg', 'assets/sprites/coconut.svg'
+  ];
+  rescues.forEach((sprite, index) => { sprite.image = spriteImages[index]; sprite.artVariant = 0; });
+
   const gardens = ['青叶小院', '溪畔果园', '月露花园', '潮汐果园', '赤焰果园', '藤影果园', '霜晶果园', '雪芽果园', '星辉果园', '天穹果园'];
   const rescueRegions = ['月露', '赤焰', '霜晶', '星辉'];
   const regionStories = ['喜欢收集月光，替晚归的伙伴点灯。', '喜欢照顾暖阳下的花苗，每天给大家准备果茶。', '擅长保护雪里的嫩芽，盼着朋友一起看春天。', '把星星画成地图，带伙伴寻找新的果树。'];
   for (let id = 21; id <= 100; id++) {
     const base = rescues[(id - 1) % 20], region = Math.floor((id - 21) / 20);
-    rescues.push({ ...base, id, name: rescueRegions[region] + base.name,
+    rescues.push({ ...base, id, name: rescueRegions[region] + base.name, artVariant: region + 1,
       personality: regionStories[region], bonusPerLevel: base.bonusPerLevel / 2 });
   }
   for (const sprite of rescues) sprite.gardenId = Math.ceil(sprite.id / 10);

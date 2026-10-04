@@ -307,6 +307,7 @@ git -C "$task_source" sparse-checkout set --no-cone --stdin <<'SPARSE'
 /assets/equipment/*.png
 /assets/talents/*.png
 /assets/materials/*.svg
+/assets/sprites/*.svg
 SPARSE
 if [[ -n ${resolved_old:-} ]]; then
   if python3 - "$resolved_old" <<'PY'
@@ -319,6 +320,7 @@ TRUSTED_CACHE = {
     'dc296d324445c1a42c4bc1977ac4e980561187e639091e2260f7cff62bdab516',  # 3e7d4ec
     '5635e6a321e78c6ee4c8d2c9b4cfc1522ce908a4bce1c5cd8821c6c328144152',  # 75ac694
     '5b6e01e552d14e87b8a0d3baf43f668c491b123bddeb763123d3d9de6cbbfdce',  # ebbc394
+    '2dfd8d6017b9561191fc755282c697da161a484550a61585d8d7614d38d079bb',  # reviewed sprite/reset release raw runtime
 }
 root = pathlib.Path(sys.argv[1])
 manifest_path = root / 'static-manifest.json'

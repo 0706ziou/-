@@ -539,3 +539,23 @@ body.run-hud-active .arena > .hud {
 .garden-region-3,.garden-region-4{filter:hue-rotate(28deg)}.garden-region-5,.garden-region-6{filter:hue-rotate(-25deg)}.garden-region-7,.garden-region-8{filter:hue-rotate(55deg)}.garden-region-9,.garden-region-10{filter:hue-rotate(90deg)}
 @media(max-width:620px){.garden-picker .secondary{padding:5px 3px;display:block;text-align:center;min-height:39px}.garden-picker strong{font-size:9px}.garden-picker small{display:block;font-size:9px}.menu-dialog .orchard-scene .garden-range{top:43px;font-size:10px;padding:3px}.menu-dialog .garden-residents{inset:72px 7px 8px;gap:4px}.menu-dialog .garden-residents .garden-resident{min-height:40px;padding:2px 0}.menu-dialog .garden-residents .garden-resident>span{font-size:24px}.menu-dialog .garden-residents .garden-resident>small{font-size:8px}.garden-missing{padding:2px}.garden-missing span{font-size:18px}.garden-missing small{font-size:8px}}
 @media(max-height:580px){.menu-dialog .orchard-layout{overflow-y:auto;flex:1;min-height:0}.menu-dialog .orchard-scene{min-height:220px;display:block}.menu-dialog .garden-residents{inset:72px 8px 8px}.menu-dialog .orchard-scene .garden-range{top:43px}.garden-picker .secondary{min-height:28px;padding:3px}.garden-picker strong,.garden-picker small{font-size:8px}}
+
+/* Every rescued companion has a local portrait, including regional variants. */
+.sprite-portrait{position:relative;display:inline-grid;place-items:center;width:48px;height:48px;flex:0 0 auto;vertical-align:middle;font-size:0;line-height:1}
+.sprite-portrait>img,.sprite-portrait>.sprite-art-fallback{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 3px 2px #16372250)}
+.sprite-portrait>.sprite-art-fallback{display:none}
+.sprite-image-unavailable>img{display:none}
+.sprite-image-unavailable>.sprite-art-fallback{display:block}
+.sprite-variant-1>img,.sprite-variant-1>.sprite-art-fallback{filter:hue-rotate(-16deg) saturate(.9) brightness(1.08) drop-shadow(0 3px 2px #16372250)}
+.sprite-variant-2>img,.sprite-variant-2>.sprite-art-fallback{filter:hue-rotate(14deg) saturate(1.12) drop-shadow(0 3px 2px #16372250)}
+.sprite-variant-3>img,.sprite-variant-3>.sprite-art-fallback{filter:hue-rotate(-25deg) saturate(.85) brightness(1.12) drop-shadow(0 3px 2px #16372250)}
+.sprite-variant-4>img,.sprite-variant-4>.sprite-art-fallback{filter:hue-rotate(-50deg) saturate(1.1) brightness(1.04) drop-shadow(0 3px 2px #16372250)}
+.menu-dialog .garden-residents .garden-resident>.sprite-portrait{display:inline-grid;width:52px;height:52px;max-width:100%;margin:auto;font-size:0;line-height:1}
+.companion-detail-heading{display:flex;align-items:center;gap:10px;margin-bottom:7px;min-width:0}
+.companion-detail-heading>strong{margin:0;min-width:0;overflow-wrap:anywhere}
+.companion-detail-portrait{width:58px;height:58px}
+.reward-resident{display:flex;align-items:center;gap:8px;margin-top:7px;line-height:1.45}
+.sprite-reward-portrait{width:34px;height:34px}
+.sprite-portrait.rescued-hero{position:absolute;left:50%;top:32px;width:112px;height:112px;display:inline-grid;font-size:0;transform:translateX(-50%)}
+@media(max-width:620px){.menu-dialog .garden-residents .garden-resident>.sprite-portrait{width:39px;height:39px}.companion-detail-heading{gap:7px;margin-bottom:5px}.companion-detail-portrait{width:42px;height:42px}.sprite-portrait.rescued-hero{top:24px;width:92px;height:92px}}
+@media(max-height:500px){.menu-dialog .sprite-portrait.rescued-hero{top:12px;width:66px;height:66px}.menu-dialog .garden-residents .garden-resident>.sprite-portrait{width:36px;height:36px}.companion-detail-portrait{width:34px;height:34px}}

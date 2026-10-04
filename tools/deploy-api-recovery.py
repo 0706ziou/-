@@ -26,7 +26,10 @@ import urllib.request
 COMMIT = "c149fdea10d9fb3257da5e26ae77625713a39fb4"
 TREE = "9ff05258831ef733461208219086d55f5ab32f4b"
 RUNTIME_FINGERPRINT = "5b6e01e552d14e87b8a0d3baf43f668c491b123bddeb763123d3d9de6cbbfdce"
+RUNTIME_FILES = 110
+RUNTIME_BYTES = 23644121
 TRUSTED_CACHE = {
+    "5b6e01e552d14e87b8a0d3baf43f668c491b123bddeb763123d3d9de6cbbfdce",  # c149 raw runtime
     "dc296d324445c1a42c4bc1977ac4e980561187e639091e2260f7cff62bdab516",
     "5635e6a321e78c6ee4c8d2c9b4cfc1522ce908a4bce1c5cd8821c6c328144152",
     RUNTIME_FINGERPRINT,
@@ -167,10 +170,10 @@ def validate_descriptor(descriptor):
             "Descriptor version or reviewed commit mismatch.")
     signed, fingerprint = normalized_manifest(descriptor.get("runtime"))
     require(fingerprint == RUNTIME_FINGERPRINT == descriptor.get("runtimeFingerprint") and
-            signed["fileCount"] == 110 and signed["totalBytes"] == 23644121, "Descriptor runtime is not the 110-file reviewed release.")
+            signed["fileCount"] == RUNTIME_FILES and signed["totalBytes"] == RUNTIME_BYTES, "Descriptor runtime differs from the reviewed release.")
     _objects, tree_files = decode_objects(descriptor)
     records = descriptor.get("files")
-    require(isinstance(records, list) and len(records) == 116, "Expected exactly the reviewed runtime and six installer files.")
+    require(isinstance(records, list) and len(records) == RUNTIME_FILES + len(EXTRA_FILES), "Expected exactly the reviewed runtime and installer files.")
     paths = set()
     runtime = {item["path"]: item for item in signed["files"]}
     for item in records:
@@ -185,7 +188,25 @@ def validate_descriptor(descriptor):
         if item["path"] in SCRIPT_HASHES:
             require(item["sha256"] == SCRIPT_HASHES[item["path"]], "Reviewed deployment-script hash mismatch.")
     require(paths == set(runtime) | EXTRA_FILES, "Descriptor contains an unreviewed file or misses a required file.")
+    inline_payloads(descriptor)
     return descriptor
+
+
+def inline_payloads(descriptor):
+    records = {entry["path"]: entry for entry in descriptor["files"]}
+    inline = descriptor.get("inlineFiles", [])
+    require(isinstance(inline, list) and len(inline) <= RUNTIME_FILES, "Invalid inline-file inventory.")
+    result = {}
+    for item in inline:
+        require(isinstance(item, dict) and set(item) == {"path", "data"} and item["path"] in records
+                and item["path"] not in result and isinstance(item["data"], str), "Unexpected inline payload.")
+        require(item["path"].startswith("assets/sprites/") or item["path"] == "online-reset.js", "Only reviewed tiny sprite/reset assets may be inline.")
+        try:
+            raw = base64.b64decode(item["data"], validate=True)
+        except ValueError as error:
+            raise RecoveryError("Invalid inline payload encoding.") from error
+        result[item["path"]] = verify_payload(records[item["path"]], raw)
+    return result
 
 
 def no_symlink_ancestors(path):
@@ -324,6 +345,7 @@ def prepare(descriptor, descriptor_hash, work_root=None, cache_site=None, resume
     validate_descriptor(descriptor)
     require(isinstance(descriptor_hash, str) and HEX64.fullmatch(descriptor_hash), "Invalid reviewed descriptor hash.")
     objects, _ = decode_objects(descriptor)
+    inline = inline_payloads(descriptor)
     if not allow_test:
         require(sys.platform.startswith("linux") and os.geteuid() == 0, "Real recovery requires the Linux root Tencent terminal.")
         no_symlink_ancestors(MANAGED_OPS)
@@ -348,7 +370,7 @@ def prepare(descriptor, descriptor_hash, work_root=None, cache_site=None, resume
     files_root = work / "files"
     no_symlink_ancestors(files_root)
     files_root.mkdir(mode=0o700, exist_ok=True)
-    reused, downloaded, resumed = 0, 0, 0
+    reused, downloaded, resumed, embedded = 0, 0, 0, 0
     download_deadline = time.monotonic() + 900
     blobs = {}
     for entry in descriptor["files"]:
@@ -364,6 +386,11 @@ def prepare(descriptor, descriptor_hash, work_root=None, cache_site=None, resume
             write_private(target, raw)
             reused += 1
             print("CACHE_REUSED " + entry["path"], flush=True)
+        elif entry["path"] in inline:
+            raw = verify_payload(entry, inline[entry["path"]])
+            write_private(target, raw)
+            embedded += 1
+            print("INLINE_VERIFIED " + entry["path"], flush=True)
         else:
             require(time.monotonic() < download_deadline, "Preparation download budget exhausted; resume the retained verified work directory.")
             raw = verify_payload(entry, download_file(entry))
@@ -391,8 +418,8 @@ def prepare(descriptor, descriptor_hash, work_root=None, cache_site=None, resume
     for name, expected in SCRIPT_HASHES.items():
         require(sha256((files_root / name).read_bytes()) == expected, "Installer bytes changed after preparation.")
     result = {"commit": COMMIT, "work": str(work), "repo": str(repo), "files": str(files_root),
-              "runtimeFingerprint": RUNTIME_FINGERPRINT, "runtimeFiles": 110,
-              "reusedFiles": reused, "downloadedFiles": downloaded, "resumedFiles": resumed}
+              "runtimeFingerprint": RUNTIME_FINGERPRINT, "runtimeFiles": RUNTIME_FILES,
+              "reusedFiles": reused, "downloadedFiles": downloaded, "resumedFiles": resumed, "inlineFiles": embedded}
     proof = work / "prepare-proof.json"
     if proof.exists():
         require(proof.is_file() and not proof.is_symlink(), "Unexpected proof path.")

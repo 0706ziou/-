@@ -56,17 +56,21 @@
 
   async function request(path, payload) {
     if (globalThis.location?.protocol === 'file:') throw new WorldError('当前是本地文件页面，世界需要通过 HTTP / HTTPS 游戏地址连接世界服务。', 'FILE_MODE', true);
+    const epochHeaders = await window.ORCHARD_ONLINE_RESET?.requestHeaders() || {};
+    const requestEpoch = epochHeaders['X-Orchard-Data-Epoch'] ?? window.ORCHARD_ONLINE_RESET?.currentEpoch();
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
     try {
       const response = await fetch(`${API}/${path}`, {
         method: payload === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store',
-        headers: { Accept: 'application/json', ...(payload === undefined ? {} : { 'Content-Type': 'application/json' }) },
+        headers: { Accept: 'application/json', ...epochHeaders, ...(payload === undefined ? {} : { 'Content-Type': 'application/json' }) },
         ...(payload === undefined ? {} : { body: JSON.stringify(payload) }), signal: controller.signal
       });
       let result;
       try { result = await response.json(); } catch (_) {
         throw new WorldError('这个游戏地址尚未连接世界服务。请启动或部署世界服务后重试。', 'SERVICE_UNAVAILABLE', true);
       }
+      if (result.code === 'data_reset') await window.ORCHARD_ONLINE_RESET?.handleReset();
+      window.ORCHARD_ONLINE_RESET?.assertCurrent(requestEpoch);
       if (!response.ok || result.ok === false) throw new WorldError(result.error || result.message || `世界服务请求失败（${response.status}）。`, result.code || String(response.status), response.status >= 500 || response.status === 429);
       if (!result.state && path === 'state') throw new WorldError('世界服务返回的数据不完整，请刷新重试。', 'INVALID_STATE', true);
       return result;
@@ -532,5 +536,8 @@
     featureGuide = ''; guideCallback = null;
   }
 
+  globalThis.addEventListener?.('orchard-player-data-reset', () => {
+    close(); setPlayerName(''); connected = false; worldState = null; gameCredential = null;
+  });
   window.ORCHARD_FRONTIER = Object.freeze({ open, close, enterGame, leaveGame, prepareSession, setPlayerName, isAuthenticated, hasGameLogin, beginCampaign, completeCampaign, claimCampaign, getLeaderboard });
 })();

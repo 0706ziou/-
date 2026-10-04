@@ -788,6 +788,22 @@
     const labels = { damage: '伤害', rate: '射速', hp: '生命', speed: '移速', pickup: '拾取范围' };
     return labels[type] + ' +' + (type === 'damage' || type === 'rate' ? Number((amount * 100).toFixed(1)) + '%' : Number(amount.toFixed(1)));
   }
+  function spritePortrait(sprite, extraClass = '') {
+    const name = escapeHTML(sprite.name + '精灵');
+    const image = /^assets\/sprites\/[a-z]+\.svg$/.test(sprite.image || '') ? sprite.image : '';
+    const variant = Number.isInteger(sprite.artVariant) && sprite.artVariant >= 0 && sprite.artVariant <= 4 ? sprite.artVariant : 0;
+    // The fallback is a small drawn companion, rather than another unsupported emoji.
+    const fallback = '<svg class="sprite-art-fallback" viewBox="0 0 96 96" role="img" aria-label="' + name + '，图片暂时无法显示"><ellipse cx="48" cy="84" rx="26" ry="6" fill="#173d2b" opacity=".22"/><path d="M49 31C45 12 58 9 72 14c-2 16-13 23-23 17Z" fill="#75b553" stroke="#284b32" stroke-width="3"/><path d="M46 35 43 20" stroke="#284b32" stroke-width="3" stroke-linecap="round"/><ellipse cx="48" cy="58" rx="28" ry="27" fill="#cfdd92" stroke="#284b32" stroke-width="3"/><path d="m23 63-9 7m58-7 9 7m-43 12-5 5m25-5 5 5" stroke="#284b32" stroke-width="5" stroke-linecap="round"/><ellipse cx="38" cy="55" rx="3" ry="4" fill="#284b32"/><ellipse cx="58" cy="55" rx="3" ry="4" fill="#284b32"/><path d="M42 65q6 7 12 0" fill="none" stroke="#284b32" stroke-width="3" stroke-linecap="round"/><circle cx="31" cy="62" r="4" fill="#e79f8d"/><circle cx="65" cy="62" r="4" fill="#e79f8d"/></svg>';
+    return '<span class="sprite-portrait sprite-variant-' + variant + (extraClass ? ' ' + extraClass : '') + (!image ? ' sprite-image-unavailable' : '') + '">' +
+      (image ? '<img src="' + image + '" alt="' + name + '" width="96" height="96" decoding="async" data-sprite-image="' + sprite.id + '">' : '') + fallback + '</span>';
+  }
+  function bindSpritePortraits() {
+    overlay.querySelectorAll('[data-sprite-image]').forEach(image => {
+      const unavailable = () => image.parentElement?.classList.add('sprite-image-unavailable');
+      image.addEventListener('error', unavailable, { once: true });
+      if (image.complete && image.naturalWidth === 0) unavailable();
+    });
+  }
   function showOrchard(gardenId = selectedGarden) {
     if (!currentAccount || !featuresUnlocked()) return false;
     if (isRunActive()) return false;
@@ -799,10 +815,10 @@
     const gardenName = garden.name;
     if (!rescued.some(s => s.id === selectedSprite)) selectedSprite = rescued[0]?.id || 0;
     const sprite = rescueDefs[selectedSprite - 1], spriteLevel = profile.spriteLevels[selectedSprite] || 0, trainingCost = spriteCost(selectedSprite);
-    const detail = sprite ? '<article class="gear-card sprite-detail"><strong>' + sprite.icon + ' ' + sprite.name + ' · +' + spriteLevel + ' / 5</strong><span class="sprite-personality">' + sprite.personality + '</span><span>当前祝福：' + bonusText(sprite.bonusType, sprite.bonusPerLevel * (1 + spriteLevel)) + '</span><small>每次培养：' + bonusText(sprite.bonusType, sprite.bonusPerLevel) + '</small><div class="gear-actions"><button class="secondary" id="growSelectedSprite" data-grow-sprite="' + selectedSprite + '" ' + (spriteLevel >= 5 || !canAfford(trainingCost) ? 'disabled' : '') + '>' + (spriteLevel >= 5 ? '已满级' : '培养 · ☀' + trainingCost.seeds + ' ◆' + trainingCost.cores) + '</button></div></article>' : '<article class="gear-card sprite-detail"><strong>🌱 等待第一位伙伴</strong><span>通关救出精灵后，它们会住进这里。点击园中的精灵，就能查看和培养。</span></article>';
+    const detail = sprite ? '<article class="gear-card sprite-detail"><div class="companion-detail-heading">' + spritePortrait(sprite, 'companion-detail-portrait') + '<strong>' + sprite.name + ' · +' + spriteLevel + ' / 5</strong></div><span class="sprite-personality">' + sprite.personality + '</span><span>当前祝福：' + bonusText(sprite.bonusType, sprite.bonusPerLevel * (1 + spriteLevel)) + '</span><small>每次培养：' + bonusText(sprite.bonusType, sprite.bonusPerLevel) + '</small><div class="gear-actions"><button class="secondary" id="growSelectedSprite" data-grow-sprite="' + selectedSprite + '" ' + (spriteLevel >= 5 || !canAfford(trainingCost) ? 'disabled' : '') + '>' + (spriteLevel >= 5 ? '已满级' : '培养 · ☀' + trainingCost.seeds + ' ◆' + trainingCost.cores) + '</button></div></article>' : '<article class="gear-card sprite-detail"><strong>等待第一位伙伴</strong><span>通关救出精灵后，它们会住进这里。点击园中的精灵，就能查看和培养。</span></article>';
     const gardenPicker = '<nav class="garden-picker" aria-label="十座果园">' + gardenDefs.map(g => '<button class="secondary ' + (g.id === selectedGarden ? 'active' : '') + '" data-garden-id="' + g.id + '" aria-pressed="' + (g.id === selectedGarden) + '"><strong>' + g.name + '</strong><small>' + profile.rescuedSprites.filter(id => Math.ceil(id / 10) === g.id).length + ' / 10</small></button>').join('') + '</nav>';
     showMenu(gardenName + ' · LV. ' + level, '我的果园 / 10 座果园 · 100 位精灵', gardenPicker + '<div class="orchard-layout"><div class="orchard-visual"><div class="orchard-scene garden-level-' + Math.floor(level / 3) + ' garden-region-' + selectedGarden + '"><div class="garden-sun">☀</div><div class="garden-cloud">☁</div><div class="garden-trees">🌳　🌳　' + (level >= 2 ? '🌸　🌳' : '🌱') + (level >= 5 ? '　🌻　🌳' : '') + '</div><div class="garden-path"></div><div class="garden-range">第 ' + garden.firstStage + '–' + garden.lastStage + ' 关 · 已入住 ' + rescued.length + ' / 10</div><div class="garden-residents">' +
-      residents.map(sprite => { const owned = profile.rescuedSprites.includes(sprite.id); return owned ? '<button class="garden-resident ' + (sprite.id === selectedSprite ? 'selected' : '') + '" data-select-sprite="' + sprite.id + '" style="--delay:' + (sprite.id % 5) * -.35 + 's" title="' + sprite.name + '" aria-label="选择' + sprite.name + '"><span>' + sprite.icon + '</span><small>' + sprite.name + '</small></button>' : '<div class="garden-missing"><span>?</span><small>第 ' + sprite.id + ' 关救援</small></div>'; }).join('') + '</div></div>' +
+      residents.map(sprite => { const owned = profile.rescuedSprites.includes(sprite.id); return owned ? '<button class="garden-resident ' + (sprite.id === selectedSprite ? 'selected' : '') + '" data-select-sprite="' + sprite.id + '" style="--delay:' + (sprite.id % 5) * -.35 + 's" title="' + sprite.name + '" aria-label="选择' + sprite.name + '">' + spritePortrait(sprite) + '<small>' + sprite.name + '</small></button>' : '<div class="garden-missing"><span>?</span><small>第 ' + sprite.id + ' 关救援</small></div>'; }).join('') + '</div></div>' +
       '<div class="garden-summary"><strong>全队永久加成</strong><span>' + Object.entries(bonus).map(([type, value]) => bonusText(type, value)).join(' · ') + '</span></div></div><div class="orchard-controls">' +
       '<div class="stage-detail"><strong>扩建全部果园 · ' + level + ' / 10</strong><span>10 座果园共享扩建等级。每级全队：伤害 +1%、生命 +4、拾取范围 +2。每关首通救援一位精灵，每座住10位。</span><div class="menu-actions"><button class="secondary" id="growOrchard" ' + (level >= 10 || !canAfford(cost) ? 'disabled' : '') + '>' + (level >= 10 ? '果园已满级' : '扩建 · ☀' + cost.seeds + ' ◆' + cost.cores) + '</button></div></div>' +
       detail + '</div></div>', '<button class="primary" id="start">挑战第 ' + selectedStage + ' 关</button><button class="secondary" id="backLobby">返回关卡</button>', 'orchard', '点击园中的精灵切换培养对象 · 果园与精灵祝福全队共享');
@@ -810,6 +826,7 @@
     overlay.querySelectorAll('[data-garden-id]').forEach(b => b.onclick = () => showOrchard(Number(b.dataset.gardenId)));
     overlay.querySelectorAll('[data-select-sprite]').forEach(b => b.onclick = () => { selectedSprite = Number(b.dataset.selectSprite); showOrchard(); });
     overlay.querySelectorAll('[data-grow-sprite]').forEach(b => b.onclick = () => { if (upgradeSprite(Number(b.dataset.growSprite))) showOrchard(); });
+    bindSpritePortraits();
     el('backLobby').onclick = startScreen; el('start').onclick = start; return true;
   }
   // Run growth uses the starting build as a baseline; repeated picks never compound.
@@ -1113,7 +1130,7 @@
       }
       saveProfile();
       victoryRewardHTML = '<div class="reward-box">' + (firstClear ? '首通奖励' : '重复通关奖励（首通的 25%，至少 1）') + '<strong>☀ 阳光籽 +' + seeds + '　◆ 果核 +' + cores + '</strong>' + gear +
-        '<br>' + resident.icon + ' ' + resident.name + (newResident ? '已安置到果园' : '的家园再次得到守护') + '<small>' + (storageAvailable ? '奖励、精灵和关卡进度已保存' : '存储不可用，请保持本页面打开') + '</small></div>';
+        '<div class="reward-resident">' + spritePortrait(resident, 'sprite-reward-portrait') + '<span>' + resident.name + (newResident ? '已安置到果园' : '的家园再次得到守护') + '</span></div><small>' + (storageAvailable ? '奖励、精灵和关卡进度已保存' : '存储不可用，请保持本页面打开') + '</small></div>';
     }
   }
   function worldRewardHTML() {
@@ -1138,6 +1155,7 @@
       '<div class="result-stats"><div><b>' + kills + ' / ' + activeStage.enemyCount + '</b><span>驱赶害虫</span></div><div><b>' + player.level + '</b><span>本关成长等级</span></div></div>' +
       '</div>' + (win ? '<div class="endless-offer"><strong>∞ 无尽虫潮 · 突破成长</strong><span>保留本关构筑，补满生命，放开种类与等级上限。<br>每 8 秒一波，材料获得即保存，可随时结束。</span></div>' : '<div class="endless-offer"><strong>🌱 下一次，带着成长出发。</strong><span>到果园培养伙伴，或在工坊强化装备。局外成长永久保留。</span></div>') + '</div>',
       (win ? '<button class="primary" id="startEndless">进入无尽模式 ∞</button>' : '') + (win && activeStage.id < stages.length ? '<button class="secondary" id="nextStage">挑战下一关</button>' : '<button class="secondary" id="restart">再挑战一次</button>') + '<button class="secondary" id="resultWorld" ' + (!featuresUnlocked() ? 'disabled' : '') + '>进入世界</button><button class="secondary" id="resultOrchard" ' + (!featuresUnlocked() ? 'disabled' : '') + '>看看果园</button><button class="secondary" id="resultArmory" ' + (!featuresUnlocked() ? 'disabled' : '') + '>装备与养成</button><button class="' + (win && profile.featureGuideStep < featureGuideSteps().length ? 'primary' : 'secondary') + '" id="backLobby">' + (win && profile.featureGuideStep < featureGuideSteps().length ? profile.featureGuideRound === 2 ? '再练一次养成操作' : '新功能已解锁 · 开始指引' : '选择关卡') + '</button>', '奖励与关卡进度自动保存');
+    bindSpritePortraits();
     if (win && activeStage.id < stages.length) el('nextStage').onclick = () => { selectStage(activeStage.id + 1); start(); };
     else el('restart').onclick = start;
     el('resultArmory').onclick = showArmory; el('backLobby').onclick = startScreen;
@@ -1254,7 +1272,8 @@
     state = 'rescue'; cinematicTime = 0; keys.clear(); pointer = null; bullets = []; still = 0;
     // Save the actual win immediately; closing during the rescue movie does not lose rewards.
     grantVictoryRewards(); updateHUD();
-    showPanel(sprite.name + '，自由啦！', '救援成功 / 精灵回家', '<div class="cinematic rescue-cinematic" style="--accent:' + sprite.color + '"><div class="rescue-stage"><div class="rescue-glow"></div><div class="rescue-cage"><i></i><i></i><i></i><i></i></div><span class="rescued-hero">' + sprite.icon + '</span><span class="rescue-spark spark-one">✦</span><span class="rescue-spark spark-two">✦</span><span class="rescue-spark spark-three">✦</span><div class="rescue-ground">🌿　🌸　🌿</div></div><p>“' + sprite.personality + '”<br>当前祝福：' + bonusText(sprite.bonusType, sprite.bonusPerLevel * (1 + profile.spriteLevels[sprite.id])) + '。</p></div>', '<button class="primary" id="settleSprite">完成救援 · 跳过动画</button>', '精灵已安置，进度已经保存 · Enter 可跳过');
+    showPanel(sprite.name + '，自由啦！', '救援成功 / 精灵回家', '<div class="cinematic rescue-cinematic" style="--accent:' + sprite.color + '"><div class="rescue-stage"><div class="rescue-glow"></div><div class="rescue-cage"><i></i><i></i><i></i><i></i></div>' + spritePortrait(sprite, 'rescued-hero') + '<span class="rescue-spark spark-one">✦</span><span class="rescue-spark spark-two">✦</span><span class="rescue-spark spark-three">✦</span><div class="rescue-ground">🌿　🌸　🌿</div></div><p>“' + sprite.personality + '”<br>当前祝福：' + bonusText(sprite.bonusType, sprite.bonusPerLevel * (1 + profile.spriteLevels[sprite.id])) + '。</p></div>', '<button class="primary" id="settleSprite">完成救援 · 跳过动画</button>', '精灵已安置，进度已经保存 · Enter 可跳过');
+    bindSpritePortraits();
     el('settleSprite').onclick = completeRescue; sound(720, .4, .03); return true;
   }
   function completeRescue() { if (state !== 'rescue') return false; finish(true); return true; }
