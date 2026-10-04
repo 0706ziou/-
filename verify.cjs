@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const html = fs.readFileSync(__dirname+'/index.html','utf8');
+const gameScriptIndex = html.search(/<script\b[^>]*src="game\.js(?:\?[^"]*)?"/);
 const experienceSource = fs.readFileSync(__dirname+'/experience-data.js','utf8');
 const progressionSource = fs.readFileSync(__dirname+'/progression.js','utf8');
 const orchardSource = fs.readFileSync(__dirname+'/orchard-data.js','utf8');
@@ -27,7 +28,7 @@ gameSource = gameSource.replace(boot,
   submitLogin,acceptAccount,logoutAccount,showCover,
   get currentAccount(){return currentAccount},get currentSaveKey(){return currentSaveKey},get loginBusy(){return loginBusy},
   get previewStage(){return previewStage},get helpTab(){return helpTab},get tutorialStep(){return tutorialStep},get helpReturnState(){return helpReturnState},
-  showOrchard,upgradeOrchard,upgradeSprite,orchardCost,spriteCost,completeBossIntro,completeRescue,readyBoss,beginBossIntro,
+  showOrchard,upgradeOrchard,upgradeSprite,orchardCost,spriteCost,completeRescue,readyBoss,announceBossArrival,
   startEndless,spawnEndlessWave,bankEndlessRewards,finishEndless,
   dropExperience,XP_NODE_CAP,W,H,WORLD_W,WORLD_H,seedDamage,experienceNeed,upgradeBase,experience,checkStageCompletion,
   get stageXP(){return stageXP},
@@ -173,7 +174,7 @@ function clearStage(t) {
     while(t.state==='upgrade')t.choose(0);
     t.elapsed=Math.max(t.elapsed,t.activeStage.bossSchedule[i],t.nextBossAllowedAt);
     if(t.state==='playing')t.update(.001);
-    assert.equal(t.state,'bossIntro');t.completeBossIntro();assert.equal(t.state,'playing');
+    assert.equal(t.state,'playing');assert.equal(t.state,'playing');
     const boss=t.enemies.find(e=>e.boss&&e.aggro);assert(boss);assert.equal(boss.stageId,t.activeStage.bossIds[i]);boss.hp=0;
     t.update(.001);
   }
@@ -244,14 +245,14 @@ function menuControls(game) {
 }
 
 test('External scripts are referenced in the correct load order',({t})=>{
-  assert(html.includes('src="progression.js"'));assert(html.includes('src="game.js"'));
+  assert(html.includes('src="progression.js"'));assert(gameScriptIndex >= 0);
   assert(html.includes('src="orchard-data.js"'));
   assert(html.includes('src="relic-data.js"'));
   assert(html.indexOf('src="progression.js"')<html.indexOf('src="orchard-data.js"'));
-  assert(html.indexOf('src="orchard-data.js"')<html.indexOf('src="game.js"'));
-  assert(html.indexOf('src="relic-data.js"')<html.indexOf('src="game.js"'));
+  assert(html.indexOf('src="orchard-data.js"')<gameScriptIndex);
+  assert(html.indexOf('src="relic-data.js"')<gameScriptIndex);
   for(const file of ['world-data.js','growth-data.js','art-catalog.js']) {
-    assert(html.includes('src="'+file+'"'));assert(html.indexOf('src="'+file+'"')<html.indexOf('src="game.js"'));
+    assert(html.includes('src="'+file+'"'));assert(html.indexOf('src="'+file+'"')<gameScriptIndex);
   }
   assert.equal(t.stages.length,100);
 });
@@ -280,7 +281,7 @@ test('Stage one has its fixed normal, elite and boss roster without replacement 
   assert(t.enemies.some(e=>e.type===0));assert(t.enemies.some(e=>e.type===1));
   for(const e of t.enemies){assert(e.x>=0&&e.x<=t.WORLD_W);assert(e.y>=0&&e.y<=t.WORLD_H);e.speed=0;e.hp=1e9}
   t.player.inv=1e9;t.shotClock=Infinity;
-  for(let i=0;i<500;i++){t.update(.04);if(t.state==='bossIntro'){t.completeBossIntro();t.shotClock=Infinity;}}
+  for(let i=0;i<500;i++){t.update(.04);if(t.state==='playing'){t.shotClock=Infinity;}}
   assert.equal(t.state,'playing');assert.equal(t.enemies.length,s.enemyCount);
   t.enemies[0].hp=0;t.update(.01);assert.equal(t.enemies.length,s.enemyCount-1);
   for(let i=0;i<100;i++)t.update(.04);assert.equal(t.enemies.length,s.enemyCount-1);
@@ -295,7 +296,7 @@ test('Ordinary pursuit keeps increasing alongside the timed boss encounter',({t}
   t.update(.002);assert.equal(activeNormals(),s.initialPursuers+s.batchSize);
   const lastTime=Math.max(...t.enemies.filter(e=>!e.boss&&!e.elite).map(e=>e.pursuitAt));
   t.elapsed=lastTime-.002;t.update(.001);assert.equal(activeNormals(),380);
-  assert.equal(t.state,'bossIntro');assert.equal(t.nonBossKills,0);t.completeBossIntro();t.shotClock=Infinity;
+  assert.equal(t.state,'playing');assert.equal(t.nonBossKills,0);t.shotClock=Infinity;
   t.update(.002);assert.equal(activeNormals(),398);
   assert.equal(t.enemies.find(e=>e.boss).aggro,true);
 });
@@ -555,9 +556,9 @@ test('A timed boss encounter saves the rescued spirit only after the entire rost
   const profile=JSON.stringify(t.profile);
   for(const e of t.enemies)if(!e.boss)e.hp=0;
   t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.01);assert.equal(t.kills,t.activeStage.normalCount+t.activeStage.eliteCount);assert.equal(t.enemies.length,1);
-  assert.equal(t.state,'bossIntro');assert.equal(JSON.stringify(t.profile),profile);
-  assert(element('overlay').innerHTML.includes(bosses[0].name));
-  t.completeBossIntro();assert.equal(t.state,'playing');const boss=t.enemies[0];assert(boss.boss&&boss.aggro);
+  assert.equal(t.state,'playing');assert.equal(JSON.stringify(t.profile),profile);
+  assert(element('bossForecast').textContent.includes(bosses[0].name));
+  assert.equal(t.state,'playing');const boss=t.enemies[0];assert(boss.boss&&boss.aggro);
   assert.equal(boss.xp,t.activeStage.xpRewards[t.activeStage.normalCount+t.activeStage.eliteCount]);
   boss.hp=0;t.update(.01);assert.equal(t.state,'upgrade');assert.equal(t.kills,t.activeStage.enemyCount);assert.equal(t.enemies.length,0);
   assert(t.profile.clearedStages.includes(1),'The actual victory is saved while final growth choices remain pending');
@@ -614,7 +615,7 @@ test('Every stage spawns the exact normal, elite and accumulated boss roster wit
       assert.equal(e.pursuitAt,i<s.initialPursuers?0:(1+Math.floor((i-s.initialPursuers)/s.batchSize))*s.pursuitInterval);
     }
     const lastTime=Math.max(...t.enemies.filter(e=>!e.boss).map(e=>e.pursuitAt));t.elapsed=lastTime;t.player.inv=1e9;t.shotClock=Infinity;
-    t.update(.001);assert.equal(t.enemies.filter(e=>e.aggro).length,s.normalCount+s.eliteCount);assert.equal(t.state,'bossIntro');
+    t.update(.001);assert.equal(t.enemies.filter(e=>e.aggro).length,s.normalCount+s.eliteCount+1);assert.equal(t.state,'playing');
   }
 });
 test('Elite reinforcements use their own clock independently of ordinary pursuit batches',({t})=>{
@@ -658,13 +659,13 @@ test('A defeated elite gives its larger experience reward while Boss eligibility
 test('Stage two mixes sequential bosses with surviving bugs, respects recovery and pays after the complete roster',({t,element,bosses})=>{
   prepareStage(t,2);const s=t.activeStage,before=JSON.stringify(t.profile);
   assert.equal(t.bossIndex,0);assert.equal(t.bossKills,0);assert.equal(t.nonBossKills,0);
-  assert.equal(t.readyBoss(),null);assert.equal(t.beginBossIntro(),false);
+  assert.equal(t.readyBoss(),null);assert.equal(t.announceBossArrival(),false);
   t.elapsed=s.bossSchedule[0]-.002;t.update(.001);assert.equal(t.state,'playing');assert.equal(t.readyBoss(),null);
-  t.update(.002);assert.equal(t.state,'bossIntro');assert.equal(t.bossIndex,1);assert.equal(t.nonBossKills,0);
-  assert(element('overlay').innerHTML.includes(bosses[0].name));assert.equal(t.enemies.filter(e=>e.boss&&e.introduced).length,1);
+  t.update(.002);assert.equal(t.state,'playing');assert.equal(t.bossIndex,1);assert.equal(t.nonBossKills,0);
+  assert(element('bossForecast').textContent.includes(bosses[0].name));assert.equal(t.enemies.filter(e=>e.boss&&e.introduced).length,1);
   assert.equal(element('bossName').textContent,'1 / 2 · '+bosses[0].name);assert(!element('bossHud').classList.contains('hidden'));
-  assert.equal(t.enemies.filter(e=>e.boss&&e.aggro).length,0);assert.equal(JSON.stringify(t.profile),before);
-  t.completeBossIntro();const first=t.enemies.find(e=>e.boss&&e.aggro);assert.equal(first.stageId,1);
+  assert.equal(t.enemies.filter(e=>e.boss&&e.aggro).length,1);assert.equal(JSON.stringify(t.profile),before);
+  const first=t.enemies.find(e=>e.boss&&e.aggro);assert.equal(first.stageId,1);
   const elapsed=t.elapsed;t.pause();t.frame(1000);assert.equal(t.elapsed,elapsed);t.resume();
   t.elapsed=s.bossSchedule[1]-.002;t.update(.001);assert.equal(t.state,'playing');assert.equal(t.readyBoss(),null);
   t.update(.002);
@@ -674,10 +675,10 @@ test('Stage two mixes sequential bosses with surviving bugs, respects recovery a
   assert.notEqual(t.state,'rescue');assert.notEqual(t.state,'ended');assert.equal(t.startEndless(),false);
   const recovery=t.nextBossAllowedAt;assert(Math.abs(recovery-t.elapsed-12)<1e-8);drainUpgradeChoices(t);
   t.elapsed=recovery-.002;t.update(.001);assert.equal(t.state,'playing');assert.equal(t.readyBoss(),null);
-  t.update(.002);assert.equal(t.state,'bossIntro');assert.equal(t.bossIndex,2);assert(element('overlay').innerHTML.includes(bosses[1].name));
+  t.update(.002);assert.equal(t.state,'playing');assert.equal(t.bossIndex,2);assert(element('bossForecast').textContent.includes(bosses[1].name));
   assert.equal(t.nonBossKills,0);assert.equal(t.enemies.filter(e=>!e.boss&&e.hp>0).length,s.normalCount+s.eliteCount);
-  assert.equal(t.enemies.filter(e=>e.boss&&e.aggro).length,0);
-  t.completeBossIntro();const second=t.enemies.find(e=>e.boss&&e.stageId===2);assert(second.aggro);
+  assert.equal(t.enemies.filter(e=>e.boss&&e.aggro).length,1);
+  const second=t.enemies.find(e=>e.boss&&e.stageId===2);assert(second.aggro);
   assert.equal(t.enemies.filter(e=>e.boss&&e.aggro).length,1);assert.equal(t.readyBoss(),null);
   second.hp=0;t.update(.001);drainUpgradeChoices(t);assert.equal(t.bossKills,2);assert.equal(t.state,'playing');assert.equal(JSON.stringify(t.profile),before);
   killNonBossCount(t,s.normalCount+s.eliteCount);assert.equal(t.state,'upgrade');assert(t.profile.clearedStages.includes(2));
@@ -690,10 +691,10 @@ test('Stage twenty encounters every earlier boss in order and pays only after th
   prepareStage(t,20);const s=t.activeStage,before=JSON.stringify(t.profile),seen=[];
   for(let i=0;i<20;i++){
     t.elapsed=Math.max(s.bossSchedule[i],t.nextBossAllowedAt);drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);
-    assert.equal(t.state,'bossIntro');assert.equal(t.bossIndex,i+1);assert(element('overlay').innerHTML.includes(bosses[i].name));
+    assert.equal(t.state,'playing');assert.equal(t.bossIndex,i+1);assert(element('bossForecast').textContent.includes(bosses[i].name));
     const hp=t.player.hp,time=t.elapsed;for(let frame=0;frame<15;frame++)t.frame(1000+(i*20+frame)*40);
-    assert.equal(t.state,'bossIntro');assert.equal(t.player.hp,hp);assert.equal(t.elapsed,time);
-    t.completeBossIntro();assert.equal(t.enemies.filter(e=>e.boss&&e.aggro).length,1);
+    assert.equal(t.state,'playing');assert.equal(t.player.hp,hp);assert(t.elapsed>time);
+    assert.equal(t.enemies.filter(e=>e.boss&&e.aggro).length,1);
     const boss=t.enemies.find(e=>e.boss&&e.aggro);assert.equal(boss.stageId,i+1);seen.push(boss.name);boss.hp=0;t.update(.001);
     assert.equal(t.bossKills,i+1);
     assert.notEqual(t.state,'rescue');assert.equal(JSON.stringify(t.profile),before);assert.equal(t.nonBossKills,0);drainUpgradeChoices(t);
@@ -707,7 +708,7 @@ test('Stage twenty encounters every earlier boss in order and pays only after th
 });
 test('Returning to or reloading a stage restarts elite and boss schedules without premature rewards',({t,storage})=>{
   prepareStage(t,3);const s=t.activeStage,oldProfile=JSON.stringify(t.profile);t.elapsed=s.bossSchedule[0];t.update(.001);
-  assert.equal(t.state,'bossIntro');t.completeBossIntro();t.enemies.find(e=>e.boss&&e.aggro).hp=0;t.update(.001);
+  assert.equal(t.state,'playing');t.enemies.find(e=>e.boss&&e.aggro).hp=0;t.update(.001);
   assert.equal(t.bossKills,1);assert.equal(JSON.stringify(t.profile),oldProfile);t.startScreen();t.saveProfile();
   t.start();assert.equal(t.kills,0);assert.equal(t.nonBossKills,0);assert.equal(t.bossKills,0);assert.equal(t.bossIndex,0);
   assert.equal(t.enemies.length,s.enemyCount);assert(t.enemies.filter(e=>e.boss).every(e=>!e.introduced&&!e.aggro));
@@ -721,15 +722,15 @@ test('Boss time arrivals are not accelerated by clearing all small bugs early',(
   killNonBossCount(t,t.activeStage.normalCount+t.activeStage.eliteCount);
   assert.equal(t.state,'playing');assert.equal(t.bossIndex,0);assert.equal(t.readyBoss(),null);
   t.elapsed=t.activeStage.bossSchedule[0]-.002;t.update(.001);assert.equal(t.state,'playing');
-  t.update(.002);assert.equal(t.state,'bossIntro');assert.equal(t.bossIndex,1);
+  t.update(.002);assert.equal(t.state,'playing');assert.equal(t.bossIndex,1);
 });
 test('Later chapters serialize all time-ready bosses and keep the twelve-second recovery frozen while paused',({t})=>{
   prepareStage(t,6);const s=t.activeStage,before=JSON.stringify(t.profile);t.elapsed=s.bossSchedule.at(-1)+20;
   for(let order=1;order<=s.bossCount;order++){
-    t.update(.001);assert.equal(t.state,'bossIntro');assert.equal(t.bossIndex,order);
-    const arriving=t.enemies.find(e=>e.boss&&e.introduced&&!e.aggro&&e.hp>0);
+    t.update(.001);assert.equal(t.state,'playing');assert.equal(t.bossIndex,order);
+    const arriving=t.enemies.find(e=>e.boss&&e.introduced&&e.aggro&&e.hp>0);
     assert(arriving);assert.equal(arriving.stageId,order);assert.equal(t.nonBossKills,0);
-    t.completeBossIntro();assert(arriving.aggro);
+    assert(arriving.aggro);
     assert.equal(t.enemies.filter(e=>e.boss&&e.aggro&&e.hp>0).length,1);
     t.update(.001);assert.equal(t.state,'playing');assert.equal(t.readyBoss(),null);
     assert(t.enemies.filter(e=>e.boss&&e.stageId>order).every(e=>!e.introduced&&!e.aggro));
@@ -923,49 +924,64 @@ test('Twenty unique bosses and rescue spirits cover every stage with valid comba
   }
   assert(bosses[19].hp>bosses[0].hp);assert(bosses[19].damage>bosses[0].damage);
 });
-test('Boss introduction freezes combat, prevents loadout changes and only activates once',({t})=>{
-  t.frame(1000);for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);
-  assert.equal(t.state,'bossIntro');const elapsed=t.elapsed,hp=t.player.hp,x=t.player.x;
-  const before=JSON.stringify(t.profile);t.keys.add('d');t.pause();
-  assert.equal(t.state,'bossIntro');assert(!t.selectStage(1));assert(!t.equipGear('weapon_seed'));assert(!t.upgradeGear('weapon_seed'));
-  assert(!t.upgradeOrchard());assert(!t.upgradeSprite('invalid'));
-  for(let i=0;i<20;i++)t.frame(1040+i*40);
-  assert.equal(t.state,'bossIntro');assert.equal(t.elapsed,elapsed);assert.equal(t.player.hp,hp);assert.equal(t.player.x,x);
-  assert.equal(JSON.stringify(t.profile),before);t.completeBossIntro();assert.equal(t.state,'playing');
-  const boss=t.enemies.find(e=>e.boss);assert(boss.aggro);assert(Number.isFinite(boss.pursuitAt));
-  assert.equal(boss.chargeClock,3,'Each newly activated boss leaves three combat seconds before its first warning');
-  t.completeBossIntro();assert.equal(t.enemies.length,1);assert.equal(t.state,'playing');
+test('Boss arrival preserves held input, projectiles and clocks, and only activates once',({t,element,listeners})=>{
+  prepareStage(t,1);t.elapsed=t.activeStage.bossSchedule[0];t.keys.add('d');
+  listeners['arena:pointerdown']({pointerId:17,clientX:100,clientY:100,target:{closest:()=>null}});
+  listeners['arena:pointermove']({pointerId:17,clientX:140,clientY:100});
+  t.bullets.push({x:t.player.x,y:t.player.y,vx:1,vy:0,life:10,damage:1,hitTargets:new Set()});
+  const bullets=t.bullets,still=t.still,shotClock=t.shotClock,inv=t.player.inv,elapsed=t.elapsed;
+  const before=JSON.stringify(t.profile);assert(t.announceBossArrival());
+  assert.equal(t.state,'playing');assert(t.keys.has('d'));assert.equal(t.bullets,bullets);assert.equal(t.bullets.length,1);
+  assert.equal(t.still,still);assert.equal(t.shotClock,shotClock);assert.equal(t.player.inv,inv);assert.equal(t.elapsed,elapsed);
+  assert(element('overlay').classList.contains('hidden'));assert(!element('overlay').innerHTML.includes('fightBoss'));
+  assert(element('bossForecast').textContent.includes('Boss登场'));assert(!element('bossForecast').classList.contains('hidden'));
+  assert(!t.announceBossArrival());assert.equal(t.bossIndex,1);assert.equal(JSON.stringify(t.profile),before);
+  const boss=t.enemies.find(e=>e.boss&&e.aggro);assert(boss);assert.equal(boss.chargeClock,3);
+  t.keys.clear();const x=t.player.x;t.update(.04);assert(t.player.x>x,'The held touch drag survives arrival');assert(t.elapsed>elapsed);
 });
-test('Boss and rescue animations complete automatically through animation frames',({t})=>{
+
+test('Bosses activate immediately and rescue animations complete automatically through animation frames',({t})=>{
   t.frame(1000);for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);
   let now=1000;
-  for(let i=0;i<150&&t.state==='bossIntro';i++){now+=40;t.frame(now)}
+  for(let i=0;i<150&&t.state==='playing';i++){now+=40;t.frame(now)}
   assert.equal(t.state,'playing');const boss=t.enemies.find(e=>e.boss);assert(boss.aggro);boss.hp=0;t.update(.001);
   assert.equal(t.state,'upgrade');drainUpgradeChoices(t);assert.equal(t.state,'rescue');const elapsed=t.elapsed,hp=t.player.hp;
   for(let i=0;i<20;i++){now+=40;t.frame(now)}
   assert.equal(t.state,'rescue');assert.equal(t.elapsed,elapsed);assert.equal(t.player.hp,hp);
   for(let i=0;i<150&&t.state==='rescue';i++){now+=40;t.frame(now)}
   assert.equal(t.state,'ended');assert.equal(t.profile.rescuedSprites.length,1);
-  const paid=JSON.stringify(t.profile);t.completeRescue();t.completeBossIntro();assert.equal(JSON.stringify(t.profile),paid);
+  const paid=JSON.stringify(t.profile);t.completeRescue();assert.equal(JSON.stringify(t.profile),paid);
 });
-test('Hidden browser tabs freeze boss and rescue cinematics until the player returns',({t,document})=>{
+test('Pausing after a boss arrival freezes combat, and hidden tabs still freeze rescue animations',({t,document})=>{
   t.frame(1000);for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);
-  const elapsed=t.elapsed;let now=1000;document.hidden=true;
+  assert.equal(t.state,'playing');t.pause();const elapsed=t.elapsed;let now=1000;document.hidden=true;
   for(let i=0;i<150;i++){now+=40;t.frame(now)}
-  assert.equal(t.state,'bossIntro');assert.equal(t.elapsed,elapsed);document.hidden=false;t.completeBossIntro();
+  assert.equal(t.state,'paused');assert.equal(t.elapsed,elapsed);document.hidden=false;t.resume();
   t.enemies.find(e=>e.boss).hp=0;t.update(.001);assert.equal(t.state,'upgrade');drainUpgradeChoices(t);assert.equal(t.state,'rescue');document.hidden=true;
   for(let i=0;i<150;i++){now+=40;t.frame(now)}
   assert.equal(t.state,'rescue');document.hidden=false;
   for(let i=0;i<150&&t.state==='rescue';i++){now+=40;t.frame(now)}assert.equal(t.state,'ended');
 });
+
 test('Earned upgrades are resolved before a simultaneous boss time arrival',({t})=>{
   for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.player.xp=t.player.need;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);
   assert.equal(t.state,'upgrade');assert.equal(t.enemies.length,1);assert.equal(t.enemies[0].aggro,false);
   t.choose(0);assert.equal(t.player.level,2);assert.equal(t.state,'playing');t.update(.001);
-  assert.equal(t.state,'bossIntro');assert.equal(t.enemies.length,1);
+  assert.equal(t.state,'playing');assert.equal(t.enemies.length,1);
 });
+test('Boss arrival notice is immediate despite queued relic notices and expires without clicks',({t,element})=>{
+  prepareStage(t,1);t.noticeQueue.push({title:'等待展示的饰品',kind:'relic'});const queued=t.noticeQueue.length;
+  t.elapsed=t.activeStage.bossSchedule[0];assert(t.announceBossArrival());assert.equal(t.noticeQueue.length,queued);
+  assert(element('bossForecast').classList.contains('arrival-notice'));
+  assert.equal(t.enemies.filter(e=>e.boss&&e.aggro).length,1);assert.equal(t.readyBoss(),null);
+  for(const e of t.enemies)e.chargeClock=100;t.keys.add('d');
+  t.update(1);assert(!element('bossForecast').classList.contains('hidden'));t.update(3.01);
+  assert.equal(t.state,'playing');assert(t.keys.has('d'));assert(element('bossForecast').classList.contains('hidden'));
+  assert(!element('bossForecast').classList.contains('arrival-notice'));assert(element('overlay').classList.contains('hidden'));
+});
+
 test('Freshly introduced bosses wait three combat seconds and then warn for nine tenths before charging',({t})=>{
-  prepareStage(t,1);t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);assert.equal(t.state,'bossIntro');t.completeBossIntro();
+  prepareStage(t,1);t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);assert.equal(t.state,'playing');
   const boss=t.enemies.find(e=>e.boss&&e.aggro);boss.speed=0;boss.x=t.player.x+300;boss.y=t.player.y;
   const x=boss.x,y=boss.y;assert.equal(boss.chargeClock,3);
   t.update(1);t.update(1);t.update(.999);assert.equal(boss.windup,0);assert.equal(boss.dashTime,0);
@@ -975,7 +991,7 @@ test('Freshly introduced bosses wait three combat seconds and then warn for nine
 });
 
 test('Boss charges warn before moving, keep their aimed direction and respect collision invulnerability',({t})=>{
-  for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);t.completeBossIntro();t.gems=[];
+  for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);t.gems=[];
   const boss=t.enemies[0];boss.x=t.player.x-boss.r-t.player.r-5;boss.y=t.player.y;boss.chargeClock=0;
   const x=boss.x,y=boss.y,hp=t.player.hp;t.update(.01);assert(boss.windup>0);assert.equal(boss.x,x);assert.equal(t.player.hp,hp);
   t.update(.4);t.update(.4);assert.equal(boss.x,x);assert.equal(boss.y,y);assert.equal(t.player.hp,hp);
@@ -987,7 +1003,7 @@ test('Boss charges warn before moving, keep their aimed direction and respect co
   assert.equal(boss.x,t.WORLD_W-boss.r-22);
 });
 test('Defeat or abandoned boss encounters never rescue a spirit or pay clear rewards',({t})=>{
-  for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);t.completeBossIntro();
+  for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);
   const before=JSON.stringify(t.profile);t.player.hp=1;t.player.inv=0;
   const boss=t.enemies.find(e=>e.boss);boss.x=t.player.x;boss.y=t.player.y;t.update(.001);
   assert.equal(t.state,'ended');assert.equal(JSON.stringify(t.profile),before);t.completeRescue();assert.equal(JSON.stringify(t.profile),before);
@@ -1055,7 +1071,7 @@ test('Endless mode is available only after a real boss victory and completed res
   assert.equal(t.runMode,'stage');assert(!t.startEndless());assert(!t.finishEndless());
   t.pause();assert(!t.startEndless());t.resume();
   for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);
-  assert.equal(t.state,'bossIntro');assert(!t.startEndless());t.completeBossIntro();
+  assert.equal(t.state,'playing');assert(!t.startEndless());
   assert(!t.startEndless());t.enemies.find(e=>e.boss).hp=0;t.update(.001);
   assert.equal(t.state,'upgrade');assert(!t.startEndless());drainUpgradeChoices(t);
   assert.equal(t.state,'rescue');assert(!t.startEndless());t.completeRescue();
@@ -1307,15 +1323,16 @@ test('Keyboard and phone dash controls work while M and Escape open and close th
   press('Escape');assert.equal(t.state,'playing');t.pause();press('m');assert.equal(t.state,'relicMap');assert.equal(t.mapReturnState,'paused');
   press('m');assert.equal(t.state,'paused');assert.equal(t.activateDash(),false);
 });
-test('Skill cooldowns and effects freeze during pause, upgrade, every boss entrance and the rescue animation',({t})=>{
+test('Skill cooldowns freeze in pause, upgrades and rescue while boss arrivals keep combat running',({t})=>{
   claimSkill(t,'lightning');t.shotClock=Infinity;t.player.inv=1e9;t.enemies.push(enemy(t.player.x+100,t.player.y,{hp:1000}));
   t.updateSkills(.001);t.frame(1000);
   const snapshot=()=>JSON.stringify({time:t.elapsed,timers:t.player.skillTimers,effects:t.skillEffects});
   const frozenFrames=(first)=>{const before=snapshot();for(let i=0;i<15;i++)t.frame(first+i*40);assert.equal(snapshot(),before)};
   t.pause();frozenFrames(1040);t.resume();t.player.xp=t.player.need;t.upgrade();frozenFrames(2000);
   assert.equal(t.showRelicMap(),false);assert.equal(t.activateDash(),false);t.choose(0);
-  for(const e of t.enemies)if(!e.boss)e.hp=0;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);assert.equal(t.state,'bossIntro');frozenFrames(3000);
-  assert.equal(t.showRelicMap(),false);t.completeBossIntro();t.enemies.find(e=>e.boss&&e.aggro).hp=0;t.update(.001);
+  for(const e of t.enemies)if(!e.boss)e.hp=0;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);assert.equal(t.state,'playing');
+  const beforeArrivalFrames=snapshot();for(let i=0;i<15;i++)t.frame(3000+i*40);assert.notEqual(snapshot(),beforeArrivalFrames);
+  assert(t.showRelicMap());t.closeRelicMap();t.enemies.find(e=>e.boss&&e.aggro).hp=0;t.update(.001);
   drainUpgradeChoices(t);assert.equal(t.state,'rescue');frozenFrames(4000);assert.equal(t.showRelicMap(),false);
 });
 test('Relic distribution previews show six selectable points and keep the selected stage across menu navigation',(game)=>{
@@ -1465,8 +1482,9 @@ test('Hero skill control is available on keyboard and phone and cooldown/effects
   function waitFrames(time){const before=frozen();for(let i=0;i<10;i++)t.frame(time+i*40);assert.equal(frozen(),before);assert.equal(t.activateHeroSkill(),false)}
   t.pause();waitFrames(1100);t.resume();t.showRelicMap();waitFrames(2000);t.closeRelicMap();
   t.player.xp=t.player.need;t.upgrade();waitFrames(3000);t.choose(0);
-  for(const e of t.enemies)if(!e.boss)e.hp=0;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);assert.equal(t.state,'bossIntro');waitFrames(4000);
-  t.completeBossIntro();t.enemies.find(e=>e.boss&&e.aggro).hp=0;t.update(.001);drainUpgradeChoices(t);assert.equal(t.state,'rescue');waitFrames(5000);
+  for(const e of t.enemies)if(!e.boss)e.hp=0;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);assert.equal(t.state,'playing');
+  const clockBeforeArrivalFrames=t.player.heroClock;for(let i=0;i<10;i++)t.frame(4000+i*40);assert(t.player.heroClock<clockBeforeArrivalFrames);
+  t.enemies.find(e=>e.boss&&e.aggro).hp=0;t.update(.001);drainUpgradeChoices(t);assert.equal(t.state,'rescue');waitFrames(5000);
 });
 test('Six new run upgrades obey rarity budgets, saturation limits and description values',({t})=>{
   for(const m of [1,1.5,2]){
@@ -1890,11 +1908,13 @@ test('Balanced recovery: endless clock resets cannot carry a temporary guard or 
   t.player.hp=t.player.maxHp-30;t.player.lifeSteal=.04;
   t.skillHit(enemy(0,0,{hp:100000}),10000,'#abc');assert(Math.abs(t.player.hp-(t.player.maxHp-30+t.player.maxHp*.03))<1e-8);
 });
-test('Balanced boss forecast states the opening window and stays hidden during an active boss',({t,element})=>{
+test('Balanced boss forecast announces arrival then hides while its active health bar remains',({t,element})=>{
   t.player.inv=1e9;t.shotClock=Infinity;t.update(.001);
   assert(!element('bossForecast').classList.contains('hidden'));assert(element('bossForecast').textContent.includes('60 秒'));
-  t.elapsed=60;t.update(.001);assert.equal(t.state,'bossIntro');assert(element('bossForecast').classList.contains('hidden'));
-  t.completeBossIntro();assert.equal(t.enemies.filter(e=>e.boss&&e.aggro).length,1);
+  t.elapsed=60;t.update(.001);assert.equal(t.state,'playing');assert(!element('bossForecast').classList.contains('hidden'));
+  assert(element('bossForecast').textContent.includes('Boss登场'));t.elapsed+=4.01;t.update(.001);
+  assert(element('bossForecast').classList.contains('hidden'));assert(!element('bossHud').classList.contains('hidden'));
+  assert.equal(t.enemies.filter(e=>e.boss&&e.aggro).length,1);
 });
 test('New UI: the image precedes all four home actions and the selected relic draft survives entry',(game)=>{
   const {t,element}=game;t.startScreen();const markup=element('overlay').innerHTML;
@@ -1951,7 +1971,7 @@ test('New UI: conversation content is escaped and its snapshot is declared befor
   const game=createGame(new Map(),{conversation:{description:'<script>bad</script>',messages:[{role:'user',text:'<img src=x onerror=bad()> & "quoted"'}]}});
   game.t.start();assert(game.t.openGameHelp());const markup=game.element('overlay').innerHTML;
   assert(markup.includes('&lt;img'));assert(markup.includes('&lt;script&gt;'));assert(!markup.includes('<script>bad'));assert(!markup.includes('<img src=x'));
-  assert(html.indexOf('src="conversation-data.js"')<html.indexOf('src="game.js"'));assert(html.includes('href="lobby-ui.css"'));assert(html.includes('id="gameHelp"'));
+  assert(html.indexOf('src="conversation-data.js"')<gameScriptIndex);assert(/href="lobby-ui\.css(?:\?[^" ]*)?"/.test(html));assert(html.includes('id="gameHelp"'));
 },{start:false});
 test('New UI: help is unavailable in conflicting overlays and endless waves freeze during reading',(game)=>{
   const {t}=game;t.showRelicMap();assert(!t.openGameHelp());t.closeRelicMap();t.upgrade();assert(!t.openGameHelp());t.choose(0);
@@ -1968,6 +1988,21 @@ test('New UI: help isolates keyboard focus and cannot activate the background en
   click(game,'viewTutorial');assert.equal(document.activeElement,element('nextTutorial'));
   listeners.keydown({key:'Tab',preventDefault(){}});assert.equal(document.activeElement,element('viewConversation'));
   t.closeGameHelp();assert.equal(t.state,'playing');assert(!element('endEndless').disabled);element('endEndless').onclick();assert.equal(t.state,'ended');
+});
+test('Prompt placement: out-of-combat menus open help and return without starting a run',({t,element})=>{
+  const saved=JSON.stringify(t.profile);t.startScreen();
+  for(const [open,expected] of [[()=>t.startScreen(),'lobby'],[()=>t.showHeroes(),'heroes'],[()=>t.showArmory(),'armory'],[()=>t.showOrchard(),'orchard'],[()=>t.showRelicMap(),'relicMap']]){
+    open();assert.equal(t.state,expected);assert(!element('gameHelp').classList.contains('hidden'));assert(!element('gameHelp').disabled);
+    element('gameHelp').onclick();assert.equal(t.state,'help');assert.equal(t.helpReturnState,expected);assert(!t.isRunActive());
+    element('viewTutorial').onclick();element('closeGameHelp').onclick();assert.equal(t.state,expected);assert(!t.isRunActive());
+  }
+  assert.equal(JSON.stringify(t.profile),saved);t.startScreen();t.start();assert(element('gameHelp').classList.contains('hidden'));
+});
+test('Prompt placement: locked chapter preview remains selected after closing help',({t,element})=>{
+  t.startScreen();t.browseStage(1);assert.equal(t.previewStage,2);assert.equal(t.selectedStage,1);
+  assert(t.openGameHelp());assert(element('overlay').innerHTML.includes('返回局外'));assert(t.closeGameHelp());
+  assert.equal(t.state,'lobby');assert.equal(t.previewStage,2);assert.equal(t.selectedStage,1);assert(element('start').disabled);
+  assert(html.indexOf('id="gameHelp"')>html.indexOf('<header>'));assert(html.indexOf('id="gameHelp"')<html.indexOf('</header>'));
 });
 test('Campaign: later eighty chapters have bounded encounters, rising stats and their own final boss',({t,bosses})=>{
   let previous=t.stages[19];

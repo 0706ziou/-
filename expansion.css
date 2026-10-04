@@ -5,7 +5,7 @@
 .hero-tabs .secondary.active { background: #4d6438; border-color: #d4e995; color: #fff3c2; }
 .hero-tabs > small { margin-left: auto; align-self: center; font-size: 10px; line-height: 1.3; color: #cbd9b5; }
 .hero-layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 14px; flex: 1; min-height: 0; }
-.hero-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); gap: 8px; min-height: 0; }
+.hero-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: minmax(76px, max-content); align-content: start; gap: 8px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; scrollbar-width: thin; scrollbar-color: #779956 #1b3224; padding: 2px 4px 2px 2px; }
 .hero-card { position: relative; display: flex; align-items: center; gap: 7px; min-width: 0; min-height: 0; padding: 8px; border: 1px solid #627650; border-radius: 13px; background: linear-gradient(145deg, #304835, #253729); color: #ebe7c4; text-align: left; }
 .hero-card:hover { border-color: #bfdb87; background: #3b5539; }
 .hero-card.selected { border-color: #e4ec99; box-shadow: inset 0 0 0 1px #d5e68166, 0 4px 18px #101b133b; background: linear-gradient(145deg, #4c633c, #344932); }
@@ -15,6 +15,7 @@
 .hero-card strong { display: block; font-size: 15px; line-height: 1.25; }
 .hero-card span, .hero-card small { display: block; font-size: 10px; line-height: 1.45; margin-top: 5px; color: #c4d4ae; }
 .hero-card small { color: #e7d8a5; }
+.hero-card .hero-portrait { margin-top: 0; }
 .hero-portrait { display: block; flex: 0 0 auto; width: 52px; height: 52px; background-image: url('assets/guardian-atlas.png'); background-size: 400% 400%; background-repeat: no-repeat; image-rendering: auto; }
 .hero-detail { min-width: 0; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 11px; border: 1px solid #708555; border-radius: 13px; padding: 21px; background: linear-gradient(150deg, #314931, #223629); }
 .hero-detail .hero-portrait { width: 98px; height: 98px; align-self: center; }
@@ -142,7 +143,7 @@
 }
 @media (max-width: 620px) and (max-height: 580px) {
   .hero-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); grid-template-rows: none; gap: 7px; }
-  .hero-grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, minmax(0, 1fr)); }
+  .hero-grid { grid-template-columns: 1fr; }
   .hero-card { gap: 4px; padding: 5px; }
   .hero-portrait { width: 36px; height: 36px; }
   .hero-card strong { font-size: 10px; }
@@ -168,7 +169,7 @@
 }
 @media (max-width: 620px) and (max-height: 400px) {
   .hero-tabs .secondary { min-height: 23px; padding: 4px; font-size: 9px; }
-  .hero-card span { display: none; }
+  .hero-card span:not(.hero-portrait) { display: none; }
   .hero-card strong { font-size: 9px; }
   .hero-portrait { width: 30px; height: 30px; }
   .hero-detail { gap: 3px; padding: 7px; }
@@ -182,7 +183,7 @@
   .stage-art > strong, .stage-art > .stage-art-title { font-size: 11px; }
 }
 
-/* Eight initially unlocked heroes stay on one screen at every menu size. */
+/* Compact menus keep the hero portraits and names readable. */
 .boss-forecast { position: absolute; top: 88px; left: 50%; transform: translateX(-50%); max-width: 75%; padding: 6px 12px; border: 1px solid #a5b66b55; border-radius: 18px; background: #132a22de; color: #dce8ae; font-size: 10px; text-align: center; pointer-events: none; }
 .boss-forecast.hidden { display: none; }
 @media (min-width: 621px) and (max-height: 650px) {
@@ -193,7 +194,7 @@
 }
 @media (max-width: 620px) {
   .hero-layout { grid-template-columns: 1fr; grid-template-rows: minmax(118px, .7fr) minmax(0, 1.3fr); gap: 7px; }
-  .hero-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  .hero-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: minmax(54px, max-content); gap: 5px; }
   .hero-card { flex-direction: column; justify-content: center; gap: 1px; padding: 4px; text-align: center; }
   .hero-card .hero-portrait { width: 30px; height: 30px; margin-top: 0; }
   .hero-card strong { font-size: 10px; }
@@ -203,11 +204,7 @@
 }
 @media (max-width: 620px) and (max-height: 580px) {
   .hero-layout { grid-template-columns: minmax(0, .9fr) minmax(0, 1.25fr); grid-template-rows: none; }
-  .hero-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .hero-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(52px, max-content); gap: 4px; }
   .hero-card .hero-portrait { width: 25px; height: 25px; }
   .hero-card strong { font-size: 9px; }
 }
-
-/* Thirteen heroes remain accessible within the fixed menu height. */
-.hero-grid { grid-template-rows: none; grid-auto-rows: minmax(76px, 1fr); overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; scrollbar-width: thin; scrollbar-color: #779956 #1b3224; padding-right: 4px; }
-@media (max-width: 620px) { .hero-grid { grid-auto-rows: minmax(54px, 1fr); } }

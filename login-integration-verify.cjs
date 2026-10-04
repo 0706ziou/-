@@ -92,7 +92,8 @@ async function login(g,account,password='orchard-pass-123'){
   await test('Cover art, styles, labels and auth load order are present in the offline package',async()=>{
     const html=fs.readFileSync(__dirname+'/index.html','utf8');
     for(const file of ['auth-data.js','cover-ui.css','assets/cover/orchard-cover.png','assets/cover/orchard-cover.webp','assets/cover/cover-prompt.txt'])assert(fs.existsSync(__dirname+'/'+file));
-    assert(html.indexOf('src="auth-data.js"')<html.indexOf('src="game.js"'));
+    const gameScriptIndex = html.search(/<script\b[^>]*src="game\.js(?:\?[^"]*)?"/);
+    assert(html.indexOf('src="auth-data.js"')<gameScriptIndex);
     for(const id of ['loginAccount','loginPassword'])assert(html.includes('for="'+id+'"'));
     assert(!html.includes('loginNickname'));assert(!fs.readFileSync(__dirname+'/game.js','utf8').includes('loginNickname'));
     const field=html.match(/<input\b[^>]*id="loginAccount"[^>]*>/)?.[0];assert(field);assert(field.includes('minlength="1"'));assert(field.includes('maxlength="24"'));
