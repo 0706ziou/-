@@ -8,12 +8,14 @@ github-branch-backups/
 *.pem
 *.key
 *.log
+.*-result.txt
 .world-server-data/
 *.sqlite
 *.sqlite3
 *.sqlite-wal
 *.sqlite-shm
 node_modules/
+deployment-artifacts/
 __pycache__/
 *.py[cod]
 .DS_Store
