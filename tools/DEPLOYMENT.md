@@ -19,6 +19,8 @@ Nginx 重载后，新工作进程需要时间接管请求。脚本以有限次�
 
 固定版本的校验基准必须从 `git cat-file blob 提交SHA:文件路径` 的原始字节生成。Windows 的 Git archive、检出及换行设置可能把文本转换成 CRLF，不能直接拿这种副本的文件哈希校验 Linux 上的发布版本。
 
+后续升级可复用经过审查的旧发布资源。缓存白名单还包含 `3e7d4ec`、`75ac694`、`ebbc394` 各固定版本的原始 Git 运行文件清单指纹；使用前仍逐项检查文件哈希及完整目录，拒绝篡改或额外文件。验证通过后只需下载发生变化的 Git 对象，不能仅凭旧清单或文件数量认定缓存可信。
+
 ## HTTPS 与续期
 
 登录使用 Web Crypto，公网普通 HTTP 无法使用当前密码验证，所以直接部署 HTTPS。IP 证书使用 Certbot 5.8 的 `webroot` 和 `shortlived`，安装在独立 Python 虚拟环境，不替换已有 Certbot 2.8。证书配置也与已有 `/etc/letsencrypt` 分开。IP 证书有效期约六天，脚本测试续期后启用每天两次的 systemd 检查及 Nginx 重载 Hook。
@@ -39,6 +41,7 @@ journalctl -u orchard-certbot-renew.service -n 30 --no-pager
 
 ```sh
 node tools/package-site.cjs
+node tools/deploy-sparse-verify.cjs
 node tools/package-site-verify.cjs
 node tools/package-site-verify.cjs --site /实际发布目录
 python3 tools/deploy-config-verify.py

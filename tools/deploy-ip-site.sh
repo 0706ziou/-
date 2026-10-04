@@ -306,12 +306,20 @@ git -C "$task_source" sparse-checkout set --no-cone --stdin <<'SPARSE'
 /assets/skills/*.svg
 /assets/equipment/*.png
 /assets/talents/*.png
+/assets/materials/*.svg
 SPARSE
 if [[ -n ${resolved_old:-} ]]; then
   if python3 - "$resolved_old" <<'PY'
 import hashlib, json, pathlib, sys
 # Anchor the canonical Git blobs, rather than a Windows archive/checkout.
-TRUSTED_CACHE = {'c8c15291d877fd25457f9be8f684daaf5527f9db3d57fcf4bd60e59893a0af31', '7fa18ad8124df2a49971125d256dcb702807042d666f6d73d8af8dd8cb4a66a9'}
+TRUSTED_CACHE = {
+    'c8c15291d877fd25457f9be8f684daaf5527f9db3d57fcf4bd60e59893a0af31',
+    '7fa18ad8124df2a49971125d256dcb702807042d666f6d73d8af8dd8cb4a66a9',
+    # Runtime inventories independently verified against each pinned commit's raw Git blobs.
+    'dc296d324445c1a42c4bc1977ac4e980561187e639091e2260f7cff62bdab516',  # 3e7d4ec
+    '5635e6a321e78c6ee4c8d2c9b4cfc1522ce908a4bce1c5cd8821c6c328144152',  # 75ac694
+    '5b6e01e552d14e87b8a0d3baf43f668c491b123bddeb763123d3d9de6cbbfdce',  # ebbc394
+}
 root = pathlib.Path(sys.argv[1])
 manifest_path = root / 'static-manifest.json'
 if root.is_symlink() or manifest_path.is_symlink() or not manifest_path.is_file() or manifest_path.stat().st_size > 1024 * 1024:
