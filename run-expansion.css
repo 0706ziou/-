@@ -456,3 +456,34 @@ body.training-active .arena .loot-ticker { top: 235px; left: auto; right: 18px; 
   body.training-active .guardian-hud .loadout { margin-top: 3px; padding-top: 3px; font-size: 7px; }
   body.training-active .arena .boss-hud { top: 7px; }
 }
+
+/* Keep the pause action readable and easy to reach during every battle. */
+body.run-hud-active .arena > .hud {
+  grid-template-columns: 86px minmax(0, 1fr) 86px;
+}
+.arena .hud #pause {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  width: 86px; min-width: 86px; height: 46px; min-height: 46px; padding: 8px 10px;
+  border: 1px solid #aec779; border-radius: 10px;
+  background: #203b27f2; color: #f3f5d3;
+  font-size: 13px; font-weight: 700; line-height: 1; white-space: nowrap;
+  box-shadow: 0 3px 10px #071b104d; touch-action: manipulation;
+}
+.arena .hud #pause .pause-icon { font-size: 18px; line-height: 1; }
+.arena .hud #pause .pause-label { line-height: 1; }
+.arena .hud #pause:hover { background: #3c5730; border-color: #d7ed9e; }
+.arena .hud #pause:active { transform: translateY(1px); }
+.arena .hud #pause:focus-visible { outline: 3px solid #fff2cd; outline-offset: 3px; }
+@media (max-width: 600px) {
+  body.run-hud-active .arena > .hud {
+    grid-template-columns: 72px minmax(0, 1fr) 72px;
+  }
+  .arena .hud #pause {
+    width: 72px; min-width: 72px; height: 44px; min-height: 44px;
+    gap: 5px; padding: 7px 8px; font-size: 12px; border-radius: 9px;
+  }
+  .arena .hud #pause .pause-icon { font-size: 17px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  body.training-active .arena .training-hud { top: 62px; }
+}

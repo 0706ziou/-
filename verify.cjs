@@ -27,7 +27,7 @@ gameSource = gameSource.replace(boot,
   `globalThis.test={start,update,frame,pause,resume,choose,upgrade,draw,spawn,shoot,upgradeDefs,keys,
   stages,gearDefs,gearGrowth,combat,gearCost,gearStats,equipGear,upgradeGear,selectStage,finish,saveProfile,loadProfile,freshProfile,startScreen,showArmory,browseStage,showWorld,frontierRewards,
   openGameHelp,closeGameHelp,openTutorial,nextTutorial,tutorialSteps,
-  startTraining,finishTraining,exitTraining,trainingTick,get training(){return training},
+  startTraining,finishTraining,exitTraining,skipTraining,needsFirstTraining,trainingTick,get training(){return training},
   submitLogin,acceptAccount,logoutAccount,showCover,
   get currentAccount(){return currentAccount},get currentSaveKey(){return currentSaveKey},get loginBusy(){return loginBusy},
   get previewStage(){return previewStage},get helpTab(){return helpTab},get tutorialStep(){return tutorialStep},get helpReturnState(){return helpReturnState},
@@ -144,14 +144,20 @@ function createGame(storage = new Map(), options = {}) {
   vm.runInContext(frontierRewardsSource,sandbox,{filename:'frontier-rewards.js'});
   if(options.frontierClient)sandbox.window.ORCHARD_FRONTIER=options.frontierClient;
   if(options.conversation)sandbox.window.ORCHARD_CONVERSATION=options.conversation;
-  vm.runInContext(gameSource,sandbox,{filename:'game.js'});
+  // Ordinary combat fixtures represent an existing player before the new-login gate runs.
+  // Keep original storage bytes intact, including corrupt or inaccessible storage cases.
+  const fixtureSource=!options.auth&&!options.tutorial
+    ? gameSource.replace('profile = loadProfile(); resetAccountSession();','profile = loadProfile(); profile.tutorialSeen = true; resetAccountSession();')
+    : gameSource;
+  vm.runInContext(fixtureSource,sandbox,{filename:'game.js'});
   // This fixture-only identity keeps old save-key checks independent of the login module.
   if(!options.auth)sandbox.test.acceptAccount(Object.freeze({id:'fixture',account:'fixture',nickname:'测试守护者'}));
   // Combat regression fixtures have already finished onboarding; dedicated tests use tutorial:true.
   if(!options.tutorial)sandbox.test.profile.tutorialSeen=true;
   if(!options.randomRelics){
     const fixedRelics=()=>{sandbox.test.runRelicDefs=sandbox.window.ORCHARD_RELICS.slice(0,6);sandbox.test.resetRelics(false)};
-    fixedRelics();const realStart=sandbox.test.start;sandbox.test.start=()=>{realStart();fixedRelics()};
+    if(sandbox.test.runMode!=='training')fixedRelics();
+    const realStart=sandbox.test.start;sandbox.test.start=()=>{const started=realStart();if(sandbox.test.runMode!=='training')fixedRelics();return started};
   }
   return {t:sandbox.test,element,listeners,drawCalls,storage,document:sandbox.document,bosses:sandbox.window.ORCHARD_BOSSES,rescues:sandbox.window.ORCHARD_RESCUES,relics:sandbox.window.ORCHARD_RELICS,setRandom:value=>{seededMath.random=()=>value}};
 }
@@ -1931,17 +1937,21 @@ test('New UI: the image precedes all four home actions and the selected relic dr
   const draft=Array.from(t.runRelicDefs,d=>d.id);click(game,'navMap');click(game,'closeRelicMap');click(game,'start');
   assert.deepEqual(Array.from(t.runRelicDefs,d=>d.id),draft);assert.equal(t.state,'playing');assert(!element('arena').classList.contains('is-lobby'));
 });
-test('New UI: first entry pauses for onboarding, skipping saves it and later entries resume normally',()=>{
+test('New UI: first login enters playable training automatically and an explicit skip survives reload',()=>{
   const game=createGame(new Map(),{tutorial:true}),{t,storage}=game;
-  assert.equal(t.profile.tutorialSeen,false);t.start();assert.equal(t.state,'help');assert.equal(t.helpTab,'guide');assert.equal(t.tutorialStep,0);
-  assert(t.isRunActive());const field=JSON.stringify(t.enemies),player=JSON.stringify(t.player);
+  assert.equal(t.profile.tutorialSeen,false);assert.equal(t.state,'playing');assert.equal(t.runMode,'training');assert.equal(t.training.firstEntry,true);
+  assert.equal(t.training.step,0);assert.equal(game.element('trainingExit').textContent,'跳过引导');assert(t.isRunActive());
+  const before=permanentTrainingSnapshot(t.profile);t.pause();const field=JSON.stringify(t.enemies),player=JSON.stringify(t.player);
   for(let i=0;i<30;i++)t.frame(1000+i*40);
   assert.equal(t.elapsed,0);assert.equal(JSON.stringify(t.enemies),field);assert.equal(JSON.stringify(t.player),player);
-  click(game,'closeGameHelp');assert.equal(t.state,'playing');assert.equal(t.profile.tutorialSeen,true);
-  const loaded=createGame(storage,{tutorial:true});assert.equal(loaded.t.profile.tutorialSeen,true);loaded.t.start();assert.equal(loaded.t.state,'playing');
+  click(game,'leave');assert.equal(t.state,'lobby');assert.equal(t.training,null);assert.equal(t.profile.tutorialSeen,true);assert.equal(t.profile.trainingSkipped,true);
+  assert.equal(t.profile.trainingComplete,false);assert.equal(permanentTrainingSnapshot(t.profile),before);
+  const saved=JSON.parse(storage.get(t.currentSaveKey));assert.equal(saved.trainingSkipped,true);assert.equal(saved.trainingComplete,false);
+  const loaded=createGame(storage,{tutorial:true});assert.equal(loaded.t.state,'lobby');assert.equal(loaded.t.profile.trainingSkipped,true);
+  loaded.t.start();assert.equal(loaded.t.state,'playing');assert.equal(loaded.t.runMode,'stage');
 },{start:false});
-test('New UI: every onboarding step is reachable and completing it preserves an untouched initial battle',()=>{
-  const game=createGame(new Map(),{tutorial:true}),{t,element}=game;t.start();const spawn=JSON.stringify(t.enemies);
+test('New UI: every manual guide step is reachable and completing it preserves an untouched battle',()=>{
+  const game=createGame(),{t,element}=game;t.start();assert(t.openTutorial(false));const spawn=JSON.stringify(t.enemies);
   assert(element('previousTutorial').disabled);assert.equal(t.tutorialSteps().length,6);
   for(let step=0;step<6;step++){
     assert.equal(t.tutorialStep,step);assert(element('overlay').innerHTML.includes(t.tutorialSteps()[step].title));
@@ -2070,8 +2080,49 @@ function completeTrainingRun(t) {
   assert.equal(t.training,null);assert.equal(t.state,'trainingDone');
 }
 function permanentTrainingSnapshot(profile) {
-  const saved=JSON.parse(JSON.stringify(profile));delete saved.trainingComplete;delete saved.tutorialSeen;return JSON.stringify(saved);
+  const saved=JSON.parse(JSON.stringify(profile));delete saved.trainingComplete;delete saved.trainingSkipped;delete saved.tutorialSeen;return JSON.stringify(saved);
 }
+test('First training: a fresh login cannot silently enter campaign and an unfinished course restarts after reload',()=>{
+  const storage=new Map(),game=createGame(storage,{tutorial:true}),{t}=game;
+  assert.equal(t.state,'playing');assert.equal(t.runMode,'training');assert.equal(t.training.firstEntry,true);assert(t.needsFirstTraining());
+  const course=t.training;t.keys.add('d');t.update(.1);t.keys.clear();const distance=t.training.distance;
+  assert.equal(t.start(),false);assert.equal(t.training,course);assert.equal(t.training.distance,distance);assert.equal(t.runMode,'training');
+  assert.equal(t.profile.trainingSkipped,false);assert.equal(t.profile.trainingComplete,false);
+  const restored=createGame(storage,{tutorial:true});assert.equal(restored.t.state,'playing');assert.equal(restored.t.runMode,'training');
+  assert.equal(restored.t.training.firstEntry,true);assert.equal(restored.t.training.step,0);assert.equal(restored.t.training.distance,0);
+  restored.t.exitTraining();assert.equal(restored.t.start(),true);assert.equal(restored.t.runMode,'training');assert.equal(restored.t.training.firstEntry,true);
+},{start:false});
+test('First training: the visible skip is explicit, permanent, account-scoped and manual replay preserves it',()=>{
+  const storage=new Map(),game=createGame(storage,{auth:true,tutorial:true}),{t}=game;
+  const account=id=>Object.freeze({id,account:id,nickname:id});t.acceptAccount(account('新芽'));const before=permanentTrainingSnapshot(t.profile);
+  assert.equal(game.element('trainingExit').textContent,'跳过引导');game.element('trainingExit').onclick();
+  assert.equal(t.state,'lobby');assert.equal(t.training,null);assert.equal(t.profile.trainingSkipped,true);assert.equal(t.profile.trainingComplete,false);
+  assert.equal(permanentTrainingSnapshot(t.profile),before);assert.equal(t.needsFirstTraining(),false);assert(t.logoutAccount());
+  t.acceptAccount(account('新芽'));assert.equal(t.state,'lobby');assert.equal(t.training,null);assert.equal(t.profile.trainingSkipped,true);
+  const skipped=JSON.stringify(t.profile);assert(t.startTraining());assert.equal(t.training.firstEntry,false);assert.equal(game.element('trainingExit').textContent,'退出练习');
+  game.element('trainingExit').onclick();assert.equal(JSON.stringify(t.profile),skipped);assert.equal(t.state,'lobby');assert(t.logoutAccount());
+  t.acceptAccount(account('新叶'));assert.equal(t.runMode,'training');assert.equal(t.training.firstEntry,true);assert.equal(t.profile.trainingSkipped,false);
+},{start:false});
+test('First training: completed, explicitly skipped and existing progressed saves bypass automatic practice',()=>{
+  for(const existing of [{trainingComplete:true},{trainingSkipped:true},{tutorialSeen:true},{unlockedStage:2},{clearedStages:[1]}]){
+    const storage=new Map([['orchard-save-v1',JSON.stringify({version:1,unlockedStage:1,clearedStages:[],seeds:19,cores:3,...existing})]]);
+    const {t}=createGame(storage,{tutorial:true});assert.equal(t.state,'lobby');assert.equal(t.training,null);assert.equal(t.needsFirstTraining(),false);
+    assert.equal(t.profile.seeds,19);assert.equal(t.profile.cores,3);t.start();assert.equal(t.state,'playing');assert.equal(t.runMode,'stage');
+  }
+},{start:false});
+test('First training: closing a reference guide does not mark unfinished practice complete or skipped',()=>{
+  const {t}=createGame(new Map(),{tutorial:true});assert.equal(t.runMode,'training');assert(t.openTutorial(false));
+  assert.equal(t.skipTraining(),false);assert.equal(t.start(),false);assert(t.closeGameHelp());assert.equal(t.runMode,'training');
+  assert.equal(t.profile.trainingComplete,false);assert.equal(t.profile.trainingSkipped,false);assert.equal(t.profile.tutorialSeen,false);
+},{start:false});
+test('Pause control: a text label and accessible action survive pause, help, resume and upgrade',game=>{
+  const {t,element}=game,button=element('pause');
+  const expect=label=>{assert.equal(button.dataset.action,label);assert(button.innerHTML.includes('pause-label'));assert(button.innerHTML.includes('>'+label+'</span>'));assert.equal(button.ariaProps['aria-label'],label)};
+  expect('暂停');assert.equal(button.disabled,false);button.onclick();assert.equal(t.state,'paused');expect('继续');
+  button.onclick();assert.equal(t.state,'playing');expect('暂停');assert(t.openGameHelp());expect('返回');button.onclick();expect('暂停');
+  assert.equal(t.state,'playing');t.upgrade();assert.equal(button.disabled,true);assert(button.innerHTML.includes('pause-label'));t.choose(0);expect('暂停');assert.equal(button.disabled,false);
+  assert(/<button\b[^>]*id="pause"[^>]*>[\s\S]*?class="pause-label">暂停<\/span>/.test(html));
+});
 test('Training: the lobby entrance starts an isolated course and prevents premature completion',(game)=>{
   const {t,element}=game;t.startScreen();click(game,'startTraining');assert.equal(t.state,'trainingIntro');
   const before=JSON.stringify(t.profile);click(game,'beginTraining');assert.equal(t.runMode,'training');assert.equal(t.state,'playing');
@@ -2083,12 +2134,12 @@ test('Training: the lobby entrance starts an isolated course and prevents premat
 },{start:false});
 test('Training: actual movement, standing, auto attacks, XP, choice, skill, relic, map and bosses complete the course',()=>{
   const game=createGame(new Map(),{tutorial:true}),{t,storage,element}=game;
-  const before=permanentTrainingSnapshot(t.profile);assert(t.startTraining());completeTrainingRun(t);
+  const before=permanentTrainingSnapshot(t.profile);assert.equal(t.runMode,'training');assert(t.training.firstEntry);completeTrainingRun(t);
   assert.equal(permanentTrainingSnapshot(t.profile),before,'Practice cannot award currency, gear, residents or campaign unlocks');
   assert.equal(t.profile.trainingComplete,true);assert.equal(t.profile.tutorialSeen,true);
   const saved=JSON.parse(storage.get(t.currentSaveKey));assert.equal(saved.trainingComplete,true);assert.equal(saved.tutorialSeen,true);
   assert(element('overlay').innerHTML.includes('id="trainingCampaign"'));assert(!t.finishTraining());assert(!t.startEndless());
-  const loaded=createGame(storage,{tutorial:true});assert.equal(loaded.t.profile.trainingComplete,true);
+  const loaded=createGame(storage,{tutorial:true});assert.equal(loaded.t.profile.trainingComplete,true);assert.equal(loaded.t.state,'lobby');assert.equal(loaded.t.training,null);
   click(game,'trainingCampaign');assert.equal(t.state,'playing');assert.equal(t.runMode,'stage');assert.equal(t.player.level,1);
   assert.equal(t.player.need,t.experienceNeed(1));assert.equal(t.enemies.length,t.activeStage.enemyCount);assert.equal(t.training,null);
 },{start:false});
@@ -2132,9 +2183,10 @@ test('Training: quitting restores the selected stage, relic draft and normal run
 test('Training: learning completion belongs to the logged-in account and legacy saves remain valid',()=>{
   const storage=new Map(),game=createGame(storage,{auth:true,tutorial:true}),{t}=game;
   t.acceptAccount(Object.freeze({id:'sprouta',account:'sprouta',nickname:'芽芽'}));assert.equal(t.profile.trainingComplete,false);
-  assert(t.startTraining());completeTrainingRun(t);const aKey=t.currentSaveKey;assert.equal(JSON.parse(storage.get(aKey)).trainingComplete,true);
+  assert.equal(t.state,'playing');assert.equal(t.runMode,'training');completeTrainingRun(t);const aKey=t.currentSaveKey;assert.equal(JSON.parse(storage.get(aKey)).trainingComplete,true);
   t.startScreen();assert(t.logoutAccount());t.acceptAccount(Object.freeze({id:'sproutb',account:'sproutb',nickname:'叶叶'}));
   assert.notEqual(t.currentSaveKey,aKey);assert.equal(t.profile.trainingComplete,false);assert.equal(t.profile.tutorialSeen,false);
+  assert.equal(t.runMode,'training');assert.equal(t.training.firstEntry,true);
   t.startScreen();assert(t.logoutAccount());t.acceptAccount(Object.freeze({id:'sprouta',account:'sprouta',nickname:'芽芽'}));assert.equal(t.profile.trainingComplete,true);
   const legacy=createGame(new Map([['orchard-save-v1',JSON.stringify({version:1,unlockedStage:3,seeds:17,cores:4,tutorialSeen:true})]]));
   assert.equal(legacy.t.profile.trainingComplete,false);assert.equal(legacy.t.profile.unlockedStage,3);assert.equal(legacy.t.profile.seeds,17);assert.equal(legacy.t.profile.cores,4);

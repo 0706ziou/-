@@ -284,7 +284,76 @@ printf '%s\n' '1/6 Downloading the reviewed game version and building a static-o
 task_source=$(mktemp -d "$ops/source-XXXXXXXX")
 GIT_TERMINAL_PROMPT=0 git -C "$task_source" init -q
 git -C "$task_source" remote add origin "$repo"
-GIT_TERMINAL_PROMPT=0 git -C "$task_source" fetch --depth=1 origin "$commit"
+git -C "$task_source" config core.autocrlf false
+git -C "$task_source" config http.lowSpeedLimit 1024
+git -C "$task_source" config http.lowSpeedTime 60
+git -C "$task_source" config core.eol lf
+git -C "$task_source" config remote.origin.promisor true
+git -C "$task_source" config remote.origin.partialclonefilter blob:none
+git -C "$task_source" sparse-checkout init --no-cone
+git -C "$task_source" sparse-checkout set --no-cone --stdin <<'SPARSE'
+/.gitattributes
+/index.html
+/*.js
+/*.css
+/tools/package-site.cjs
+/tools/package-site-verify.cjs
+/assets/cover/*.webp
+/assets/environment-atlas-clean.png
+/assets/guardian-atlas.png
+/assets/heroes/*.svg
+/assets/stages/*.webp
+/assets/skills/*.svg
+SPARSE
+if [[ -n ${resolved_old:-} ]]; then
+  if python3 - "$resolved_old" <<'PY'
+import hashlib, json, pathlib, sys
+# Anchor the canonical Git blobs, rather than a Windows archive/checkout.
+TRUSTED_CACHE = {'c8c15291d877fd25457f9be8f684daaf5527f9db3d57fcf4bd60e59893a0af31', '7fa18ad8124df2a49971125d256dcb702807042d666f6d73d8af8dd8cb4a66a9'}
+root = pathlib.Path(sys.argv[1])
+manifest_path = root / 'static-manifest.json'
+if root.is_symlink() or manifest_path.is_symlink() or not manifest_path.is_file() or manifest_path.stat().st_size > 1024 * 1024:
+    raise SystemExit('Cached release or manifest is invalid; nothing overwritten.')
+manifest = json.loads(manifest_path.read_text())
+signed = {key: manifest[key] for key in ('version', 'fileCount', 'totalBytes', 'files')}
+encoded = json.dumps(signed, separators=(',', ':'), ensure_ascii=False).encode()
+if hashlib.sha256(encoded).hexdigest() not in TRUSTED_CACHE:
+    raise SystemExit('Cached release does not match the reviewed commit; nothing overwritten.')
+expected_files = {'static-manifest.json'}
+expected_dirs = set()
+for entry in manifest['files']:
+    relative = pathlib.PurePosixPath(entry['path'])
+    if relative.is_absolute() or '\\' in entry['path'] or any(part in ('.', '..') or part.startswith('.') for part in relative.parts):
+        raise SystemExit('Unsafe cached release path.')
+    expected_files.add(entry['path'])
+    expected_dirs.update(str(parent) for parent in relative.parents if str(parent) != '.')
+actual_files, actual_dirs = set(), set()
+for item in root.rglob('*'):
+    if item.is_symlink():
+        raise SystemExit('Cached release contains a symlink.')
+    name = item.relative_to(root).as_posix()
+    if item.is_file(): actual_files.add(name)
+    elif item.is_dir(): actual_dirs.add(name)
+    else: raise SystemExit('Cached release contains a special file.')
+if actual_files != expected_files or actual_dirs != expected_dirs:
+    raise SystemExit('Cached release contains missing or unexpected entries.')
+for entry in manifest['files']:
+    file = root / entry['path']
+    if not file.is_file() or file.is_symlink() or file.stat().st_size != entry['bytes']:
+        raise SystemExit('Cached release file is missing or changed: ' + entry['path'])
+    if hashlib.sha256(file.read_bytes()).hexdigest() != entry['sha256']:
+        raise SystemExit('Cached release hash mismatch: ' + entry['path'])
+print('Reviewed cached release verified: all %s runtime files are unchanged.' % manifest['fileCount'])
+PY
+  then
+    printf '%s\n' 'Reusing existing game files; only changed Git objects need to be downloaded.'
+    find "$resolved_old" -type f -exec git -C "$task_source" hash-object --no-filters -w -- {} + >/dev/null
+  else
+    printf '%s\n' 'Old files are not a reviewed cache; fetching the required runtime files instead.'
+  fi
+fi
+GIT_TERMINAL_PROMPT=0 git -C "$task_source" -c http.lowSpeedLimit=1024 -c http.lowSpeedTime=60 \
+  fetch --depth=1 --filter=blob:none origin "$commit"
 git -C "$task_source" checkout --detach -q FETCH_HEAD
 [[ $(git -C "$task_source" rev-parse HEAD) == "$commit" ]] || fail 'Downloaded commit does not match.'
 node "$task_source/tools/package-site.cjs" --out deployment-artifacts/server-release
@@ -315,6 +384,26 @@ fi
 find "$release" -type d -exec chmod 755 {} +
 find "$release" -type f -exec chmod 644 {} +
 if [[ $selinux -eq 1 ]]; then restorecon -RF "$base" "$acme"; fi
+
+# An existing managed HTTPS site only needs its verified release switched.
+# Retain the reviewed world route and renewal setup without reissuing a certificate.
+if [[ -n $old_link && -f $tls_conf ]]; then
+  printf '%s\n' 'Publishing the verified main release with the existing HTTPS configuration.'
+  systemctl is-active --quiet orchard-certbot-renew.timer || fail 'Certificate renewal timer is not active.'
+  openssl x509 -in "$cert_config/live/orchard-ip/fullchain.pem" -noout -checkip "$ip"
+  openssl x509 -in "$cert_config/live/orchard-ip/fullchain.pem" -noout -checkend 86400 || fail 'Certificate needs renewal before updating.'
+  changed=1
+  ln -s "$release" "$base/.orchard-publish-$$"
+  mv -Tf "$base/.orchard-publish-$$" "$base/orchard"
+  if [[ $selinux -eq 1 ]]; then restorecon "$base/orchard"; fi
+  for path in index.html auth-data.js game.js static-manifest.json; do
+    wait_for_served_file "https://$ip/orchard/$path" "$ip:443:127.0.0.1" \
+      "$release/$path" "$backup/check-$path" || fail "Served update differs: $path"
+  done
+  completed=1
+  printf '\n%s\n' "DEPLOY_OK https://$ip/orchard/" "Version: $commit" "Configuration backup: $backup"
+  exit 0
+fi
 
 printf '%s\n' '2/6 Preparing an isolated Certbot 5.8 environment; the existing Certbot is retained.'
 if [[ ! -x $venv/bin/python ]]; then

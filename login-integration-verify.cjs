@@ -9,6 +9,11 @@ async function login(g,account,password='orchard-pass-123'){
   g.element('loginAccount').value=account;g.element('loginPassword').value=password;
   return g.t.submitLogin();
 }
+function skipFirstTraining(g){
+  assert.equal(g.t.state,'playing');assert.equal(g.t.runMode,'training');assert.equal(g.t.training.firstEntry,true);
+  assert.equal(g.element('trainingExit').textContent,'跳过引导');g.element('trainingExit').onclick();
+  assert.equal(g.t.state,'lobby');assert.equal(g.t.profile.trainingSkipped,true);assert.equal(g.t.profile.trainingComplete,false);
+}
 (async()=>{
   await test('Cover blocks combat and growth while preserving native form keyboard input',async()=>{
     const g=game(),{t,element,listeners,document}=g;
@@ -33,11 +38,13 @@ async function login(g,account,password='orchard-pass-123'){
   });
   await test('Two real accounts retain separate stage, hero, resources, training and tutorial progress',async()=>{
     const storage=new Map(),g=game(storage);assert(await login(g,'player1'));
+    skipFirstTraining(g);
     g.t.profile.seeds=800;g.t.profile.cores=40;g.t.profile.unlockedStage=3;g.t.profile.clearedStages=[1,2];g.t.profile.tutorialSeen=true;
     assert(g.t.selectHero('blueberry'));g.t.profile.heroLevels.blueberry=3;g.t.profile.orchard.level=2;assert(g.t.saveProfile());
     assert(g.t.logoutAccount());assert.equal(g.t.state,'cover');assert.equal(g.element('loginPassword').value,'');
     assert(await login(g,'player2','different-pass-456'));assert.equal(g.t.profile.seeds,0);assert.equal(g.t.profile.cores,0);
     assert.equal(g.t.profile.unlockedStage,1);assert.equal(g.t.profile.selectedHero,'orange');assert.equal(g.t.profile.orchard.level,0);assert.equal(g.t.profile.tutorialSeen,false);
+    assert.equal(g.t.profile.trainingSkipped,false);skipFirstTraining(g);
     g.t.profile.seeds=70;assert(g.t.logoutAccount());assert(await login(g,'PLAYER1'));
     assert.equal(g.t.profile.seeds,800);assert.equal(g.t.profile.cores,40);assert.equal(g.t.selectedStage,3);assert.equal(g.t.profile.selectedHero,'blueberry');
     assert.equal(g.t.profile.heroLevels.blueberry,3);assert.equal(g.t.profile.orchard.level,2);assert.equal(g.t.profile.tutorialSeen,true);
@@ -45,17 +52,19 @@ async function login(g,account,password='orchard-pass-123'){
     assert.equal(g.t.kills,0);assert.equal(g.t.elapsed,0);assert.equal(g.t.enemies.length,0);assert.equal(g.t.currentNotice,null);
   });
   await test('Refreshing requires login again, remembers only the account name, and rejects the wrong password',async()=>{
-    const storage=new Map(),g=game(storage);assert(await login(g,'记住我'));g.t.profile.seeds=55;g.t.saveProfile();
+    const storage=new Map(),g=game(storage);assert(await login(g,'记住我'));skipFirstTraining(g);g.t.profile.seeds=55;g.t.saveProfile();
     const restored=game(storage);assert.equal(restored.t.state,'cover');assert.equal(restored.t.currentAccount,null);
     assert.equal(restored.element('loginAccount').value,'记住我');assert.equal(restored.element('loginPassword').value,'');
     assert(!(await login(restored,'记住我','wrong-password')));assert.equal(restored.t.state,'cover');assert.equal(restored.t.currentAccount,null);
     assert(restored.element('loginFeedback').classList.contains('error'));assert.equal(restored.element('loginSubmit').disabled,false);
     assert.equal(restored.element('loginPassword').value,'');assert(await login(restored,'记住我'));
-    assert.equal(restored.t.profile.seeds,55);assert(![...storage.values()].some(value=>value.includes('orchard-pass-123')));
+    assert.equal(restored.t.profile.seeds,55);assert.equal(restored.t.state,'lobby');assert.equal(restored.t.profile.trainingSkipped,true);
+    assert(![...storage.values()].some(value=>value.includes('orchard-pass-123')));
   });
   await test('Registering a fresh account leads to onboarding and active overlays cannot switch the save owner',async()=>{
-    const g=game();assert(await login(g,'新守护者'));click(g,'start');assert.equal(g.t.state,'help');assert.equal(g.t.helpTab,'guide');
-    const account=g.t.currentAccount,key=g.t.currentSaveKey;assert(!g.t.logoutAccount());g.t.closeGameHelp();assert.equal(g.t.profile.tutorialSeen,true);
+    const g=game();assert(await login(g,'新守护者'));assert.equal(g.t.state,'playing');assert.equal(g.t.runMode,'training');assert.equal(g.t.training.firstEntry,true);
+    const account=g.t.currentAccount,key=g.t.currentSaveKey;assert(!g.t.logoutAccount());assert(g.t.openGameHelp());assert(!g.t.logoutAccount());g.t.closeGameHelp();
+    assert.equal(g.t.profile.tutorialSeen,false);skipFirstTraining(g);click(g,'start');assert.equal(g.t.runMode,'stage');assert.equal(g.t.profile.tutorialSeen,true);
     quietField(g.t);assert(!g.t.logoutAccount());g.t.pause();assert(!g.t.logoutAccount());g.t.showRelicMap();assert(!g.t.logoutAccount());
     g.t.closeRelicMap();g.t.resume();g.t.openGameHelp();assert(!g.t.logoutAccount());g.t.closeGameHelp();g.t.upgrade();assert(!g.t.logoutAccount());g.t.choose(0);
     assert.equal(g.t.currentAccount,account);assert.equal(g.t.currentSaveKey,key);g.t.startScreen();assert(g.t.logoutAccount());
@@ -73,7 +82,8 @@ async function login(g,account,password='orchard-pass-123'){
       assert(!(await login(g,name)));assert.equal(g.t.state,'cover');assert.equal(g.t.currentAccount,null);
       assert(g.element('loginFeedback').textContent.includes('1～7'));assert.equal(g.storage.has('orchard-accounts-v1'),false);
     }
-    assert(await login(g,'果'));assert.equal(g.t.state,'lobby');assert.equal(g.t.currentAccount.nickname,'果');assert(g.t.profile.tutorialSeen===false);
+    assert(await login(g,'果'));assert.equal(g.t.state,'playing');assert.equal(g.t.runMode,'training');assert.equal(g.t.currentAccount.nickname,'果');assert(g.t.profile.tutorialSeen===false);
+    skipFirstTraining(g);
     assert(g.t.logoutAccount());assert(await login(g,'一二三四五六七'));assert.equal(g.t.currentAccount.nickname,'一二三四五六七');
   });
   await test('An original long account still logs in with its original password, profile key and safely displayed old nickname',async()=>{

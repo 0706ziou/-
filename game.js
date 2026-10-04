@@ -77,7 +77,7 @@
     charm_harvest: { slot: 'charm', name: '丰收徽记', icon: '🌻', desc: '移速 220，拾取范围 140，经验提前释放 +15%', speed: 220, pickup: 140, xpMult: 1.15 }
   };
   function freshProfile() {
-    const base = { version: 1, unlockedStage: 1, clearedStages: [], seeds: 0, cores: 0, tutorialSeen: false, trainingComplete: false,
+    const base = { version: 1, unlockedStage: 1, clearedStages: [], seeds: 0, cores: 0, tutorialSeen: false, trainingComplete: false, trainingSkipped: false,
       rescuedSprites: [], spriteLevels: {}, orchard: { level: 0 },
       inventory: { weapon_seed: { level: 0 }, armor_leaf: { level: 0 }, charm_sprout: { level: 0 } },
       equipped: { weapon: 'weapon_seed', armor: 'armor_leaf', charm: 'charm_sprout' } };
@@ -93,6 +93,7 @@
       if (!raw || raw.version !== 1) return result;
       result.tutorialSeen = raw.tutorialSeen === true;
       result.trainingComplete = raw.trainingComplete === true;
+      result.trainingSkipped = raw.trainingSkipped === true;
       result.unlockedStage = integer(raw.unlockedStage, 1, stages.length);
       result.seeds = integer(raw.seeds, 0, 999999); result.cores = integer(raw.cores, 0, 999999);
       result.clearedStages = [...new Set((Array.isArray(raw.clearedStages) ? raw.clearedStages : []).filter(n => Number.isInteger(n) && n >= 1 && n <= stages.length))];
@@ -169,7 +170,9 @@
     sessionGreeting = (created ? '注册成功，欢迎 ' : '欢迎回来，') + user.nickname + (legacyClaimed ? ' · 已保留原有进度' : '');
     el('playerName').textContent = user.nickname; el('playerAccount').classList.remove('hidden');
     document.body.classList.remove('is-cover'); el('coverScreen').classList.add('hidden'); el('loginPassword').value = '';
-    startScreen(); prepareWorldSession(); return true;
+    startScreen();
+    if (needsFirstTraining()) startTraining(true);
+    prepareWorldSession(); return true;
   }
   function prepareWorldSession() {
     if (!currentAccount || !window.ORCHARD_FRONTIER) return;
@@ -718,6 +721,8 @@
   }
   function start() {
     if (!currentAccount) { showCover(); return false; }
+    if (training?.firstEntry) return false;
+    if (!training && needsFirstTraining()) return startTraining(true);
     if (training) exitTraining(false);
     activeStage = stage(); setMap(activeStage.id); player = freshPlayer(); enemies = []; bullets = []; gems = []; particles = [];
     resetRelics(challengeStarted); challengeStarted = true;
@@ -730,13 +735,16 @@
     keys.clear(); pointer = null;
     for (let i = 0; i < activeStage.enemyCount; i++) spawn();
     enemies.forEach((enemy, index) => { enemy.xp = activeStage.xpRewards[index]; });
-    updateCamera(); state = 'playing'; overlay.classList.add('hidden'); arena.classList.remove('is-lobby'); el('pause').textContent = 'Ⅱ';
+    updateCamera(); state = 'playing'; overlay.classList.add('hidden'); arena.classList.remove('is-lobby');
     try { audioCtx ??= new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume().catch(() => {}); } catch {}
     updateHUD();
-    if (!profile.tutorialSeen) openTutorial(true);
   }
   function trainingFeatures() {
     return '<div class="training-features">' + trainingCatalog.features.map(item => '<article><span aria-hidden="true">' + item.icon + '</span><strong>' + escapeHTML(item.title) + '</strong><p>' + escapeHTML(item.description) + '</p></article>').join('') + '</div>';
+  }
+  function needsFirstTraining() {
+    return !!currentAccount && !profile.trainingComplete && !profile.trainingSkipped && !profile.tutorialSeen &&
+      profile.unlockedStage === 1 && profile.clearedStages.length === 0;
   }
   function showTrainingIntro() {
     if (!currentAccount || isRunActive()) return false;
@@ -775,7 +783,7 @@
     if (id === 'boss') { trainingEnemy('boss'); bossArrivalUntil = elapsed + 3; }
     updateHUD(); return true;
   }
-  function startTraining() {
+  function startTraining(firstEntry = false) {
     if (!currentAccount || !trainingCatalog || isRunActive() || training) return false;
     const saved = { selectedStage, previewStage, defs: [...runRelicDefs], drops: relicDrops.map(drop => ({ ...drop })) };
     setMap(1);
@@ -786,7 +794,7 @@
       { id: 'training-crate', kind: 'crate', shape: 'rect', x: center.x + 280, y: center.y - 180, w: 50, h: 50, variant: 0 });
     obstacles = mapLayout.obstacles; navigator = window.ORCHARD_NAV.create(mapLayout, world);
     activeStage = { ...stages[0], name: trainingCatalog.name, enemyCount: 4, normalCount: 2, fastCount: 0, eliteCount: 1, bossCount: 1, bossSchedule: [Infinity] };
-    runMode = 'training'; training = { step: 0, distance: 0, standTime: 0, xpCollected: 0, mapOpened: false, center, saved };
+    runMode = 'training'; training = { step: 0, distance: 0, standTime: 0, xpCollected: 0, mapOpened: false, firstEntry: firstEntry === true, center, saved };
     player = freshPlayer(); enemies = []; bullets = []; gems = []; particles = []; heroEffects = []; skillEffects = [];
     keys.clear(); pointer = null; elapsed = 0; kills = 0; shotClock = 0; still = 0; shake = 0; choices = [];
     bossKills = 0; nonBossKills = 0; bossIndex = 0; nextBossAllowedAt = 0; bossArrivalUntil = 0;
@@ -794,7 +802,7 @@
     runRelicDefs = [relicDefs.find(def => def.key === 'lightning')]; selectedRelic = runRelicDefs[0].id;
     relicDrops = [{ id: selectedRelic, key: 'lightning', slotId: 'training-relic', slotIndex: 0, x: center.x + 1000, y: center.y, claimed: false }];
     noticeQueue = []; currentNotice = null; noticeClock = 0; relicHudSignature = ''; buildHudSignature = '';
-    state = 'playing'; overlay.classList.add('hidden'); arena.classList.remove('is-lobby'); el('pause').textContent = 'Ⅱ';
+    state = 'playing'; overlay.classList.add('hidden'); arena.classList.remove('is-lobby');
     try { audioCtx ??= new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume().catch(() => {}); } catch {}
     updateCamera(); enterTrainingStep(); return true;
   }
@@ -807,6 +815,13 @@
     heroEffects = []; skillEffects = []; relicHudSignature = ''; buildHudSignature = '';
     if (returnToLobby) { startScreen(); renderLobby(saved.previewStage); }
     return true;
+  }
+  function skipTraining() {
+    if (!training || !['playing', 'paused'].includes(state)) return false;
+    if (training.firstEntry) {
+      profile.trainingSkipped = true; profile.tutorialSeen = true; saveProfile();
+    }
+    return exitTraining();
   }
   function finishTraining() {
     if (!training || training.step < trainingCatalog.steps.length) return false;
@@ -930,15 +945,15 @@
       state = 'paused'; keys.clear(); pointer = null;
       showPanel('喘口气，再出发。', '果园小憩 / 第 ' + activeStage.id + ' 关', '<p>战斗与虫群苏醒已暂停。</p>', '<button class="primary" id="resume">继续清剿</button><button class="secondary" id="leave">放弃本次挑战</button>', '放弃本次挑战不会获得通关奖励');
       if (runMode === 'endless') showPanel('喘口气，再出发。', '无尽虫潮 / 第 ' + endlessWave + ' 波', '<p>无尽波次与战斗已暂停，已获得的材料已经保存。</p>', '<button class="primary" id="resume">继续无尽</button><button class="secondary" id="leave">结束无尽并结算</button>');
-      el('resume').onclick = resume; el('leave').onclick = runMode === 'endless' ? () => finishEndless(true) : startScreen; el('pause').textContent = '▶';
+      el('resume').onclick = resume; el('leave').onclick = runMode === 'endless' ? () => finishEndless(true) : startScreen;
       if (training) {
-        showPanel('练习随时可以继续。', '晨芽练习场 / 暂停', '<p>当前任务进度和练习战斗已暂停。</p>', '<button class="primary" id="resume">继续练习</button><button class="secondary" id="leave">退出练习</button>', '退出后可从首页重新开始');
-        el('resume').onclick = resume; el('leave').onclick = () => exitTraining();
+        showPanel('练习随时可以继续。', '晨芽练习场 / 暂停', '<p>当前任务进度和练习战斗已暂停。</p>', '<button class="primary" id="resume">继续练习</button><button class="secondary" id="leave">' + (training.firstEntry ? '跳过引导' : '退出练习') + '</button>', '退出后可从首页重新开始');
+        el('resume').onclick = resume; el('leave').onclick = skipTraining;
       }
       updateHUD();
     } else if (state === 'paused') resume();
   }
-  function resume() { state = 'playing'; overlay.classList.add('hidden'); el('pause').textContent = 'Ⅱ'; updateHUD(); }
+  function resume() { state = 'playing'; overlay.classList.add('hidden'); updateHUD(); }
   function grantVictoryRewards() {
     if (runMode === 'training') return;
     if (!runRewarded) {
@@ -1004,7 +1019,7 @@
     player.hp = player.maxHp; player.inv = 1.5; elapsed = 0; kills = 0; still = 0; shake = 0; shotClock = 0;
     player.guardUntil = 0; player.guardDefense = 0; player.leechEvents = []; player.killHealEvents = [];
     endlessWave = 0; endlessCreditedSeeds = 0; endlessCreditedCores = 0; waveClock = ENDLESS_INTERVAL;
-    keys.clear(); pointer = null; overlay.classList.add('hidden'); el('pause').textContent = 'Ⅱ';
+    keys.clear(); pointer = null; overlay.classList.add('hidden');
     spawnEndlessWave(); updateHUD();
     if (player.xp >= player.need) upgrade();
     return true;
@@ -1154,7 +1169,7 @@
   el('dashSkill').onclick = activateDash;
   el('heroSkill').onclick = activateHeroSkill;
   el('combatGuide').onclick = () => openTutorial(false);
-  el('trainingExit').onclick = () => exitTraining();
+  el('trainingExit').onclick = skipTraining;
   addEventListener('keydown', e => {
     if (state === 'cover') return;
     if (state === 'world') {
@@ -1397,12 +1412,22 @@
   }
   function updateHUD() {
     const activeHUD = isRunActive(), hudButtonsReady = ['playing', 'paused'].includes(state);
+    const pauseAction = state === 'help' ? '返回' : state === 'paused' ? '继续' : '暂停';
+    const pauseButton = el('pause');
+    if (pauseButton.dataset.action !== pauseAction || !pauseButton.innerHTML.includes('pause-label')) {
+      pauseButton.innerHTML = '<span class="pause-icon" aria-hidden="true">' + (state === 'help' ? '↩' : state === 'paused' ? '▶' : 'Ⅱ') + '</span><span class="pause-label">' + pauseAction + '</span>';
+      pauseButton.dataset.action = pauseAction;
+    }
+    pauseButton.disabled = !activeHUD || !['playing', 'paused', 'help'].includes(state);
+    pauseButton.setAttribute?.('aria-label', pauseAction);
+    pauseButton.title = pauseAction + '（P / Esc）';
     document.body.classList.toggle('run-hud-active', activeHUD);
     document.body.classList.toggle('run-hud-blocked', activeHUD && !hudButtonsReady);
     document.body.classList.toggle('training-active', !!training && activeHUD);
     el('trainingHud').classList.toggle('hidden', !training || !activeHUD || !hudButtonsReady);
     el('trainingExit').disabled = !training || !hudButtonsReady;
     if (training) {
+      el('trainingExit').textContent = training.firstEntry ? '跳过引导' : '退出练习';
       const step = trainingCatalog.steps[training.step];
       el('trainingIcon').textContent = step.icon; el('trainingProgress').textContent = '晨芽练习场 · ' + (training.step + 1) + ' / 10';
       el('trainingTitle').textContent = step.title; el('trainingHint').textContent = step.hint;
