@@ -23,11 +23,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-COMMIT = "c149fdea10d9fb3257da5e26ae77625713a39fb4"
-TREE = "9ff05258831ef733461208219086d55f5ab32f4b"
-RUNTIME_FINGERPRINT = "5b6e01e552d14e87b8a0d3baf43f668c491b123bddeb763123d3d9de6cbbfdce"
-RUNTIME_FILES = 110
-RUNTIME_BYTES = 23644121
+COMMIT = "46a9d18db870913e40246b513a371bec4d0b8c80"
+TREE = "17ccdf1468cd89c3cccd86333edded3a50d9ba16"
+RUNTIME_FINGERPRINT = "2dfd8d6017b9561191fc755282c697da161a484550a61585d8d7614d38d079bb"
+RUNTIME_FILES = 131
+RUNTIME_BYTES = 23704544
+REVIEWED_OBJECTS = 13
 TRUSTED_CACHE = {
     "5b6e01e552d14e87b8a0d3baf43f668c491b123bddeb763123d3d9de6cbbfdce",  # c149 raw runtime
     "dc296d324445c1a42c4bc1977ac4e980561187e639091e2260f7cff62bdab516",
@@ -37,8 +38,8 @@ TRUSTED_CACHE = {
     "7fa18ad8124df2a49971125d256dcb702807042d666f6d73d8af8dd8cb4a66a9",
 }
 SCRIPT_HASHES = {
-    "tools/deploy-ip-site.sh": "eb09043a9fc4e2b41ef4de418b51e6e23ae1a29090667890ff44fc708df64d88",
-    "tools/deploy-world-server.sh": "5c96a8be70f5aa4d9e8c3b0150457ed133c02471718c38a1e4882e1c33291491",
+    "tools/deploy-ip-site.sh": "ab8e4faa3e9f5370e90565de74bbdcb87ecac39c8cdd31d74e5791e25aa98479",
+    "tools/deploy-world-server.sh": "b9876bfe10c0a503d5568207cbf6d821902d13d1c16e16135bffb21403baf305",
 }
 EXTRA_FILES = {".gitattributes", "tools/package-site.cjs", "tools/package-site-verify.cjs",
                "tools/deploy-ip-site.sh", "tools/deploy-world-server.sh", "tools/world-server.py"}
@@ -105,7 +106,8 @@ def normalized_manifest(manifest):
 
 def decode_objects(descriptor):
     records = descriptor.get("objects")
-    require(isinstance(records, list) and len(records) == 12, "Expected one commit and eleven reviewed trees.")
+    require(isinstance(records, list) and len(records) == REVIEWED_OBJECTS,
+            "Expected exactly the reviewed commit and tree inventory.")
     decoded = {}
     for item in records:
         require(isinstance(item, dict) and set(item) == {"type", "oid", "data"} and
