@@ -45,7 +45,9 @@
 .feature-guide strong { display: block; font-size: 13px; }
 .feature-guide p { margin: 4px 0 0; font-size: 11px; line-height: 1.5; color: #d4e4bb; }
 .feature-guide button { flex-shrink: 0; }
-.feature-guide-target { outline: 3px solid #d6ed86; outline-offset: 3px; box-shadow: 0 0 22px #c9e77766; }
+.feature-guide-target { outline: 4px solid #ffef82; outline-offset: 4px; box-shadow: 0 0 0 8px #fff39b38, 0 0 32px #ffe66ed9; animation: feature-guide-glow 2.2s ease-in-out infinite; }
+@keyframes feature-guide-glow { 0%, 100% { box-shadow: 0 0 0 8px #fff39b38, 0 0 28px #ffe66ec9; } 50% { box-shadow: 0 0 0 11px #fff39b52, 0 0 42px #ffde71; } }
+@media (prefers-reduced-motion: reduce) { .feature-guide-target { animation: none; } }
 .menu-body:has(.feature-guide) { overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
 .lobby-feature:disabled { opacity: .55; }
 .lobby-footer .feature-guide { margin-bottom: 9px; }

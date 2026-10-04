@@ -220,3 +220,47 @@
   .hud-help { min-width: 54px; font-size: 9px; }
 }
 .campaign-picker{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0;color:#b8cba5;font-size:12px}.campaign-picker label{display:flex;align-items:center;gap:8px}.campaign-picker select{background:#263e2d;color:#ecf3d1;border:1px solid #617b48;border-radius:8px;padding:8px;font:inherit;max-width:100%}.campaign-picker select:focus-visible{outline:2px solid #d0ed8b}
+/* Guidance and the caption stack together as their text wraps. */
+.chapter-overlay-content {
+  position: absolute; z-index: 2; left: 22px; right: 22px; bottom: 17px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.chapter-guide { position: static; width: min(760px, 100%); margin: 0 auto; transform: none; }
+.chapter-overlay-content .chapter-caption { position: static; }
+.chapter-guide:empty { display: none; }
+.chapter-guide .feature-guide {
+  padding: 14px 18px; gap: 16px; border: 2px solid #ffe89b;
+  background: linear-gradient(140deg, #1a3228f7, #10241ff7); color: #fff4c6;
+  box-shadow: 0 6px 28px #03140b99, 0 0 0 3px #ffdf6b22;
+}
+.chapter-guide .feature-guide strong { font-size: 17px; line-height: 1.5; color: #fff1ac; }
+.chapter-guide .feature-guide p { margin: 5px 0 0; font-size: 14px; line-height: 1.6; color: #f2f7db; }
+.chapter-guide .feature-guide button { min-height: 40px; padding: 9px 12px; font-size: 12px; border-color: #e9d69a; color: #fff5d5; background: #344638; }
+.lobby-overlay .lobby-body:has(.chapter-guide) { overflow: visible; }
+.lobby-actions > .feature-guide-target { border-color: #fff1a3; color: #fff8d5; background: linear-gradient(145deg, #637944, #3f6136); }
+@media (max-width: 700px) {
+  .chapter-overlay-content { left: 15px; right: 15px; bottom: 14px; gap: 10px; }
+  .chapter-guide .feature-guide { padding: 11px 12px; gap: 10px; border-radius: 11px; }
+  .chapter-guide .feature-guide strong { font-size: 14px; }
+  .chapter-guide .feature-guide p { font-size: 12px; line-height: 1.5; }
+  .chapter-guide .feature-guide button { min-height: 38px; padding: 8px; font-size: 11px; }
+}
+@media (max-height: 650px) {
+  .chapter-overlay-content { left: 16px; right: 16px; bottom: 12px; gap: 9px; }
+  .chapter-guide .feature-guide { padding: 9px 12px; gap: 12px; }
+  .chapter-guide .feature-guide strong { font-size: 14px; }
+  .chapter-guide .feature-guide p { font-size: 12px; line-height: 1.45; margin-top: 3px; }
+}
+@media (max-height: 500px) {
+  .chapter-overlay-content { left: 13px; right: 13px; bottom: 8px; gap: 6px; }
+  .chapter-guide { width: min(700px, 100%); }
+  .chapter-guide .feature-guide { padding: 7px 10px; gap: 10px; }
+  .chapter-guide .feature-guide strong { font-size: 12px; line-height: 1.35; }
+  .chapter-guide .feature-guide p { font-size: 11px; line-height: 1.4; }
+  .chapter-guide .feature-guide button { min-height: 32px; padding: 6px 8px; font-size: 10px; }
+}
+@media (min-width: 701px) and (max-height: 500px) {
+  .lobby-overlay .lobby-body { gap: 4px; }
+  .lobby-overlay .campaign-picker { margin: 7px 0; }
+  .chapter-showcase:has(.chapter-guide .feature-guide) { min-height: 104px; }
+}

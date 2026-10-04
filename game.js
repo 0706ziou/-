@@ -2,7 +2,8 @@
   'use strict';
   const canvas = document.getElementById('game'), ctx = canvas.getContext('2d');
   const overlay = document.getElementById('overlay'), arena = document.getElementById('arena');
-  const W = 960, H = 680, WORLD_W = Math.round(W * Math.sqrt(50)), WORLD_H = Math.round(H * Math.sqrt(50));
+  const WORLD_W = Math.round(960 * Math.sqrt(50)), WORLD_H = Math.round(680 * Math.sqrt(50));
+  let W = 960, H = 680;
   const stages = window.ORCHARD_STAGES;
   const experience = window.ORCHARD_EXPERIENCE;
   const rescueDefs = window.ORCHARD_RESCUES, bossDefs = window.ORCHARD_BOSSES;
@@ -249,7 +250,7 @@
   }
   function show(html, menu = false) {
     window.ORCHARD_FRONTIER?.close();
-    overlay.classList.remove('upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay', 'armory-overlay');
+    overlay.classList.remove('upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay', 'armory-overlay', 'pause-overlay');
     arena.classList.remove('is-lobby');
     for (const attribute of ['role', 'aria-modal', 'aria-label']) overlay.removeAttribute?.(attribute);
     overlay.innerHTML = '<div class="dialog' + (menu ? ' menu-dialog' : '') + '">' + html + '</div>';
@@ -313,6 +314,24 @@
   function updateCamera() {
     camera.x = Math.max(0, Math.min(WORLD_W - W, player.x - W / 2));
     camera.y = Math.max(0, Math.min(WORLD_H - H, player.y - H / 2));
+  }
+  function syncViewport() {
+    const rect = canvas.getBoundingClientRect();
+    if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height) || rect.width <= 0 || rect.height <= 0) return false;
+    const aspect = rect.width / rect.height;
+    const height = aspect >= 1 ? 680 : 620 / aspect;
+    const fit = Math.min(1, WORLD_W / (height * aspect), WORLD_H / height);
+    W = Math.min(WORLD_W, (aspect >= 1 ? rect.width * 680 / rect.height : 620) * fit);
+    H = Math.min(WORLD_H, height * fit);
+    const density = Math.max(1, Math.min(2, Number(window.devicePixelRatio) || 1));
+    const pixelFit = Math.min(density, 4096 / Math.max(rect.width, rect.height));
+    const pixelWidth = Math.max(1, Math.round(rect.width * pixelFit));
+    const pixelHeight = Math.max(1, Math.round(rect.height * pixelFit));
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+      canvas.width = pixelWidth; canvas.height = pixelHeight;
+    }
+    if (player) updateCamera();
+    return true;
   }
   function isRunActive() { return runStates.includes(state) || (state === 'relicMap' && ['playing', 'paused'].includes(mapReturnState)) || (state === 'help' && ['playing', 'paused'].includes(helpReturnState)); }
   function randomRelics() {
@@ -411,6 +430,7 @@
     enemy.slowAmount = amount;
   }
   function skillHit(enemy, damage, color) {
+    if (enemy.boss && elapsed < (enemy.arrivalGuardUntil || 0)) damage *= .1;
     const actual = Math.min(Math.max(0, enemy.hp), Math.max(0, damage));
     enemy.hp -= damage; enemy.flash = .12; burst(enemy.x, enemy.y, color, 4);
     if (actual > 0 && player.lifeSteal > 0 && player.hp < player.maxHp) {
@@ -573,10 +593,10 @@
     show('<div class="lobby-heading"><div class="chapter-heading"><small class="chapter-eyebrow">ORCHARD GUARDIANS / 第 ' + String(id).padStart(2, '0') + ' 关</small><h2 class="chapter-name">' + s.name + '</h2><span class="chapter-status">' + status + '</span></div><div class="lobby-wallet">☀ ' + profile.seeds + '　◆ ' + profile.cores + '<small>通关 ' + profile.clearedStages.length + ' / ' + stages.length + ' · 救援 ' + profile.rescuedSprites.length + ' / ' + rescueDefs.length + '</small></div></div>' +
       '<div class="menu-body lobby-body"><section class="chapter-showcase" aria-label="关卡图片"><img class="chapter-image" style="filter:hue-rotate(' + (art.stages[id - 1].hue || 0) + 'deg)" src="' + art.stages[id - 1].image + '" alt="' + s.name + '主题图"><div class="chapter-shade"></div><span class="chapter-ribbon">' + String(id).padStart(2, '0') + ' / ' + stages.length + ' · ' + (unlocked ? cleared ? '已通关' : '可挑战' : '未解锁') + '</span>' +
       '<button class="chapter-arrow previous" id="previousStage" aria-label="切换上一关" ' + (id === 1 ? 'disabled' : '') + '>‹</button><button class="chapter-arrow next" id="nextStagePreview" aria-label="切换下一关" ' + (id === stages.length ? 'disabled' : '') + '>›</button>' +
-      '<div class="chapter-caption"><strong>守护这片果园</strong><span>' + s.description + '</span></div></section>' +
+      '<div class="chapter-overlay-content"><div class="chapter-guide">' + featureGuideHTML('lobby') + '</div><div class="chapter-caption"><strong>守护这片果园</strong><span>' + s.description + '</span></div></div></section>' +
       '<div class="campaign-picker"><label>篇章 <select id="chapterJump" aria-label="选择远征篇章">' + ['青叶启程', '月露群岛', '赤焰山林', '霜晶高原', '星辉王庭'].map((name, index) => '<option value="' + (index * 20 + 1) + '" ' + (Math.floor((id - 1) / 20) === index ? 'selected' : '') + '>' + (index + 1) + ' · ' + name + '</option>').join('') + '</select></label><label>关卡 <select id="stageJump" aria-label="选择篇章关卡">' + stages.slice(Math.floor((id - 1) / 20) * 20, Math.floor((id - 1) / 20) * 20 + 20).map(item => '<option value="' + item.id + '" ' + (item.id === id ? 'selected' : '') + '>第 ' + item.id + ' 关 · ' + (profile.clearedStages.includes(item.id) ? '✓' : item.id <= profile.unlockedStage ? '可挑战' : '未解锁') + '</option>').join('') + '</select></label></div>' +
-      '<div class="chapter-brief"><span class="chapter-chip">普通 ' + s.normalCount + ' · 精英 ' + s.eliteCount + ' · Boss ' + s.bossCount + '</span><span class="chapter-chip">虫王 ' + s.bossSchedule[0] + ' 秒起 · 逐位登场</span><span class="chapter-chip">首通 ☀ ' + s.reward.seeds + ' · ◆ ' + s.reward.cores + reward + '</span></div></div>' +
-      '<div class="menu-footer lobby-footer">' + trainingEntry + featureGuideHTML('lobby') + '<div class="lobby-actions"><button class="lobby-play primary" id="start" ' + (!unlocked ? 'disabled' : '') + '><span class="action-icon">▶</span><strong>' + (unlocked ? '进入游戏' : '关卡未解锁') + '</strong><small>' + (unlocked ? '挑战第 ' + id + ' 关' : '先通关第 ' + (id - 1) + ' 关') + '</small></button>' +
+      '<div class="chapter-brief"><span class="chapter-chip">普通 ' + s.normalCount + ' · 精英 ' + s.eliteCount + ' · Boss ' + s.bossCount + '</span><span class="chapter-chip">虫王 ' + s.bossSchedule[0] + ' 秒起 · 清空小怪立即接续</span><span class="chapter-chip">首通 ☀ ' + s.reward.seeds + ' · ◆ ' + s.reward.cores + reward + '</span></div></div>' +
+      '<div class="menu-footer lobby-footer">' + trainingEntry + '<div class="lobby-actions"><button class="lobby-play primary" id="start" ' + (!unlocked ? 'disabled' : '') + '><span class="action-icon">▶</span><strong>' + (unlocked ? '进入游戏' : '关卡未解锁') + '</strong><small>' + (unlocked ? '挑战第 ' + id + ' 关' : '先通关第 ' + (id - 1) + ' 关') + '</small></button>' +
       [['navArmory', '⚒', '装备', '搭配与强化'], ['navHeroes', '✦', '英雄', '13 位英雄可选择'], ['navOrchard', '♧', '果园', '精灵与养成'], ['navWorld', '⚑', '世界', '建家 · 造兵 · 公会']].map(([key, icon, name, detail]) => '<button class="lobby-feature secondary" id="' + key + '" ' + (!featuresUnlocked() ? 'disabled title="首次通关后解锁"' : '') + '><span class="action-icon">' + (featuresUnlocked() ? icon : '🔒') + '</span><strong>' + name + '</strong><small>' + (featuresUnlocked() ? detail : '首次通关后解锁') + '</small></button>').join('') + '</div>' +
       '<div class="lobby-bottom"><span class="lobby-note">' + (!storageAvailable ? '浏览器存储不可用，进度仅在当前页面中保留' : escapeHTML(sessionGreeting) + (sessionGreeting ? ' · ' : '') + '出战：' + growth.hero(profile.selectedHero).name) + '</span><button class="chapter-map-link" id="navMap" ' + (!unlocked ? 'disabled' : '') + '>本关地形与饰品 ↗</button></div></div>', true);
     overlay.classList.add('lobby-overlay'); arena.classList.add('is-lobby');
@@ -946,7 +966,7 @@
       { icon: '✦', title: '安全时停下来，火力更强', text: '停下 ' + combat.standDelay + ' 秒后蓄力完成：伤害 +35%，射速 +35%。虫群靠近或虫王准备冲锋时，立刻移动避开，找到空隙再站定输出。' },
       { icon: '◆', title: '捡经验，选出你的构筑', text: '击杀掉落发光经验，靠近即可拾取。升级时三选一，也可按 1 / 2 / 3。关卡中攻击与属性各最多 4 种、每种 5 级；配方两项满级后自动合成超级技能。' },
       { icon: hero.skillIcon, title: '施放专属技能，探索特殊饰品', text: '当前英雄：' + hero.name + '，按 E 或右下按钮施放“' + hero.skillName + '”。' + hero.skillDescription + '每局从 50 件饰品随机投放 6 件，按 M 查看位置；拾取后右下角显示效果。' },
-      { icon: '⚠', title: '留意虫群苏醒和虫王预警', text: '普通虫与精英按时间逐批加入。第 ' + activeStage.id + ' 关首位虫王最早 ' + activeStage.bossSchedule[0] + ' 秒到达，场上最多 1 位，击败后至少有 ' + combat.bossRecovery + ' 秒间隔。看到冲锋预警就绕开攻击方向。' },
+      { icon: '⚠', title: '留意虫群苏醒和虫王预警', text: '普通虫与精英按时间逐批加入。首位虫王通常 ' + activeStage.bossSchedule[0] + ' 秒到达，场上最多 1 位。普通虫和精英全清后，待登场虫王立即接续；小怪尚在时，击败虫王后休整 ' + combat.bossRecovery + ' 秒。前三关虫王登场护壳1.5秒，减伤90%，然后正常受伤。看到冲锋预警就绕开攻击方向。' },
       { icon: '♧', title: '救回精灵，继续守护果园', text: '清理本关全部虫群与虫王即可通关，材料自动保存，可培养果园、精灵、英雄和装备。通关后可进入无尽，突破肉鸽种类与等级上限。P / Esc 暂停；“提示词”按钮可重看引导和开发对话。' }
     ];
   }
@@ -1038,6 +1058,9 @@
         showPanel('练习随时可以继续。', '晨芽练习场 / 暂停', '<p>当前任务进度和练习战斗已暂停。</p>', '<button class="primary" id="resume">继续练习</button><button class="secondary" id="leave">' + (training.firstEntry ? '跳过引导' : '退出练习') + '</button>', '退出后可从首页重新开始');
         el('resume').onclick = resume; el('leave').onclick = skipTraining;
       }
+      overlay.classList.add('pause-overlay');
+      overlay.setAttribute?.('role', 'dialog'); overlay.setAttribute?.('aria-modal', 'true'); overlay.setAttribute?.('aria-label', '游戏暂停');
+      el('resume').focus?.();
       updateHUD();
     } else if (state === 'paused') resume();
   }
@@ -1162,15 +1185,42 @@
     updateHUD(); return true;
   }
   function readyBoss() {
-    if (elapsed < nextBossAllowedAt) return null;
+    const cleared = runMode === 'stage' && !enemies.some(e => !e.boss && e.hp > 0);
+    if (!cleared && elapsed < nextBossAllowedAt) return null;
     const active = enemies.filter(e => e.boss && e.introduced && e.hp > 0).length;
     if (active >= activeStage.bossActiveCap) return null;
-    return enemies.find(e => e.boss && !e.introduced && e.hp > 0 && elapsed >= e.bossArrivalAt) || null;
+    return enemies.find(e => e.boss && !e.introduced && e.hp > 0 && (cleared || elapsed >= e.bossArrivalAt)) || null;
+  }
+  function beginnerBossHealth() {
+    // Measure the actual chosen attacks on an isolated dummy; no live cooldown,
+    // zone, relic, XP or save state is changed by this once-per-arrival estimate.
+    const sample = { ...player, x: 0, y: 0, hp: player.maxHp, shield: 1, skillTimers: {}, relicDots: [],
+      build: { ...player.build, timers: {}, zones: [] } };
+    const target = { x: 1, y: 0, hp: 1e12, maxHp: 1e12, r: 40, boss: true };
+    let automaticDamage = 0;
+    const context = { active: true, standing: true, targets: () => [target], hit: (_enemy, damage) => { automaticDamage += damage; } };
+    const owned = runRelicDefs.filter(def => player.skills[def.key]);
+    for (let step = 0; step < 120; step++) {
+      context.elapsed = step * .1;
+      builds.tick(sample, .1, context);
+      relicEffects.tick(sample, owned, .1, { ...context, includeLegacy: true,
+        hit: (_enemy, damage) => { automaticDamage += damage * player.skillPower; },
+        projectile: spec => { automaticDamage += spec.damage * player.skillPower; } });
+    }
+    const crit = 1 + player.critChance * (player.critMultiplier - 1);
+    const weaponDps = seedDamage() * player.shots * player.rate * (combat.standDamage + player.standPower) * combat.standRate * crit;
+    const hero = growth.active(player.heroId, player);
+    const heroDps = (hero?.damage || 0) * player.skillPower * (hero?.kind === 'volley' ? hero.count : 1) / Math.max(1, hero?.cooldown || 1);
+    return Math.max(activeStage.beginner.bossHp, Math.ceil((weaponDps + automaticDamage / 12 + heroDps) * activeStage.beginner.bossTargetSeconds));
   }
   function announceBossArrival() {
     if (state !== 'playing' || runMode !== 'stage') return false;
     const boss = readyBoss(); if (!boss) return false;
     boss.introduced = true; bossIndex++;
+    if (activeStage.beginner) {
+      boss.hp = boss.maxHp = beginnerBossHealth();
+      boss.arrivalGuardUntil = elapsed + activeStage.beginner.arrivalGuard;
+    }
     const angle = Math.random() * Math.PI * 2;
     boss.x = Math.max(boss.r + 25, Math.min(WORLD_W - boss.r - 25, player.x + Math.cos(angle) * 235));
     boss.y = Math.max(boss.r + 25, Math.min(WORLD_H - boss.r - 25, player.y + Math.sin(angle) * 235));
@@ -1553,7 +1603,7 @@
     el('damageStat').textContent = seedDamage().toFixed(1); el('rateStat').textContent = player.rate.toFixed(1) + ' / 秒';
     el('speedStat').textContent = Math.round(player.speed); el('shotsStat').textContent = player.shots; el('pickupStat').textContent = Math.round(player.pickup); el('killsStat').textContent = inRun ? kills : 0;
     el('stageName').textContent = training ? '新手引导关 · ' + trainingCatalog.name : '第 ' + s.id + ' / ' + stages.length + ' 关 · ' + (runMode === 'endless' && inRun ? '无尽虫潮' : s.name);
-    el('pursuitRule').innerHTML = runMode === 'endless' && inRun ? '每 8 秒一波，数量与强度持续增加<br>可随时结束，材料获得即保存' : '普通：开局 ' + s.initialPursuers + '，每 ' + s.pursuitInterval + ' 秒 +' + s.batchSize + '<br>精英：' + s.eliteFirstAt + ' 秒首批，每 ' + s.eliteInterval + ' 秒 +' + s.eliteBatchSize + '<br>Boss ' + s.bossSchedule[0] + ' 秒起与小怪混合登场 · 同时最多 ' + s.bossActiveCap + ' 位';
+    el('pursuitRule').innerHTML = runMode === 'endless' && inRun ? '每 8 秒一波，数量与强度持续增加<br>可随时结束，材料获得即保存' : '普通：开局 ' + s.initialPursuers + '，每 ' + s.pursuitInterval + ' 秒 +' + s.batchSize + '<br>精英：' + s.eliteFirstAt + ' 秒首批，每 ' + s.eliteInterval + ' 秒 +' + s.eliteBatchSize + '<br>Boss ' + s.bossSchedule[0] + ' 秒起 · 清空小怪立即接续 · 同时最多 ' + s.bossActiveCap + ' 位';
     el('loadout').textContent = gearDefs[profile.equipped.weapon].name + ' · ' + gearDefs[profile.equipped.armor].name + ' · ' + gearDefs[profile.equipped.charm].name;
     const hero = growth.hero(player.heroId);
     el('heroName').textContent = hero.name + ' · ' + hero.role; if (el('heroIcon').dataset.hero !== hero.id) { el('heroIcon').innerHTML = heroPortrait(hero); el('heroIcon').dataset.hero = hero.id; }
@@ -1563,16 +1613,17 @@
     el('runBuild').textContent = '暴击 ' + Math.round(player.critChance * 100) + '% · 穿透 ' + statText(player.pierce) + ' · 减伤 ' + statText(player.defense + (elapsed < player.guardUntil ? player.guardDefense : 0)) + ' · 回复 ' + statText(player.regen) + '/秒' + (elapsed < player.guardUntil ? ' · 护体 ' + (player.guardUntil - elapsed).toFixed(1) + 's' : '');
     const boss = inRun ? enemies.find(e => e.boss && e.introduced && e.hp > 0) : null;
     el('bossHud').classList.toggle('hidden', !boss);
-    if (boss) { el('bossName').textContent = (boss.bossOrder + 1) + ' / ' + s.bossCount + ' · ' + boss.name; el('bossHp').style.width = Math.max(0, boss.hp / boss.maxHp * 100) + '%'; el('bossHpText').textContent = Math.ceil(Math.max(0, boss.hp)) + ' / ' + boss.maxHp; }
+    if (boss) { el('bossName').textContent = (boss.bossOrder + 1) + ' / ' + s.bossCount + ' · ' + boss.name; el('bossHp').style.width = Math.max(0, boss.hp / boss.maxHp * 100) + '%'; el('bossHpText').textContent = Math.ceil(Math.max(0, boss.hp)) + ' / ' + boss.maxHp + (elapsed < (boss.arrivalGuardUntil || 0) ? ' · 护壳 ' + (boss.arrivalGuardUntil - elapsed).toFixed(1) + '秒 · 减伤90%' : ''); }
     const pendingBoss = inRun && runMode === 'stage' ? enemies.find(e => e.boss && !e.introduced && e.hp > 0) : null;
     const arrivalNotice = !!boss && elapsed < bossArrivalUntil;
     el('bossForecast').classList.toggle('hidden', !arrivalNotice && (!pendingBoss || !!boss));
     el('bossForecast').classList.toggle('arrival-notice', arrivalNotice);
     if (arrivalNotice) {
-      const label = '⚠ Boss登场 · ' + boss.name + ' · 第 ' + (boss.bossOrder + 1) + ' / ' + s.bossCount + ' 位';
+      const label = '⚠ Boss登场 · ' + boss.name + ' · 第 ' + (boss.bossOrder + 1) + ' / ' + s.bossCount + ' 位' + (elapsed < (boss.arrivalGuardUntil || 0) ? ' · 护壳展开，减伤90%' : '');
       if (el('bossForecast').textContent !== label) el('bossForecast').textContent = label;
     } else if (pendingBoss && !boss) {
-      const wait = Math.max(0, Math.ceil(Math.max(pendingBoss.bossArrivalAt, nextBossAllowedAt) - elapsed));
+      const cleared = !enemies.some(e => !e.boss && e.hp > 0);
+      const wait = cleared ? 0 : Math.max(0, Math.ceil(Math.max(pendingBoss.bossArrivalAt, nextBossAllowedAt) - elapsed));
       const label = (bossKills ? '下一位虫王' : '首位虫王') + ' · ' + (wait ? wait + ' 秒后抵达' : '即将抵达') + ' · 每次仅 1 位';
       if (el('bossForecast').textContent !== label) el('bossForecast').textContent = label;
     }
@@ -1731,6 +1782,11 @@
     }
   }
   function drawBoss(e) {
+    if (elapsed < (e.arrivalGuardUntil || 0)) {
+      ctx.strokeStyle = '#b9eaff'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(e.x, e.y, e.r + 15 + Math.sin(elapsed * 14) * 3, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#e5faff'; ctx.font = 'bold 12px "Microsoft YaHei",sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('护壳 ' + (e.arrivalGuardUntil - elapsed).toFixed(1) + 's · 减伤90%', e.x, e.y - e.r - 24); ctx.textAlign = 'start';
+    }
     if (e.windup > 0) {
       ctx.strokeStyle = '#fa796c'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x + e.dashX * 165, e.y + e.dashY * 165); ctx.stroke();
       ctx.strokeStyle = '#fa796caa'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(e.x, e.y, e.r + 14 + Math.sin(elapsed * 24) * 3, 0, Math.PI * 2); ctx.stroke();
@@ -1750,6 +1806,7 @@
     ctx.restore();
   }
   function draw() {
+    ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
     ctx.save(); if (shake) ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake); ctx.translate(-camera.x, -camera.y); background();
     drawObstacles();
     drawRelics();
@@ -1798,6 +1855,8 @@
     }
     if (state !== 'cover') draw(); requestAnimationFrame(frame);
   }
-  updateCamera();
+  addEventListener('resize', syncViewport);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(syncViewport).observe(canvas);
+  syncViewport(); updateCamera();
   showCover();requestAnimationFrame(frame);
 })();

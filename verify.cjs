@@ -33,7 +33,7 @@ gameSource = gameSource.replace(boot,
   get previewStage(){return previewStage},get helpTab(){return helpTab},get tutorialStep(){return tutorialStep},get helpReturnState(){return helpReturnState},
   showOrchard,upgradeOrchard,upgradeSprite,orchardCost,spriteCost,completeRescue,readyBoss,announceBossArrival,
   startEndless,spawnEndlessWave,bankEndlessRewards,finishEndless,
-  dropExperience,XP_NODE_CAP,W,H,WORLD_W,WORLD_H,seedDamage,experienceNeed,upgradeBase,experience,checkStageCompletion,
+  dropExperience,XP_NODE_CAP,get W(){return W},get H(){return H},WORLD_W,WORLD_H,seedDamage,experienceNeed,upgradeBase,experience,checkStageCompletion,
   get stageXP(){return stageXP},
   get nextBossAllowedAt(){return nextBossAllowedAt},
   relicDefs,relicPoints,relicEffects,builds,resetRelics,claimRelic,updateSkills,activateDash,showRelicMap,closeRelicMap,isRunActive,skillHit,healPlayer,
@@ -57,6 +57,8 @@ gameSource = gameSource.replace(boot,
 
 function createGame(storage = new Map(), options = {}) {
   const elements = new Map(), listeners = {}, drawCalls = [];
+  const viewport = {width:options.viewport?.width??960,height:options.viewport?.height??680};
+  const resizeObservers=[];
   function classList() {
     const names=new Set();return {
       add(...tokens){for(const token of tokens)names.add(token)},
@@ -79,7 +81,7 @@ function createGame(storage = new Map(), options = {}) {
       focus(){sandbox.document.activeElement=this},
       setAttribute(name,value){this.ariaProps??={};this.ariaProps[name]=String(value)},
       removeAttribute(name){if(this.ariaProps)delete this.ariaProps[name]},
-      getBoundingClientRect: () => ({left:0,top:0,width:960,height:680}),
+      getBoundingClientRect: () => ({left:0,top:0,...viewport}),
       get innerHTML() { return this._innerHTML; },
       set innerHTML(value) {
         this._innerHTML=value;this._buttons=[];
@@ -118,8 +120,9 @@ function createGame(storage = new Map(), options = {}) {
   };
   const sandbox = {
     document: { body:{classList:classList()}, getElementById: element, addEventListener: (n,f)=>listeners[n]=f },
-    window: {localStorage,crypto:require('node:crypto').webcrypto}, localStorage,
-    addEventListener: (n,f)=>listeners[n]=f, requestAnimationFrame(){}, console, Math: seededMath, TextEncoder
+    window: {localStorage,crypto:require('node:crypto').webcrypto,devicePixelRatio:options.devicePixelRatio??1}, localStorage,
+    addEventListener: (n,f)=>listeners[n]=f, requestAnimationFrame(){}, console, Math: seededMath, TextEncoder,
+    ResizeObserver:class {constructor(callback){this.callback=callback;resizeObservers.push(this)}observe(target){this.target=target}}
   };
   if(options.loadedAtlas)sandbox.Image=class {
     constructor(){this.complete=true;this.naturalWidth=1024;this.naturalHeight=1024;this.src=''}
@@ -164,7 +167,11 @@ function createGame(storage = new Map(), options = {}) {
     if(sandbox.test.runMode!=='training')fixedRelics();
     const realStart=sandbox.test.start;sandbox.test.start=()=>{const started=realStart();if(sandbox.test.runMode!=='training')fixedRelics();return started};
   }
-  return {t:sandbox.test,element,listeners,drawCalls,storage,document:sandbox.document,bosses:sandbox.window.ORCHARD_BOSSES,rescues:sandbox.window.ORCHARD_RESCUES,relics:sandbox.window.ORCHARD_RELICS,setRandom:value=>{seededMath.random=()=>value}};
+  const setViewport=(width,height,{density=sandbox.window.devicePixelRatio,via='observer'}={})=>{
+    Object.assign(viewport,{width,height});sandbox.window.devicePixelRatio=density;
+    if(via==='resize')listeners.resize?.();else for(const observer of resizeObservers)observer.callback([{target:observer.target}]);
+  };
+  return {t:sandbox.test,element,listeners,drawCalls,storage,document:sandbox.document,bosses:sandbox.window.ORCHARD_BOSSES,rescues:sandbox.window.ORCHARD_RESCUES,relics:sandbox.window.ORCHARD_RELICS,setViewport,resizeObservers,setRandom:value=>{seededMath.random=()=>value}};
 }
 let count=0;const failures=[];
 function test(name,fn,{start=true}={}) {
@@ -262,14 +269,14 @@ function menuControls(game) {
 }
 
 test('External scripts are referenced in the correct load order',({t})=>{
-  assert(html.includes('src="progression.js"'));assert(gameScriptIndex >= 0);
-  assert(html.includes('src="orchard-data.js"'));
-  assert(html.includes('src="relic-data.js"'));
-  assert(html.indexOf('src="progression.js"')<html.indexOf('src="orchard-data.js"'));
-  assert(html.indexOf('src="orchard-data.js"')<gameScriptIndex);
-  assert(html.indexOf('src="relic-data.js"')<gameScriptIndex);
+  const scripts=Array.from(html.matchAll(/<script\b[^>]*\bsrc="([^"\s]+)"/g),match=>match[1].split('?')[0]);
+  const position=file=>{const index=scripts.indexOf(file);assert(index>=0,'Missing runtime script '+file);return index};
+  const gamePosition=position('game.js');assert(gameScriptIndex>=0);
+  assert(position('progression.js')<position('orchard-data.js'));
+  assert(position('orchard-data.js')<gamePosition);
+  assert(position('relic-data.js')<gamePosition);
   for(const file of ['world-data.js','growth-data.js','art-catalog.js']) {
-    assert(html.includes('src="'+file+'"'));assert(html.indexOf('src="'+file+'"')<gameScriptIndex);
+    assert(position(file)<gamePosition);
   }
   assert.equal(t.stages.length,100);
 });
@@ -291,6 +298,46 @@ test('Camera follows and clamps at map boundaries',({t})=>{
   t.player.x=28;t.player.y=28;t.update(.01);t.draw();assert.equal(t.camera.x,0);assert.equal(t.camera.y,0);
   t.player.x=t.WORLD_W-28;t.player.y=t.WORLD_H-28;t.update(.01);t.draw();
   assert.equal(t.camera.x,t.WORLD_W-t.W);assert.equal(t.camera.y,t.WORLD_H-t.H);
+});
+test('Viewport: a wider browser reveals more orchard without stretching or resetting the active run',game=>{
+  const {t,element,setViewport,drawCalls,resizeObservers}=game;quietField(t);
+  t.player.x=t.WORLD_W/2;t.player.y=t.WORLD_H/2;t.update(.1);
+  const field=t.enemies,layout=t.mapLayout,obstacles=t.obstacles,player=JSON.stringify(t.player),elapsed=t.elapsed;
+  assert.equal(resizeObservers.length,1);assert.equal(resizeObservers[0].target,element('game'));
+  setViewport(1800,900,{density:2});
+  assert.equal(t.W,1360);assert.equal(t.H,680);assert.equal(t.WORLD_W,6788);assert.equal(t.WORLD_H,4808);
+  assert.equal(element('game').width,3600);assert.equal(element('game').height,1800);
+  assert.equal(t.mapLayout,layout);assert.equal(t.obstacles,obstacles);assert.equal(t.enemies,field);
+  assert.equal(JSON.stringify(t.player),player);assert.equal(t.elapsed,elapsed);
+  assert.equal(t.camera.x,t.player.x-t.W/2);assert.equal(t.camera.y,t.player.y-t.H/2);
+  drawCalls.length=0;t.draw();const transform=drawCalls.find(c=>c.method==='setTransform');assert(transform);
+  assert(Math.abs(transform.args[0]-transform.args[3])<1e-10,'Both axes must use the same drawing scale');
+  assert.deepEqual(transform.args.slice(1,3),[0,0]);assert.deepEqual(transform.args.slice(4),[0,0]);
+});
+test('Viewport: phone rotation adjusts sight and camera bounds while retaining the same world',game=>{
+  const {t,element,setViewport}=game;quietField(t);t.player.x=t.WORLD_W-28;t.player.y=t.WORLD_H-28;
+  setViewport(390,844,{density:3});
+  assert(Math.abs(t.W-620)<1e-10);assert(Math.abs(t.W/t.H-390/844)<1e-10);
+  assert.equal(element('game').width,780);assert.equal(element('game').height,1688);
+  assert.equal(t.camera.x,t.WORLD_W-t.W);assert.equal(t.camera.y,t.WORLD_H-t.H);
+  setViewport(844,390,{density:2,via:'resize'});
+  assert.equal(t.H,680);assert(Math.abs(t.W/t.H-844/390)<1e-10);
+  assert.equal(t.camera.x,t.WORLD_W-t.W);assert.equal(t.camera.y,t.WORLD_H-t.H);
+  assert.equal(t.WORLD_W,6788);assert.equal(t.WORLD_H,4808);
+  t.player.x=28;t.player.y=28;setViewport(390,844);assert.equal(t.camera.x,0);assert.equal(t.camera.y,0);
+});
+test('Viewport: hidden, invalid and extreme browser sizes keep a valid bounded canvas',game=>{
+  const {t,element,setViewport}=game;const canvas=element('game');quietField(t);
+  const before=[t.W,t.H,canvas.width,canvas.height,t.camera.x,t.camera.y];
+  for(const [width,height]of [[0,0],[-1,680],[960,NaN],[Infinity,680]]){
+    setViewport(width,height);assert.deepEqual([t.W,t.H,canvas.width,canvas.height,t.camera.x,t.camera.y],before);
+  }
+  setViewport(5000,1000,{density:4});assert.equal(canvas.width,4096);assert(canvas.height<=4096);
+  assert.equal(t.H,680);assert.equal(t.W,3400);
+  setViewport(10000,100,{density:1});assert(t.W<=t.WORLD_W);assert(t.H<=t.WORLD_H);
+  assert(Math.abs(t.W/t.H-100)<1e-8);assert(t.camera.x>=0&&t.camera.y>=0);
+  setViewport(100,10000);assert(t.W<=t.WORLD_W);assert(t.H<=t.WORLD_H);
+  assert(Math.abs(t.W/t.H-.01)<1e-10);assert(t.camera.x>=0&&t.camera.y>=0);
 });
 test('Stage one has its fixed normal, elite and boss roster without replacement spawns',({t})=>{
   const s=t.activeStage;assert.equal(t.enemies.length,s.enemyCount);assert.equal(t.enemies.filter(e=>!e.boss&&!e.elite).length,72);
@@ -539,6 +586,18 @@ test('Pause and upgrade dialogs freeze gameplay frames',({t})=>{
   quietField(t);t.frame(1000);t.pause();let time=t.elapsed;t.frame(2000);assert.equal(t.elapsed,time);
   t.resume();t.frame(2020);assert(t.elapsed>time);t.upgrade();time=t.elapsed;t.frame(3000);assert.equal(t.elapsed,time);
 });
+test('Pause layout: the pause dialog stays compact and the next menu clears its dedicated presentation',game=>{
+  const {t,element,document,setViewport}=game;quietField(t);t.keys.add('d');t.pause();
+  assert.equal(t.state,'paused');assert.equal(t.keys.size,0);assert(element('overlay').classList.contains('pause-overlay'));
+  assert.equal(element('overlay').ariaProps.role,'dialog');assert.equal(element('overlay').ariaProps['aria-modal'],'true');
+  assert.equal(element('overlay').ariaProps['aria-label'],'游戏暂停');assert.equal(document.activeElement,element('resume'));
+  const elapsed=t.elapsed,player=JSON.stringify(t.player);setViewport(1800,900);t.frame(1000);t.frame(2000);
+  assert.equal(t.elapsed,elapsed);assert.equal(JSON.stringify(t.player),player);assert.equal(t.state,'paused');
+  click(game,'resume');assert.equal(t.state,'playing');assert(element('overlay').classList.contains('hidden'));
+  t.upgrade();assert(!element('overlay').classList.contains('pause-overlay'));assert(element('overlay').classList.contains('upgrade-overlay'));
+  t.player.xp=t.player.need;t.choose(0);t.pause();assert(element('overlay').classList.contains('pause-overlay'));
+  click(game,'leave');assert.equal(t.state,'lobby');assert(!element('overlay').classList.contains('pause-overlay'));
+});
 test('The compact upgrade layout clears before pause, stage, equipment or orchard panels reopen',({t,element})=>{
   t.upgrade();assert(element('overlay').classList.contains('upgrade-overlay'));
   t.player.xp=t.player.need;t.choose(0);assert(element('overlay').classList.contains('hidden'));
@@ -660,7 +719,7 @@ test('The combat HUD separately counts ordinary bugs, elite reinforcements and d
   assert.equal(element('enemyTypes').textContent,`普通 ${s.normalCount-1} · 精英 ${s.eliteCount-1} · Boss 0 / ${s.bossCount}`);
   assert.equal(element('remaining').textContent,s.enemyCount-2);
 });
-test('A defeated elite gives its larger experience reward while Boss eligibility uses only time',({t})=>{
+test('A defeated elite gives its larger experience reward while surviving bugs retain Boss timing',({t})=>{
   const elite=t.enemies.find(e=>e.elite);assert(elite.xp>t.activeStage.slow.xp);
   elite.x=t.player.x+300;elite.y=t.player.y;elite.hp=0;
   t.enemies=[elite,enemy(40,40,{aggro:false,pursuitAt:Infinity})];t.shotClock=Infinity;t.update(.001);
@@ -707,12 +766,68 @@ test('Returning to or reloading a stage restarts elite and boss schedules withou
   assert.equal(loaded.t.enemies.filter(e=>e.elite&&e.aggro).length,0);assert.equal(loaded.t.readyBoss(),null);
   assert.equal(JSON.stringify(loaded.t.profile),oldProfile);
 });
-test('Boss time arrivals are not accelerated by clearing all small bugs early',({t})=>{
+test('Boss clear handoff immediately activates the first boss before its scheduled time',({t,element})=>{
   t.player.inv=1e9;t.shotClock=Infinity;
   killNonBossCount(t,t.activeStage.normalCount+t.activeStage.eliteCount);
-  assert.equal(t.state,'playing');assert.equal(t.bossIndex,0);assert.equal(t.readyBoss(),null);
-  t.elapsed=t.activeStage.bossSchedule[0]-.002;t.update(.001);assert.equal(t.state,'playing');
-  t.update(.002);assert.equal(t.state,'playing');assert.equal(t.bossIndex,1);
+  assert.equal(t.state,'playing');assert(t.elapsed<t.activeStage.bossSchedule[0]);assert.equal(t.bossIndex,1);
+  const boss=t.enemies.find(e=>e.boss);assert(boss.introduced);assert(boss.aggro);assert.equal(t.readyBoss(),null);
+  assert(element('bossForecast').textContent.includes('Boss登场'));assert(!element('bossHud').classList.contains('hidden'));
+});
+test('Boss clear handoff skips both schedule and recovery for every remaining boss with one active at a time',({t})=>{
+  prepareStage(t,6);const s=t.activeStage;t.elapsed=5;
+  killNonBossCount(t,s.normalCount+s.eliteCount);drainUpgradeChoices(t);
+  const seen=[];
+  for(let order=1;order<=s.bossCount;order++){
+    if(t.state==='playing')t.update(.001);
+    assert.equal(t.state,'playing');assert.equal(t.bossIndex,order);
+    const active=t.enemies.filter(e=>e.boss&&e.introduced&&e.hp>0);assert.equal(active.length,1);
+    seen.push(active[0].stageId);assert.equal(t.readyBoss(),null);active[0].hp=0;t.update(.001);drainUpgradeChoices(t);
+    assert.equal(t.bossKills,order);
+    if(order<s.bossCount)assert(t.elapsed<t.nextBossAllowedAt,'The next boss bypasses the twelve-second recovery after the field is clear');
+  }
+  assert.deepEqual(seen,Array.from(s.bossIds));assert(t.elapsed<s.bossSchedule[0]);assert.equal(t.state,'rescue');
+});
+test('Boss clear handoff still waits while even one dormant elite remains alive',({t})=>{
+  prepareStage(t,6);const s=t.activeStage,elite=t.enemies.find(e=>e.elite);t.elapsed=1;
+  for(const e of t.enemies)if(!e.boss&&e!==elite)e.hp=0;t.update(.001);
+  assert.equal(t.bossIndex,0);assert.equal(t.readyBoss(),null);assert(!elite.aggro);
+  t.elapsed=s.bossSchedule[0];t.update(.001);assert.equal(t.bossIndex,1);
+  t.enemies.find(e=>e.boss&&e.introduced).hp=0;t.update(.001);drainUpgradeChoices(t);
+  assert.equal(t.bossIndex,1);assert.equal(t.readyBoss(),null);
+  elite.hp=0;t.update(.001);drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);
+  assert.equal(t.bossIndex,2);assert(t.elapsed<t.nextBossAllowedAt);
+});
+test('Beginner Boss arrival calibrates visible health once without consuming build or relic cooldowns',({t,element,drawCalls})=>{
+  prepareStage(t,1);
+  for(const id of ['damage','rate','shots','standPower','chain','range'])for(let rank=0;rank<5;rank++)assert(t.builds.choose(t.player,id,2).applied);
+  const relic=t.relicDefs.find(d=>d.key==='bees'),drop=t.relicDrops.find(d=>d.id===relic.id);
+  drop.x=t.player.x;drop.y=t.player.y;assert(t.claimRelic(relic.id));
+  const before=JSON.stringify({build:t.player.build,skillTimers:t.player.skillTimers,playerLevel:t.player.level,xp:t.player.xp,profile:t.profile});
+  t.elapsed=t.activeStage.bossSchedule[0];assert(t.announceBossArrival());
+  const boss=t.enemies.find(e=>e.boss&&e.aggro);assert(boss.maxHp>t.activeStage.beginner.bossHp);assert.equal(boss.hp,boss.maxHp);
+  assert.equal(JSON.stringify({build:t.player.build,skillTimers:t.player.skillTimers,playerLevel:t.player.level,xp:t.player.xp,profile:t.profile}),before);
+  assert(element('bossHpText').textContent.includes('减伤90%'));assert(element('bossForecast').textContent.includes('护壳展开'));
+  const hp=boss.hp;t.skillHit(boss,100,'#fff');assert.equal(boss.hp,hp-10);
+  boss.x=t.player.x+60;boss.y=t.player.y;drawCalls.length=0;t.draw();assert(drawCalls.some(c=>c.method==='fillText'&&String(c.args[0]).includes('减伤90%')));
+  const time=t.elapsed,until=boss.arrivalGuardUntil;t.pause();t.frame(1000);t.frame(2000);assert.equal(t.elapsed,time);assert.equal(boss.arrivalGuardUntil,until);t.resume();
+  t.elapsed=until;t.skillHit(boss,100,'#fff');assert.equal(boss.hp,hp-110);t.update(.001);assert(!element('bossHpText').textContent.includes('减伤90%'));
+  const max=boss.maxHp;t.player.damage*=2;t.update(.001);assert.equal(boss.maxHp,max,'Later picks never heal or rescale an already visible boss');
+});
+test('Beginner Boss health keeps a thirty-choice offensive build visible through a real sustained fight',({t})=>{
+  const loadouts=[['damage','rate','shots','crit','standPower','skillPower'],['fireball','chain','bees','leafstorm','hp','range']];
+  for(const loadout of loadouts)for(const id of [1,2,3]){
+    prepareStage(t,id);
+    for(const choice of loadout)for(let rank=0;rank<5;rank++)assert(t.builds.choose(t.player,choice,2).applied);
+    if(loadout.includes('fireball'))for(const drop of t.relicDrops){drop.x=t.player.x;drop.y=t.player.y;assert(t.claimRelic(drop.id));}
+    t.enemies=t.enemies.filter(e=>e.boss);assert(t.announceBossArrival());const boss=t.enemies[0];
+    boss.speed=0;boss.chargeClock=1e9;boss.damage=0;boss.x=t.player.x+65;boss.y=t.player.y;t.shotClock=0;
+    assert(!t.world.blocksSegment(t.player.x,t.player.y,boss.x,boss.y,t.obstacles),'The sustained fire lane must be unobstructed');
+    const arrived=t.elapsed;
+    for(let step=0;step<1600&&boss.hp>0;step++)t.update(.01);
+    const seconds=t.elapsed-arrived;
+    assert(boss.hp<=0,'The opening boss remains beatable by sustained automatic fire');
+    assert(seconds>=7&&seconds<=16,'A mature thirty-choice build should see an opening boss for about 8–15 seconds; stage '+id+' lasted '+seconds.toFixed(2));
+  }
 });
 test('Later chapters serialize all time-ready bosses and keep the twelve-second recovery frozen while paused',({t})=>{
   prepareStage(t,6);const s=t.activeStage,before=JSON.stringify(t.profile);t.elapsed=s.bossSchedule.at(-1)+20;

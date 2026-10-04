@@ -40,6 +40,7 @@
 /* Combat information: guardian and health at lower left, growth icons at right. */
 .layout { grid-template-columns: minmax(0, 1fr); }
 body.run-hud-active .layout { grid-template-columns: minmax(0, 1fr) 90px; gap: 12px; }
+body.run-hud-active .shell { width: 100%; max-width: none; }
 .arena .guardian-hud {
   position: absolute; left: 18px; bottom: 78px; z-index: 2;
   width: 286px; max-width: 46%; padding: 11px 12px;
@@ -486,6 +487,44 @@ body.run-hud-active .arena > .hud {
 }
 @media (max-height: 500px) and (orientation: landscape) {
   body.training-active .arena .training-hud { top: 62px; }
+}
+/* Pause is a compact card over the visible battlefield. */
+.overlay.pause-overlay {
+  inset: 0; width: 100%; max-width: none; height: 100%; margin: 0;
+  padding: 24px; display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 0; background: #07170c80;
+  backdrop-filter: blur(2px); box-shadow: none;
+}
+.overlay.pause-overlay.hidden { display: none; }
+.pause-overlay .dialog.menu-dialog {
+  width: min(480px, 100%); max-width: 480px; height: auto;
+  max-height: calc(100dvh - 48px); margin: 0; padding: 28px;
+  gap: 18px; text-align: center; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid #a3be71; border-radius: 20px;
+  background: linear-gradient(145deg, #263e2b, #152b20);
+  box-shadow: 0 20px 75px #0008; scrollbar-width: thin;
+}
+.pause-overlay .menu-top { justify-content: center; }
+.pause-overlay .menu-top .wallet { display: none; }
+.pause-overlay .menu-title { font-size: 26px; line-height: 1.4; }
+.pause-overlay .menu-top .tag { font-size: 11px; margin-bottom: 8px; }
+.pause-overlay .menu-body { flex: 0 0 auto; min-height: 0; }
+.pause-overlay .menu-body p { margin: 0; font-size: 13px; line-height: 1.8; color: #dce9c8; }
+.pause-overlay .menu-actions { gap: 10px; }
+.pause-overlay .menu-actions button { min-height: 44px; padding: 11px 20px; font-size: 13px; }
+.pause-overlay .menu-footer .micro { margin-top: 14px; font-size: 11px; line-height: 1.6; }
+@media (max-width: 600px) {
+  .overlay.pause-overlay { padding: 14px; }
+  .pause-overlay .dialog.menu-dialog { padding: 22px 18px; gap: 16px; max-height: calc(100dvh - 28px); border-radius: 16px; }
+  .pause-overlay .menu-title { font-size: 22px; }
+  .pause-overlay .menu-actions button { padding-inline: 13px; font-size: 12px; }
+}
+@media (max-height: 500px) {
+  .overlay.pause-overlay { padding: 10px; }
+  .pause-overlay .dialog.menu-dialog { padding: 18px 22px; gap: 10px; max-height: calc(100dvh - 20px); }
+  .pause-overlay .menu-title { font-size: 22px; }
+  .pause-overlay .menu-top .tag { margin-bottom: 4px; }
+  .pause-overlay .menu-footer .micro { margin-top: 9px; }
 }
 /* Ten gardens keep the hundred residents in small, readable groups. */
 .garden-picker{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;flex:0 0 auto}
