@@ -1,0 +1,189 @@
+/* The illustrated cover is a separate first screen, before chapter selection. */
+body.is-cover > .shell { visibility: hidden; pointer-events: none; }
+.cover-screen {
+  position: fixed; inset: 0; z-index: 100; isolation: isolate;
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 100vh; height: 100dvh; overflow: hidden;
+  padding: max(28px, env(safe-area-inset-top)) max(30px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(30px, env(safe-area-inset-left));
+  color: #fff3d2; background: #173b27;
+}
+.cover-screen.hidden { display: none; }
+.cover-art, .cover-vignette { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.cover-art {
+  background-color: #284a30;
+  background-image: url('assets/cover/orchard-cover.webp'), radial-gradient(ellipse at 38% 68%, #a7b66e, transparent 57%), linear-gradient(135deg, #466c47, #172f25 80%);
+  background-size: cover; background-position: 43% center; background-repeat: no-repeat;
+}
+.cover-vignette { background: linear-gradient(90deg, #071e1885, #0c231a05 58%, #0c251b75), linear-gradient(0deg, #102b1ada, #112b1c00 48%, #102b194f); }
+.cover-layout {
+  width: min(1160px, 100%); min-width: 0; min-height: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  align-items: center; gap: clamp(35px, 6vw, 94px);
+}
+.cover-story { min-width: 0; align-self: stretch; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; padding: 20px 0; }
+.cover-kicker { display: inline-block; margin-bottom: 18px; color: #e2efb7; font-size: 10px; font-weight: 600; letter-spacing: 5px; text-shadow: 0 2px 9px #10271b; }
+.cover-title { margin: 0; max-width: 620px; color: #fff0c6; font-size: clamp(42px, 5.5vw, 74px); font-weight: 900; letter-spacing: 3px; line-height: 1.2; text-shadow: 0 3px 0 #285333, 0 8px 24px #103723; }
+.cover-title > span { display: block; }
+.cover-tagline { max-width: 380px; margin: 20px 0 0; color: #f8f1d8; font-size: 15px; line-height: 1.8; letter-spacing: 1px; text-shadow: 0 2px 8px #163c26; }
+.cover-features { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+.cover-feature-chip { display: inline-flex; align-items: center; gap: 5px; padding: 7px 11px; border: 1px solid #f3edba5c; border-radius: 30px; color: #f3efcd; background: #1d3b298c; backdrop-filter: blur(7px); font-size: 11px; line-height: 1.3; box-shadow: 0 2px 8px #0b29151c; }
+.cover-note { max-width: 400px; margin: auto 0 0; padding-top: 100px; color: #f2ecd0; font-size: 11px; line-height: 1.7; letter-spacing: .4px; text-shadow: 0 2px 8px #102b1b; }
+.login-panel {
+  position: relative; min-width: 0; padding: 27px 29px 25px;
+  border: 1px solid #fff0be8f; border-radius: 25px;
+  background: linear-gradient(145deg, #fff7deed, #eff0d9f5);
+  box-shadow: 0 20px 75px #0a27135c, inset 0 1px 0 #ffffffa1;
+  color: #25412b; backdrop-filter: blur(12px);
+}
+.login-emblem { display: grid; place-items: center; width: 53px; height: 53px; margin-bottom: 16px; border: 1px solid #a4b27e; border-radius: 16px; background: linear-gradient(145deg, #e6efc4, #d0dda2); font-size: 33px; box-shadow: 0 3px 8px #55713617; }
+.login-kicker { display: block; margin-bottom: 7px; color: #76885e; font-size: 9px; font-weight: 700; letter-spacing: 2px; }
+.login-title { margin: 0; color: #28472e; font-size: 25px; font-weight: 800; letter-spacing: 1px; line-height: 1.3; }
+.login-intro { margin: 10px 0 17px; color: #657455; font-size: 11px; line-height: 1.7; }
+.login-form { display: flex; flex-direction: column; gap: 12px; }
+.login-form label { display: flex; flex-direction: column; min-width: 0; gap: 6px; margin: 0; color: #415936; font-size: 11px; font-weight: 700; }
+.login-form label > span { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
+.login-form label small { color: #7c896c; font-size: 9px; font-weight: 400; }
+.login-password-group { display: flex; flex-direction: column; gap: 6px; }
+.login-form input {
+  display: block; width: 100%; min-width: 0; height: 43px;
+  padding: 11px 12px; border: 1px solid #abb98f; border-radius: 9px;
+  color: #29462d; background: #fffdf2; font: 12px 'Microsoft YaHei', system-ui, sans-serif;
+  box-shadow: inset 0 1px 3px #32532c06;
+}
+.login-form input::placeholder { color: #9aa18c; opacity: 1; }
+.login-form input:hover { border-color: #7e9863; }
+.login-form input:focus { outline: 2px solid #91b35d; outline-offset: 2px; border-color: #779653; }
+.login-form input[aria-invalid='true'] { border-color: #a25435; outline-color: #c68860; }
+.password-field { display: flex; position: relative; }
+.password-field input { padding-right: 56px; }
+.password-field button { position: absolute; right: 5px; top: 5px; bottom: 5px; min-width: 43px; padding: 0 8px; border: 0; border-radius: 6px; color: #647849; background: transparent; font-size: 10px; }
+.password-field button:hover { background: #eaf0d9; color: #315633; }
+.login-panel button:focus-visible { outline: 3px solid #73904d; outline-offset: 3px; }
+.login-feedback { min-height: 17px; margin: 0; color: #7b8a60; font-size: 10px; line-height: 1.55; overflow-wrap: anywhere; }
+.login-feedback.error { color: #a2452a; }
+.login-feedback.success { color: #47702f; }
+.login-feedback:empty { min-height: 0; }
+.login-panel .cover-submit { display: block; width: 100%; min-height: 43px; padding: 11px 13px; margin-top: 0; border: 1px solid #4b6f37; border-radius: 10px; background: linear-gradient(180deg, #658b43, #507735); color: #fff9db; font-size: 13px; font-weight: 700; letter-spacing: 1px; box-shadow: 0 4px 0 #31552b; transition: background .15s, transform .15s; }
+.login-panel .cover-submit:hover:enabled { background: linear-gradient(180deg, #799d53, #5b833b); transform: translateY(-1px); }
+.login-panel .cover-submit:active:enabled { transform: translateY(2px); box-shadow: 0 2px 0 #31552b; }
+.login-panel .cover-submit:disabled { opacity: .65; cursor: wait; transform: none; }
+.login-storage-note { display: block; margin-top: 17px; color: #7b856e; font-size: 9px; line-height: 1.6; }
+.cover-footer { position: absolute; bottom: max(15px, env(safe-area-inset-bottom)); left: 25px; right: 25px; color: #e5edc0a6; font-size: 9px; letter-spacing: 2px; text-align: center; pointer-events: none; }
+
+/* A small account badge remains available after logging in. */
+.account-menu { display: inline-flex; align-items: center; justify-content: flex-end; gap: 9px; min-width: 0; padding: 7px 10px; border: 1px solid #68844c; border-radius: 11px; background: #233c2be6; }
+.account-menu.hidden { display: none; }
+#playerName { display: block; max-width: 125px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #e7efbf; font-size: 11px; font-weight: 600; }
+.account-switch { flex: 0 0 auto; padding: 3px 0 3px 9px; border: 0; border-left: 1px solid #6a81516b; border-radius: 0; background: none; color: #a6bd91; font-size: 10px; }
+.account-switch:hover { color: #fff0c4; }
+.account-switch:disabled { opacity: .45; cursor: default; }
+.account-chip { border: 1px solid #68844c; border-radius: 10px; padding: 5px 9px; background: #233c2be6; color: #dce9b6; font-size: 10px; }
+
+@media (max-width: 1000px) {
+  .cover-screen { padding: 27px 25px 30px; }
+  .cover-layout { grid-template-columns: minmax(0, 1fr) minmax(300px, 350px); gap: 27px; }
+  .cover-title { font-size: clamp(35px, 5.2vw, 57px); letter-spacing: 1px; }
+  .cover-tagline { font-size: 13px; }
+  .cover-kicker { letter-spacing: 3px; }
+  .cover-features { gap: 6px; }
+  .cover-feature-chip { font-size: 10px; padding: 6px 8px; }
+  .login-panel { padding: 23px 25px 21px; }
+}
+@media (max-height: 760px) and (min-width: 701px) {
+  .cover-screen { padding-top: 15px; padding-bottom: 24px; }
+  .cover-story { padding: 12px 0; }
+  .cover-note { padding-top: 50px; }
+  .login-panel { padding: 19px 25px 17px; border-radius: 20px; }
+  .login-emblem { width: 39px; height: 39px; margin-bottom: 10px; border-radius: 12px; font-size: 25px; }
+  .login-title { font-size: 22px; }
+  .login-intro { margin: 7px 0 12px; }
+  .login-form { gap: 9px; }
+  .login-form input { height: 38px; padding-top: 9px; padding-bottom: 9px; }
+  .login-panel .cover-submit { min-height: 38px; padding: 9px 12px; }
+  .login-storage-note { margin-top: 12px; }
+  .cover-footer { bottom: 7px; }
+}
+@media (max-width: 700px) and (orientation: portrait) {
+  .cover-screen { align-items: center; padding: max(18px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
+  .cover-art { background-position: 33% center; }
+  .cover-vignette { background: linear-gradient(180deg, #112d217a, #1d392937 40%, #132f25bd); }
+  .cover-layout { width: min(410px, 100%); grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .cover-story { padding: 0; align-items: center; text-align: center; }
+  .cover-kicker { margin-bottom: 7px; font-size: 9px; letter-spacing: 3px; }
+  .cover-title { font-size: clamp(32px, 9vw, 45px); letter-spacing: 2px; line-height: 1.18; }
+  .cover-title > span { display: inline; }
+  .cover-tagline { margin-top: 8px; max-width: none; font-size: 11px; line-height: 1.6; }
+  .cover-features { justify-content: center; margin-top: 11px; gap: 6px; }
+  .cover-feature-chip { padding: 5px 8px; font-size: 9px; }
+  .cover-note { display: none; }
+  .login-panel { padding: 21px 23px 19px; border-radius: 21px; }
+  .login-emblem { float: left; width: 39px; height: 39px; margin: 0 11px 0 0; border-radius: 12px; font-size: 26px; }
+  .login-kicker { margin-bottom: 3px; font-size: 8px; }
+  .login-title { font-size: 20px; }
+  .login-intro { clear: both; margin: 11px 0 13px; }
+  .login-form { gap: 10px; }
+  .login-form input { font-size: 16px; height: 42px; }
+  .login-storage-note { margin-top: 13px; font-size: 9px; }
+  .cover-footer { bottom: max(7px, env(safe-area-inset-bottom)); font-size: 8px; letter-spacing: 1px; }
+}
+@media (max-width: 700px) and (orientation: portrait) and (max-height: 690px) {
+  .cover-layout { gap: 13px; }
+  .cover-screen { padding-top: 13px; padding-bottom: 23px; }
+  .cover-title { font-size: 34px; }
+  .cover-tagline { margin-top: 5px; }
+  .cover-features { display: none; }
+  .login-panel { padding: 17px 20px 15px; }
+  .login-form { gap: 8px; }
+  .login-form input { height: 39px; padding-top: 8px; padding-bottom: 8px; }
+  .login-intro { margin: 9px 0 11px; font-size: 10px; }
+  .login-storage-note { margin-top: 11px; font-size: 8px; }
+}
+@media (max-height: 490px) and (orientation: landscape) {
+  .cover-screen { padding: 11px 23px 20px; }
+  .cover-layout { width: min(930px, 100%); grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); gap: 25px; }
+  .cover-story { align-self: center; padding: 0; }
+  .cover-title { font-size: clamp(28px, 5vw, 45px); }
+  .cover-kicker { margin-bottom: 10px; font-size: 8px; letter-spacing: 2px; }
+  .cover-tagline { margin-top: 11px; font-size: 11px; line-height: 1.6; }
+  .cover-features, .cover-note { display: none; }
+  .login-panel { padding: 13px 19px 12px; border-radius: 18px; }
+  .login-emblem { display: none; }
+  .login-kicker { margin-bottom: 3px; font-size: 8px; }
+  .login-title { font-size: 19px; }
+  .login-intro { margin: 5px 0 8px; font-size: 9px; line-height: 1.5; }
+  .login-form { gap: 6px; }
+  .login-form label { font-size: 9px; gap: 4px; }
+  .login-password-group { gap: 4px; }
+  .login-form input { height: 32px; padding: 6px 10px; font-size: 12px; border-radius: 7px; }
+  .password-field input { padding-right: 49px; }
+  .password-field button { top: 3px; bottom: 3px; min-width: 36px; font-size: 9px; }
+  .login-feedback { min-height: 13px; font-size: 9px; line-height: 1.4; }
+  .login-feedback:empty { min-height: 0; }
+  .login-panel .cover-submit { min-height: 32px; padding: 7px 10px; font-size: 11px; box-shadow: 0 3px 0 #31552b; }
+  .login-storage-note { margin-top: 9px; font-size: 8px; line-height: 1.45; }
+  .cover-footer { bottom: 5px; font-size: 8px; }
+}
+@media (max-width: 850px) {
+  .account-menu { gap: 6px; padding: 5px 7px; border-radius: 8px; }
+  #playerName { max-width: 85px; font-size: 10px; }
+  .account-switch { font-size: 9px; padding-left: 6px; }
+}
+@media (max-width: 480px) {
+  #playerName { max-width: 62px; font-size: 9px; }
+  .account-menu { gap: 4px; padding: 4px 6px; }
+  .account-switch { padding-left: 5px; font-size: 8px; }
+}
+/* Virtual keyboards and unusually short screens retain access to every field. */
+@media (max-height: 340px), (max-width: 700px) and (orientation: portrait) and (max-height: 540px) {
+  .cover-screen { display: block; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
+  .cover-layout { margin: 0 auto; }
+  .cover-story { display: none; }
+  .cover-layout { grid-template-columns: minmax(0, 1fr); width: min(370px, 100%); }
+  .cover-footer { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-panel .cover-submit { transition: none; }
+}
+/* Form feedback and a virtual keyboard must not hide the submit action. */
+.login-panel { max-height: calc(100dvh - 56px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: #8ca56a #f0f1dc; }
+@media (max-height: 490px) and (orientation: landscape) { .login-panel { max-height: calc(100dvh - 31px); } }

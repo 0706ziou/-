@@ -1,0 +1,9 @@
+Use case: stylized-concept
+Asset type: production 2D top-down orchard game environment sprite atlas, genuine transparent background.
+Primary request: exactly 16 separate polished hand-painted environment props in a regular 4 by 4 grid, each centred inside its own equal square cell, with clear generous transparent gutters and no cell lines. Consistent orthographic overhead / slight 3/4 top-down view, readable tiny in a charming orchard survival game. Soft painterly textures, warm storybook orchard foliage, clear silhouettes, not photoreal.
+Cell order left to right, top to bottom:
+Row 1: (1) leafy wooden orchard entry arch, open middle; (2) round mossy stone fountain with turquoise water; (3) straw beehive and small honey box as one prop; (4) short wooden plank bridge horizontal left-right with side railings and open deck.
+Row 2: (5) grape-covered wooden pergola arch with open middle and purple clusters; (6) cherry fruit tree with pink blossom crown; (7) old wooden windmill with four blades; (8) glass and wooden miniature greenhouse.
+Row 3: (9) giant amber honeycomb hive mound with small cave holes; (10) purple thorn-and-berry bramble clump; (11) full red-orange autumn fruit tree; (12) orange pumpkin turret with wooden battlements.
+Row 4: (13) rustic wooden fence gate with open middle and lantern posts; (14) glowing golden orchard heart tree with thick roots and sparkling yellow-green leaves; (15) garden bed of giant orange pumpkins and green watermelons; (16) warm lantern on a small curved wooden post.
+Constraints: actual alpha transparency outside each prop; every prop contained wholly in its square cell; no labels, no numbers, no text, no watermarks, no scenery backdrop, no grass rectangle under cells, no dark flat shadows outside props. Props have subtly painted close-contact shadows only. All 16 cells equally sized, aligned, isolated, no overlapping neighbors. Maintain exact ordered subjects.

@@ -1,0 +1,209 @@
+/* Chapter artwork and hero cultivation fit the existing single-screen menu. */
+.menu-nav { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.hero-tabs { display: flex; flex: 0 0 auto; gap: 7px; }
+.hero-tabs .secondary { flex: 1; max-width: 180px; }
+.hero-tabs .secondary.active { background: #4d6438; border-color: #d4e995; color: #fff3c2; }
+.hero-tabs > small { margin-left: auto; align-self: center; font-size: 10px; line-height: 1.3; color: #cbd9b5; }
+.hero-layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 14px; flex: 1; min-height: 0; }
+.hero-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); gap: 8px; min-height: 0; }
+.hero-card { position: relative; display: flex; align-items: center; gap: 7px; min-width: 0; min-height: 0; padding: 8px; border: 1px solid #627650; border-radius: 13px; background: linear-gradient(145deg, #304835, #253729); color: #ebe7c4; text-align: left; }
+.hero-card:hover { border-color: #bfdb87; background: #3b5539; }
+.hero-card.selected { border-color: #e4ec99; box-shadow: inset 0 0 0 1px #d5e68166, 0 4px 18px #101b133b; background: linear-gradient(145deg, #4c633c, #344932); }
+.hero-card.locked { color: #a8b7a0; background: #26382c; }
+.hero-card.locked .hero-portrait { filter: grayscale(.65); opacity: .55; }
+.hero-card > div:last-child { min-width: 0; }
+.hero-card strong { display: block; font-size: 15px; line-height: 1.25; }
+.hero-card span, .hero-card small { display: block; font-size: 10px; line-height: 1.45; margin-top: 5px; color: #c4d4ae; }
+.hero-card small { color: #e7d8a5; }
+.hero-portrait { display: block; flex: 0 0 auto; width: 52px; height: 52px; background-image: url('assets/guardian-atlas.png'); background-size: 400% 400%; background-repeat: no-repeat; image-rendering: auto; }
+.hero-detail { min-width: 0; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 11px; border: 1px solid #708555; border-radius: 13px; padding: 21px; background: linear-gradient(150deg, #314931, #223629); }
+.hero-detail .hero-portrait { width: 98px; height: 98px; align-self: center; }
+.hero-detail > strong { font-size: 20px; line-height: 1.2; color: #f4e8bc; }
+.hero-detail > span, .hero-detail > p, .hero-detail > small { margin: 0; font-size: 12px; line-height: 1.6; color: #c7d6b8; }
+.hero-detail .hero-skill { display: block; color: #e1e999; font-weight: 600; }
+.hero-skill-copy { min-width: 0; min-height: 0; padding: 10px 11px; border: 1px solid #68864c80; border-radius: 9px; background: #1d3426; }
+.hero-skill-tabs { display: flex; gap: 5px; margin-bottom: 8px; }
+.hero-skill-tabs > button { flex: 1; min-height: 26px; padding: 5px 8px; border: 1px solid #627c4d; border-radius: 6px; background: #2d442d; color: #bace9c; font-size: 10px; }
+.hero-skill-tabs > button.active { border-color: #c5dc87; background: #53683b; color: #f5edc0; }
+.hero-skill-copy > b { display: block; color: #e3eb9e; font-size: 13px; line-height: 1.3; }
+.menu-dialog .hero-skill-copy > p { font-size: 11px; line-height: 1.5; margin: 5px 0 0; color: #c8d9b9; }
+.hero-skill-copy .hero-compact-description { display: none; }
+.sidebar .hero-icon > .hero-portrait { width: 64px; height: 64px; margin: 0 auto; }
+.hero-stats { display: flex; flex-wrap: wrap; gap: 6px; }
+.hero-stats > span { padding: 4px 7px; border: 1px solid #678055; border-radius: 6px; background: #203829; font-size: 10px; color: #d9e7bc; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: auto; padding-top: 8px; }
+.hero-actions .secondary { flex: 1; }
+.growth-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 11px; min-height: 0; flex: 1; }
+.growth-card { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 17px; border: 1px solid #687e50; border-radius: 13px; background: linear-gradient(145deg, #334a31, #233727); color: #f2e8bc; }
+.growth-card > strong { font-size: 15px; line-height: 1.3; margin-bottom: 8px; }
+.growth-card > span, .growth-card > small { display: block; font-size: 11px; line-height: 1.5; color: #c0d3ad; }
+.growth-card > small { margin-top: 6px; color: #e2d8a4; }
+.growth-card .hero-actions { margin-top: auto; }
+.growth-card > button { margin-top: auto; }
+.growth-card .growth-level { color: #e3ec9c; }
+.stage-art { position: relative; overflow: hidden; flex: 0 1 42%; height: clamp(120px, 21vh, 225px); min-height: 70px; width: 100%; margin-bottom: 11px; border-radius: 10px; border: 1px solid #d5dca166; background: #405c46; }
+.stage-art > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.stage-art::after { content: ''; position: absolute; inset: 25% 0 0; pointer-events: none; background: linear-gradient(transparent, #102a17bd); }
+.stage-art > strong, .stage-art > .stage-art-title { position: absolute; z-index: 1; bottom: 12px; left: 15px; right: 12px; color: #fff1c5; font-size: clamp(15px, 1.9vw, 22px); line-height: 1.3; text-shadow: 0 2px 3px #142713; }
+.stage-art > small { position: absolute; z-index: 1; top: 10px; left: 12px; border: 1px solid #f9edb54d; border-radius: 5px; padding: 3px 6px; color: #ffefbc; background: #203921b3; font-size: 9px; letter-spacing: 2px; }
+.menu-dialog .stage-button { position: relative; overflow: hidden; isolation: isolate; background: #283d2d; }
+.menu-dialog .stage-button .stage-thumb { display: block; margin: 0; position: absolute; inset: 0; z-index: -2; background-image: var(--stage-image); background-size: cover; background-position: center; opacity: .6; }
+.stage-button:has(.stage-thumb)::after { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(#14281926, #152a1bcd); }
+.menu-dialog .stage-button:has(.stage-thumb) b { color: #fff1c5; text-shadow: 0 2px 3px #111; }
+.menu-dialog .stage-button:has(.stage-thumb) span { color: #f4eac6; text-shadow: 0 1px 2px #111; }
+.menu-dialog .stage-button.selected .stage-thumb { opacity: .95; }
+.menu-dialog .stage-detail:has(.stage-art) { justify-content: flex-start; }
+.menu-dialog #previewChapterMap { flex: 0 0 auto; margin-top: 6px; padding: 6px 10px; min-height: 26px; font-size: 10px; align-self: flex-start; }
+@media (max-height: 600px), (max-width: 600px) { .menu-dialog #previewChapterMap { min-height: 22px; padding: 4px 7px; font-size: 9px; margin-top: 3px; } }
+.hero-skill-btn { border-color: #e2c88a !important; background: #494a29ef !important; color: #fff1be !important; }
+.hero-skill-btn:disabled { background: #333d2cec !important; color: #b6bba2 !important; border-color: #68724f !important; }
+.upgrade-overlay .card .upgrade-type { display: block; font-size: 9px; color: #b5c795; margin-bottom: 4px; }
+.upgrade-overlay .card span { line-height: 1.45; }
+
+@media (max-width: 1000px) {
+  .hero-card { padding: 11px; gap: 7px; }
+  .hero-portrait { width: 62px; height: 62px; }
+  .hero-detail { padding: 17px; }
+}
+@media (max-height: 650px) {
+  .hero-layout { gap: 10px; }
+  .hero-grid { gap: 8px; }
+  .hero-card { padding: 10px; }
+  .hero-portrait { width: 55px; height: 55px; }
+  .hero-card strong { font-size: 13px; }
+  .hero-card span, .hero-card small { font-size: 9px; margin-top: 3px; }
+  .hero-detail { gap: 7px; padding: 13px; }
+  .hero-detail .hero-portrait { width: 66px; height: 66px; }
+  .hero-detail > strong { font-size: 17px; }
+  .hero-detail > span, .hero-detail > p, .hero-detail > small { font-size: 10px; line-height: 1.45; }
+  .hero-skill-copy { padding: 8px 9px; }
+  .hero-skill-copy > b { font-size: 12px; }
+  .menu-dialog .hero-skill-copy > p { font-size: 10px; line-height: 1.4; }
+  .hero-skill-tabs { margin-bottom: 5px; }
+  .hero-actions { gap: 5px; padding-top: 5px; }
+  .growth-grid { gap: 8px; }
+  .growth-card { padding: 12px; }
+  .growth-card > strong { font-size: 13px; margin-bottom: 5px; }
+  .growth-card > span, .growth-card > small { font-size: 10px; line-height: 1.4; }
+  .stage-art { min-height: 65px; height: 115px; margin-bottom: 7px; }
+  .stage-art > strong, .stage-art > .stage-art-title { bottom: 8px; left: 10px; font-size: 16px; }
+}
+@media (max-width: 620px) {
+  .menu-nav { gap: 4px; }
+  .nav-button { padding: 6px 1px; font-size: 9px; white-space: nowrap; }
+  .hero-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, .9fr) minmax(0, 1.1fr); gap: 8px; }
+  .hero-grid { gap: 6px; }
+  .hero-card { padding: 8px; gap: 5px; border-radius: 9px; }
+  .hero-card strong { font-size: 12px; }
+  .hero-card span, .hero-card small { font-size: 9px; }
+  .hero-portrait { width: 50px; height: 50px; }
+  .hero-detail { position: relative; gap: 5px; padding: 12px; border-radius: 10px; }
+  .hero-detail .hero-portrait { position: absolute; right: 8px; top: 8px; width: 56px; height: 56px; }
+  .hero-detail > strong { font-size: 16px; padding-right: 50px; }
+  .hero-detail > span, .hero-detail > p, .hero-detail > small { font-size: 10px; line-height: 1.4; }
+  .hero-detail .hero-skill { padding-right: 47px; }
+  .hero-stats { gap: 4px; }
+  .hero-stats > span { padding: 3px 5px; font-size: 9px; }
+  .growth-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .growth-card { padding: 10px; border-radius: 10px; }
+  .growth-card > strong { font-size: 12px; margin-bottom: 4px; }
+  .growth-card > span, .growth-card > small { font-size: 9px; line-height: 1.35; }
+  .hero-tabs .secondary { max-width: none; }
+  .hero-tabs > small { display: none; }
+  .stage-art { flex: none; height: 100px; min-height: 56px; margin-bottom: 6px; }
+  .stage-art > strong, .stage-art > .stage-art-title { font-size: 15px; bottom: 7px; }
+  .stage-art > small { top: 6px; left: 8px; font-size: 8px; }
+}
+@media (max-height: 500px) {
+  .hero-tabs { gap: 5px; }
+  .hero-layout { gap: 7px; }
+  .hero-grid { gap: 6px; }
+  .hero-card { padding: 7px; gap: 6px; }
+  .hero-portrait { width: 43px; height: 43px; }
+  .hero-card strong { font-size: 11px; }
+  .hero-card span { font-size: 8px; margin-top: 3px; }
+  .hero-card small { font-size: 8px; margin-top: 3px; }
+  .hero-detail { gap: 5px; padding: 10px; }
+  .hero-detail .hero-portrait { display: none; }
+  .hero-detail > strong { font-size: 14px; }
+  .hero-detail > span, .hero-detail > p, .hero-detail > small { font-size: 9px; line-height: 1.35; }
+  .hero-skill-copy { padding: 6px 7px; }
+  .hero-skill-copy > b { font-size: 11px; }
+  .menu-dialog .hero-skill-copy > p { font-size: 9px; line-height: 1.3; }
+  .hero-skill-tabs { margin-bottom: 4px; gap: 4px; }
+  .hero-skill-tabs > button { min-height: 22px; padding: 3px 4px; font-size: 9px; }
+  .hero-stats > span { font-size: 8px; padding: 3px 5px; }
+  .growth-card { padding: 9px; }
+  .growth-card > strong { font-size: 11px; }
+  .growth-card > span, .growth-card > small { font-size: 9px; line-height: 1.3; }
+  .stage-art { height: 75px; min-height: 45px; margin-bottom: 5px; }
+  .stage-art > strong, .stage-art > .stage-art-title { font-size: 13px; bottom: 5px; }
+  .stage-art > small { display: none; }
+}
+@media (max-width: 620px) and (max-height: 580px) {
+  .hero-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); grid-template-rows: none; gap: 7px; }
+  .hero-grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, minmax(0, 1fr)); }
+  .hero-card { gap: 4px; padding: 5px; }
+  .hero-portrait { width: 36px; height: 36px; }
+  .hero-card strong { font-size: 10px; }
+  .hero-card span { font-size: 8px; margin-top: 2px; }
+  .hero-card small { display: none; }
+  .hero-detail .hero-portrait { display: none; }
+  .hero-detail > strong, .hero-detail .hero-skill { padding-right: 0; }
+  .hero-detail { padding: 9px; gap: 5px; }
+  .hero-detail > strong { font-size: 13px; }
+  .hero-detail > span, .hero-detail > p, .hero-detail > small { font-size: 9px; }
+  .hero-detail .hero-lore { display: none; }
+  .hero-skill-copy .hero-full-description { display: none; }
+  .hero-skill-copy .hero-compact-description { display: block; }
+  .hero-actions { gap: 4px; padding-top: 3px; }
+  .hero-actions .secondary { padding: 5px 4px; font-size: 8px; min-height: 24px; }
+  .hero-stats { gap: 3px; }
+  .hero-stats > span { font-size: 8px; padding: 2px 4px; }
+  .growth-grid { gap: 5px; }
+  .growth-card { padding: 7px; }
+  .growth-card > strong { font-size: 10px; }
+  .growth-card > span, .growth-card > small { font-size: 8px; line-height: 1.3; }
+  .stage-art { height: 62px; min-height: 45px; }
+}
+@media (max-width: 620px) and (max-height: 400px) {
+  .hero-tabs .secondary { min-height: 23px; padding: 4px; font-size: 9px; }
+  .hero-card span { display: none; }
+  .hero-card strong { font-size: 9px; }
+  .hero-portrait { width: 30px; height: 30px; }
+  .hero-detail { gap: 3px; padding: 7px; }
+  .hero-detail > strong { font-size: 12px; }
+  .hero-detail > span, .hero-detail > p, .hero-detail > small { font-size: 8px; line-height: 1.25; }
+  .hero-detail .hero-stats { display: none; }
+  .growth-card { padding: 5px; }
+  .growth-card > strong { font-size: 9px; margin-bottom: 3px; }
+  .growth-card > small { margin-top: 3px; }
+  .stage-art { height: 40px; min-height: 35px; }
+  .stage-art > strong, .stage-art > .stage-art-title { font-size: 11px; }
+}
+
+/* Eight initially unlocked heroes stay on one screen at every menu size. */
+.boss-forecast { position: absolute; top: 88px; left: 50%; transform: translateX(-50%); max-width: 75%; padding: 6px 12px; border: 1px solid #a5b66b55; border-radius: 18px; background: #132a22de; color: #dce8ae; font-size: 10px; text-align: center; pointer-events: none; }
+.boss-forecast.hidden { display: none; }
+@media (min-width: 621px) and (max-height: 650px) {
+  .hero-card { padding: 6px; gap: 5px; }
+  .hero-card .hero-portrait { width: 42px; height: 42px; }
+  .hero-card strong { font-size: 12px; }
+  .hero-card span, .hero-card small { font-size: 9px; margin-top: 2px; }
+}
+@media (max-width: 620px) {
+  .hero-layout { grid-template-columns: 1fr; grid-template-rows: minmax(118px, .7fr) minmax(0, 1.3fr); gap: 7px; }
+  .hero-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  .hero-card { flex-direction: column; justify-content: center; gap: 1px; padding: 4px; text-align: center; }
+  .hero-card .hero-portrait { width: 30px; height: 30px; margin-top: 0; }
+  .hero-card strong { font-size: 10px; }
+  .hero-card span:not(.hero-portrait), .hero-card small { display: none; }
+  .hero-tabs > small { max-width: 95px; font-size: 9px; }
+  .boss-forecast { top: 79px; font-size: 9px; }
+}
+@media (max-width: 620px) and (max-height: 580px) {
+  .hero-layout { grid-template-columns: minmax(0, .9fr) minmax(0, 1.25fr); grid-template-rows: none; }
+  .hero-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .hero-card .hero-portrait { width: 25px; height: 25px; }
+  .hero-card strong { font-size: 9px; }
+}

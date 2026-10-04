@@ -1,0 +1,72 @@
+《果园保卫战》20 关原创插画生成记录
+
+方式：内置 image_gen，每关独立调用，共 20 次；无引用图。
+原稿：stage-01.png ～ stage-20.png，均为 1672×941。
+网页资产：同名 .webp，使用 sharp 常规格式打包至 960×540，quality 82，保留原稿。
+未添加文字、界面或水印。标题由游戏 HTML 单独呈现。
+
+第 1 关实际完整提示词：
+Use case: illustration-story. Asset type: polished game stage illustration for an original orchard survival game, 16:9 landscape banner. Stage 01, Greenleaf Entrance (青叶入口). A lovely handcrafted wooden entrance gate woven with lush fresh green leaves opens onto a winding ochre dirt path through rows of small orange fruit trees; sunlit round hills recede into a soft pale sky, wildflowers and blade-like grasses frame the foreground, a few wooden crates beside the gate. High-quality warm painted storybook game art, soft gouache and rich textures, readable silhouettes, charming miniature-world scale, beautiful atmospheric depth and golden morning illumination. Compose the gate as the primary focal object, inviting path visible, scenery only. No characters, no user interface, no lettering, no numerals, no logos, no watermark. Final art should look like a finished premium indie game's chapter card, not a rough sketch.
+
+第 2～20 关实际提示词按以下方式连接：
+【共同前缀】 + " Stage " + 关卡序号 + ": " + 【对应场景描述】
+
+共同前缀：
+Use case: illustration-story. Asset type: premium indie game chapter illustration for the original orchard survival game Orchard Guardians. 16:9 landscape scene, high-quality painted storybook game art with soft gouache brush texture, warm readable silhouettes, miniature-world scale, layered foreground/midground/distant scenery, atmospheric depth, polished charming environments. Keep coherent with an enchanted fruit orchard. Scenery only; no characters, no user interface, no text, no numerals, no logos, no watermark. Each scene has a clear characteristic focal object and a readable traversable dirt path.
+
+02 · 露水小径：
+Dewdrop Path (露水小径). A secluded dawn trail under oversized broad fresh green leaves hung with luminous dew droplets, glistening wet stepping stones, a shallow clear pool reflecting leaves, small orange trees on either side. Cool mint and sky-blue dew against warm morning sunshine, foreground leaves framing the corners. A giant dew pearl suspended from an arching leaf is the focal object.
+
+03 · 苔石果园：
+Mossstone Orchard (苔石果园). Ancient rounded gray stone monoliths and a low ruined stone arch covered with velvety emerald moss stand among apple trees. The winding dirt path passes between the mossy stones, ferns and tiny mushrooms in front, quiet mountains behind. The ruined arch and its moss textures are the dominant composition, sun shafts through soft mist.
+
+04 · 蜂鸣林地：
+Humming Apiary Woodland (蜂鸣林地). Rustic straw beehives and little timber honey boxes sit in a flower-filled grove of golden pears, one large honeycomb hive hanging from an old branched tree. Amber honey light, pollen floating in sun shafts, tiny distant bees, winding orchard path with daisies and clover in foreground. Hive is the central focal object.
+
+05 · 溪边果坡：
+Creekside Fruit Slope (溪边果坡). A bright turquoise S-shaped creek divides grassy fruit slopes; a charming bowed wooden bridge crosses it at center, a small wooden waterwheel beside the bank, smooth pebbles, reeds and water glints foreground, rows of citrus trees climbing the hill behind. Fresh emerald and aqua palette with warm honey-colored bridge. Distinct bridge-and-waterwheel landscape.
+
+06 · 藤蔓回廊：
+Vine Arcade (藤蔓回廊). A series of curved rustic wooden pergolas heavily wrapped in twisting grape vines creates a lush green tunnel over the winding path. Hanging grape clusters, broad leaves in the foreground, golden light spots through overhead foliage, a glimpse of the orchard meadow at the far end. Dramatic arching vines and repeating arches in deep perspective form the main composition.
+
+07 · 樱红果林：
+Crimson Cherry Grove (樱红果林). An orchard of small sculptural cherry trees laden with glossy pairs of red cherries; a natural bow of two cherry boughs arches across the rosy dirt lane, soft pink blossoms drift, baskets of cherries and a folded picnic cloth beside a low wooden stool. Rich cherry red, fresh sage, cream and petal pink, warm afternoon sun, distinct blossom-and-cherry canopy.
+
+08 · 斜阳梯田：
+Sunset Terraces (斜阳梯田). Wide rolling terraced orchard hills forming curved parallel ledges, each row holding little citrus trees; narrow ochre stair paths weave uphill. Low enormous warm sunset behind distant hills, peach and honey sky, long purple shadows, wooden irrigation channels between terraces. Foreground wheat-like grasses. Make the terraced topography visibly stepped and monumental.
+
+09 · 密叶迷径：
+Dense Leaf Labyrinth (密叶迷径). A whimsical living hedge maze in an orchard, seen from a slightly elevated cinematic view: tall green leaf walls make several real winding passages around a small weathered stone fountain. Topiary fruit trees, ferns and dark leafy framing, dappled light spots, distant canopy encloses the maze. Deep emerald with pale sun highlights; the maze layout is the central distinct focal composition.
+
+10 · 厚皮瓜田：
+Thick-Rind Melon Field (厚皮瓜田). A sunny field of huge ribbed orange pumpkins and green watermelons nestled in broad curled vine leaves, rows of low soil mounds, weathered crates and a small straw scarecrow without face. Winding dirt track between melon beds, golden hills beyond, a huge pumpkin and its curling stalk dominate the foreground. Ochre soil, squash orange, warm olive-green.
+
+11 · 风暴果坳：
+Storm Orchard Hollow (风暴果坳). A lush orchard valley under huge rolling blue-gray storm clouds, bending pear trees and blowing leaves, an old wooden windmill with sail-like blades on the hill, rain shimmering in shafts of light. Wet winding path below the windmill, puddles and wind-blown grasses foreground, distant mountains. Cool teal and slate with a dramatic warm opening of sunshine behind the clouds. Tension and beauty, not horror.
+
+12 · 虫巢外沿：
+Outer Hive Rim (虫巢外沿). A mysterious but charming giant insect nest built of amber waxy honeycomb and warm earthy organic shapes at the edge of an orchard. Several rounded hive openings cluster under massive tree roots; an ochre trail circles them, clover flowers and pebbles foreground. Honey-gold glow from the nest mouths, rich moss greens, soft atmospheric hills. No visible insects, no characters, environment establishing scene.
+
+13 · 荆棘环道：
+Bramble Ring Path (荆棘环道). A circular trail enclosed by curved thorny berry brambles forms a natural ring in the orchard, arches of twisted purplish woody stems with fine thorns and little dark berries; a weathered circular stone plinth at center, pink wild roses contrast thorns. Tangled sculptural vines dominate, but clear path is visible through arch. Evening lavender and sage greens, soft magical light, charming rather than frightening.
+
+14 · 金穗花圃：
+Golden Spike Flower Garden (金穗花圃). An exuberant golden flower nursery with overflowing rounded beds of yellow daisies, marigolds and tall golden grain-like blooms, a little timber greenhouse with warm clear glass, watering cans and a wooden flower cart. Winding pale-gold gravel path, fruit trees behind. Warm brilliant spring afternoon, abundant petals and textural foreground blooms, a beautifully crafted greenhouse as main focal.
+
+15 · 暮色果谷：
+Twilight Fruit Valley (暮色果谷). A wide bowl-shaped orchard valley in blue-violet twilight, a crescent moon rising over lavender distant hills, little warm hanging lanterns among plum trees, a narrow winding path glowing softly, small pond reflecting the moon. Tiny fireflies above grasses foreground, dark velvety leaves frame the view. Peaceful magical night scene, luminous golden lanterns contrast purple and indigo, clear atmospheric layers.
+
+16 · 赤叶深林：
+Scarlet Deepwood (赤叶深林). A deep autumn fruit forest with thick sculptural branches and brilliantly scarlet, burnt-orange and copper-red leaves, tangled tree roots bordering the trail. A small wooden orchard hut with mossy shingles sits between two immense red trees, heaps of rust-red fallen leaves in foreground, warm light shafts between tall trunks. The immense red canopy creates a cathedral-like depth.
+
+17 · 虫潮裂谷：
+Insect-Tide Rift Valley (虫潮裂谷). A dramatic deep rocky split through orchard hills, narrow suspended rope bridge crossing a blue misty ravine, layered broken rock shelves with hardy tiny citrus trees and moss, fallen branches and grasses foreground. Golden warm sun touches the bridge and upper cliffs, cool teal shadows in the gorge, distant mountains. Clear airy grand depth, whimsical adventure illustration, no insects visible.
+
+18 · 南瓜堡垒：
+Pumpkin Fortress (南瓜堡垒). A whimsical defensive stronghold in a fruit orchard made of giant orange pumpkin structures and rustic stacked wood palisades, pumpkin-shaped towers with leafy tops, round wooden door and a small bridge over a shallow dry moat. Rows of ordinary pumpkins and broad vine leaves foreground, rolling hills beyond. Strong castle silhouette dominates center, cozy hand-built architecture, warm orange and moss green.
+
+19 · 最后一道篱笆：
+The Last Orchard Fence (最后一道篱笆). A broad final defensive fence of weathered timber pickets and interwoven living green branches spans across a fruit meadow. A charming central gate has reinforced diagonal planks and hanging lanterns; orchard houses and abundant fruit trees lie safely behind it, a winding dirt path leads toward the gate from foreground. Late afternoon light, warm cream and sage, strong horizontal fence composition and hopeful protective feeling.
+
+20 · 果园终极保卫战：
+Ultimate Orchard Defense (果园终极保卫战). A majestic ancient golden fruit tree at the heart of the orchard, enormous twisting trunk and broad emerald canopy bearing glowing golden citrus fruits, ringed by small planted orchard terraces, rustic protective timber barricades and warm lanterns. A circular stone-and-earth clearing at its base and a winding approach trail. Rays of brilliant sunrise behind the tree, drifting tiny golden leaves, lush foreground flowers. Epic final chapter landscape, rich luminous gold and emerald, magnificent monumental centerpiece.

@@ -1,0 +1,21 @@
+# Local recovery material for a different repository.
+github-branch-backups/
+
+# Secrets and runtime data; game assets and source fixtures stay tracked.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.log
+.world-server-data/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+node_modules/
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+
