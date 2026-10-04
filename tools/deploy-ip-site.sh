@@ -157,7 +157,8 @@ if [[ $commit == 036e28a9c0d61b2218e168a7c18ba4c9713a34a9 && -d $release ]]; the
   printf '%s\n' '1/6 Verifying and reusing the already downloaded, pinned game release.'
   python3 - "$release" <<'PY'
 import hashlib, json, pathlib, sys
-EXPECTED_CACHE = 'f900084d2d41eda395e4619416d62c4e591086409b3f5b606f712655737bbc24'
+# Anchor the canonical Git blobs, rather than a Windows archive/checkout.
+EXPECTED_CACHE = 'c8c15291d877fd25457f9be8f684daaf5527f9db3d57fcf4bd60e59893a0af31'
 root = pathlib.Path(sys.argv[1])
 manifest_path = root / 'static-manifest.json'
 if root.is_symlink() or manifest_path.is_symlink() or not manifest_path.is_file() or manifest_path.stat().st_size > 1024 * 1024:

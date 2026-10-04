@@ -5,6 +5,7 @@ No server, network request, Nginx process, or Git mutation is used. Curl and sle
 are shell functions in each isolated fixture, so retry checks finish immediately.
 """
 import argparse
+import hashlib
 import json
 import os
 import pathlib
@@ -18,7 +19,9 @@ import tempfile
 
 WORKSPACE = pathlib.Path(__file__).resolve().parent.parent
 INSTALLER = WORKSPACE / "tools" / "deploy-ip-site.sh"
-PINNED_SITE = WORKSPACE / "deployment-artifacts" / "pinned-036e28a" / "source-zip" / "deployment-artifacts" / "orchard-site-20261004T093247558Z-cjWgs2" / "site"
+PINNED_COMMIT = "036e28a9c0d61b2218e168a7c18ba4c9713a34a9"
+PINNED_SITE = WORKSPACE / "deployment-artifacts" / "pinned-036e28a" / "canonical" / "site"
+OLD_ZIP_SITE = WORKSPACE / "deployment-artifacts" / "pinned-036e28a" / "source-zip" / "deployment-artifacts" / "orchard-site-20261004T093247558Z-cjWgs2" / "site"
 GIT_BASH = pathlib.Path("C:/Program Files/Git/bin/bash.exe")
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -70,6 +73,26 @@ def require_cache(site, success):
     assert (result.returncode == 0) == success, result.stderr or "Unexpected cache-verification success"
     if success:
         assert "Pinned cached release verified" in result.stdout, result.stdout
+
+
+def verify_git_provenance(site):
+    """Compare every fixture byte against Git blobs, never worktree/archive bytes."""
+    manifest = json.loads((site / "static-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["fileCount"] == len(manifest["files"]) == 53, "Pinned release inventory changed"
+    git = shutil.which("git")
+    assert git, "Git is required for a read-only fixture provenance check"
+    total = 0
+    for entry in manifest["files"]:
+        result = subprocess.run([git, "show", PINNED_COMMIT + ":" + entry["path"]],
+                                cwd=WORKSPACE, capture_output=True, timeout=10,
+                                env=dict(os.environ, GIT_TERMINAL_PROMPT="0"))
+        assert result.returncode == 0, "Unable to read pinned Git blob: " + entry["path"]
+        blob = result.stdout
+        assert (site / entry["path"]).read_bytes() == blob, "Fixture differs from canonical Git bytes: " + entry["path"]
+        assert entry["bytes"] == len(blob), "Fixture manifest has wrong blob length: " + entry["path"]
+        assert entry["sha256"] == hashlib.sha256(blob).hexdigest(), "Fixture manifest has wrong blob hash: " + entry["path"]
+        total += len(blob)
+    assert manifest["totalBytes"] == total, "Fixture manifest total differs from canonical Git blobs"
 
 
 def shell_array(values):
@@ -158,6 +181,7 @@ temporary_parent = WORKSPACE / "deployment-artifacts"
 temporary_parent.mkdir(exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="readiness-qa-", dir=temporary_parent) as temporary:
     root = pathlib.Path(temporary)
+    check("All 53 fixture files match canonical pinned Git blobs byte for byte", lambda: verify_git_provenance(arguments.site))
     cases = [
         ("Immediate HTTP 200 with exact bytes succeeds in one request", [(200, "expected", 0)], True, 1),
         ("Initial reload HTTP 404 then correct response succeeds", [(404, "empty", 22), (200, "expected", 0)], True, 2),
@@ -176,6 +200,8 @@ with tempfile.TemporaryDirectory(prefix="readiness-qa-", dir=temporary_parent) a
               readiness_fixture(directory, responses, success, attempts))
 
     check("Real pinned 036e28a release satisfies the embedded cache signature", lambda: require_cache(arguments.site, True))
+    if OLD_ZIP_SITE.is_dir():
+        check("Old Windows ZIP fixture with CRLF conversion is rejected", lambda: require_cache(OLD_ZIP_SITE, False))
     original_manifest_bytes = (arguments.site / "static-manifest.json").read_bytes()
     original_manifest = json.loads(original_manifest_bytes)
     assert original_manifest["fileCount"] == 53, "Pristine fixture is not the reviewed 53-file release"
@@ -205,7 +231,6 @@ with tempfile.TemporaryDirectory(prefix="readiness-qa-", dir=temporary_parent) a
         change_manifest(directory, lambda manifest: manifest.update(generatedAt="2030-01-01T00:00:00.000Z"))
 
     def replaced_payload_and_manifest(directory):
-        import hashlib
         tamper_payload(directory)
         body = (directory / payload).read_bytes()
         def change(manifest):

@@ -17,6 +17,8 @@
 
 Nginx 重载后，新工作进程需要时间接管请求。脚本以有限次数的新连接检查 HTTP 验证文件和 HTTPS 游戏文件，收到 HTTP 200 且内容逐字节一致才继续；持续失败仍会回滚。重试部署 `036e28a9c0d61b2218e168a7c18ba4c9713a34a9` 时，会通过固定清单指纹、完整文件哈希及目录检查验证已下载的版本，验证成功后直接复用，避免再次下载美术源文件。
 
+固定版本的校验基准必须从 `git cat-file blob 提交SHA:文件路径` 的原始字节生成。Windows 的 Git archive、检出及换行设置可能把文本转换成 CRLF，不能直接拿这种副本的文件哈希校验 Linux 上的发布版本。
+
 ## HTTPS 与续期
 
 登录使用 Web Crypto，公网普通 HTTP 无法使用当前密码验证，所以直接部署 HTTPS。IP 证书使用 Certbot 5.8 的 `webroot` 和 `shortlived`，安装在独立 Python 虚拟环境，不替换已有 Certbot 2.8。证书配置也与已有 `/etc/letsencrypt` 分开。IP 证书有效期约六天，脚本测试续期后启用每天两次的 systemd 检查及 Nginx 重载 Hook。
