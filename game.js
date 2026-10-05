@@ -14,7 +14,7 @@
   const legacyRelics = new Set(['lightning', 'orbit', 'dash', 'frost', 'shield', 'bees']);
   const growth = window.ORCHARD_GROWTH, world = window.ORCHARD_WORLD, art = window.ORCHARD_ART;
   const mapCatalog = window.ORCHARD_MAPS, mapRenderer = window.ORCHARD_MAP_RENDER;
-  const trainingCatalog = window.ORCHARD_TRAINING;
+  const trainingCatalog = window.ORCHARD_TRAINING, store = window.ORCHARD_STORE;
   const mapCache = new Map();
   let mapLayout, obstacles, navigator;
   function setMap(id) {
@@ -32,7 +32,7 @@
   for (const [id, path] of Object.entries(art.heroImages || {})) {
     if (typeof Image === 'function') { heroImages[id] = new Image(); heroImages[id].src = path; }
   }
-  const combat = Object.freeze({ standDelay: .6, standDamage: 1.35, standRate: 1.35, bossRecovery: 12, leechPerSecond: .03, killHealPerSecond: .015 });
+  const combat = Object.freeze({ standDelay: .6, standDamage: 1.35, standRate: 1.35, leechPerSecond: .03, killHealPerSecond: .015 });
   const gearGrowth = Object.freeze({ damage: .06, rate: .02, hp: 8, defense: .5, speed: 3, pickup: 6 });
   const SAVE_KEY = 'orchard-save-v1';
   let currentSaveKey = SAVE_KEY, currentAccount = null, loginBusy = false, loginAttempt = 0, sessionGreeting = '';
@@ -50,11 +50,11 @@
   let storageAvailable = true;
   let previewStage = 1, helpReturnState = 'playing', helpTab = 'conversation', tutorialStep = 0, tutorialIsFirstRun = false, helpFocusReturn = null;
   let cinematicTime = 0, bossIndex = 0, bossKills = 0, nonBossKills = 0;
-  let nextBossAllowedAt = 0;
   let bossArrivalUntil = 0;
   let victoryRewardHTML = '';
   let runMode = 'stage', stageVictoryReady = false, endlessEntered = false;
   let training = null;
+  let storeReturnState = 'lobby', storeFocusReturn = null, storeTab = 'shop', storeRevision = 0;
   let stageXP = experience.create(stages[0]);
   let selectedGearSlot = 'weapon', selectedSprite = 0, selectedGarden = 1;
   let endlessWave = 0, waveClock = 0, endlessCreditedSeeds = 0, endlessCreditedCores = 0;
@@ -111,7 +111,7 @@
       rescuedSprites: [], spriteLevels: {}, orchard: { level: 0 },
       inventory: { weapon_seed: { level: 0 }, armor_leaf: { level: 0 }, charm_sprout: { level: 0 } },
       equipped: { weapon: 'weapon_seed', armor: 'armor_leaf', charm: 'charm_sprout' } };
-    growth.migrate({}, base); return base;
+    growth.migrate({}, base); store.migrate({}, base); return base;
   }
   function integer(value, min, max, fallback = min) {
     return Number.isFinite(value) ? Math.max(min, Math.min(max, Math.floor(value))) : fallback;
@@ -145,7 +145,7 @@
         if (result.inventory[id] && gearDefs[id]?.slot === slot) result.equipped[slot] = id;
       }
       if (result.clearedStages.length) result.unlockedStage = Math.max(result.unlockedStage, Math.min(stages.length, Math.max(...result.clearedStages) + 1));
-      growth.migrate(raw, result);
+      growth.migrate(raw, result); store.migrate(raw, result);
     } catch { storageAvailable = false; }
     return result;
   }
@@ -191,10 +191,10 @@
   function resetAccountSession() {
     frontierRewards?.reset(); window.ORCHARD_FRONTIER?.close();
     window.ORCHARD_LEADERBOARD?.close();
-    training = null;
+    training = null; storeReturnState = 'lobby'; storeFocusReturn = null; storeTab = 'shop'; storeRevision++;
     keys.clear(); pointer = null; selectedStage = profile.unlockedStage; previewStage = selectedStage; activeStage = stage();
     enemies = []; bullets = []; gems = []; particles = []; choices = []; heroEffects = []; skillEffects = [];
-    elapsed = 0; kills = 0; shotClock = 0; still = 0; shake = 0; cinematicTime = 0; bossIndex = 0; bossKills = 0; nonBossKills = 0; nextBossAllowedAt = 0; bossArrivalUntil = 0;
+    elapsed = 0; kills = 0; shotClock = 0; still = 0; shake = 0; cinematicTime = 0; bossIndex = 0; bossKills = 0; nonBossKills = 0; bossArrivalUntil = 0;
     runRewarded = false; victoryRewardHTML = ''; runMode = 'stage'; stageVictoryReady = false; endlessEntered = false;
     endlessWave = 0; waveClock = 0; endlessCreditedSeeds = 0; endlessCreditedCores = 0;
     selectedGearSlot = 'weapon'; selectedSprite = profile.rescuedSprites[0] || 0; selectedGarden = selectedSprite ? Math.ceil(selectedSprite / 10) : 1; inspectedHero = profile.selectedHero; heroTab = 'heroes'; heroSkillView = 'active';
@@ -257,7 +257,7 @@
   function show(html, menu = false) {
     window.ORCHARD_FRONTIER?.close();
     window.ORCHARD_LEADERBOARD?.close();
-    overlay.classList.remove('upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay', 'armory-overlay', 'pause-overlay', 'roulette-overlay');
+    overlay.classList.remove('upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay', 'armory-overlay', 'pause-overlay', 'roulette-overlay', 'store-overlay');
     arena.classList.remove('is-lobby');
     for (const attribute of ['role', 'aria-modal', 'aria-label']) overlay.removeAttribute?.(attribute);
     overlay.innerHTML = '<div class="dialog' + (menu ? ' menu-dialog' : '') + '">' + html + '</div>';
@@ -355,7 +355,7 @@
     if (player) updateCamera();
     return true;
   }
-  function isRunActive() { return runStates.includes(state) || (state === 'relicMap' && ['playing', 'paused'].includes(mapReturnState)) || (state === 'help' && ['playing', 'paused'].includes(helpReturnState)); }
+  function isRunActive() { return runStates.includes(state) || (state === 'relicMap' && ['playing', 'paused'].includes(mapReturnState)) || (state === 'help' && ['playing', 'paused'].includes(helpReturnState)) || (state === 'itemStore' && ['playing', 'paused'].includes(storeReturnState)); }
   function randomRelics() {
     const pool = [...relicDefs];
     for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
@@ -617,7 +617,7 @@
       '<button class="chapter-arrow previous" id="previousStage" aria-label="切换上一关" ' + (id === 1 ? 'disabled' : '') + '>‹</button><button class="chapter-arrow next" id="nextStagePreview" aria-label="切换下一关" ' + (id === stages.length ? 'disabled' : '') + '>›</button>' +
       '<div class="chapter-overlay-content"><div class="chapter-guide">' + featureGuideHTML('lobby') + '</div><div class="chapter-caption"><strong>守护这片果园</strong><span>' + s.description + '</span></div></div></section>' +
       '<div class="campaign-picker"><label>篇章 <select id="chapterJump" aria-label="选择远征篇章">' + ['青叶启程', '月露群岛', '赤焰山林', '霜晶高原', '星辉王庭'].map((name, index) => '<option value="' + (index * 20 + 1) + '" ' + (Math.floor((id - 1) / 20) === index ? 'selected' : '') + '>' + (index + 1) + ' · ' + name + '</option>').join('') + '</select></label><label>关卡 <select id="stageJump" aria-label="选择篇章关卡">' + stages.slice(Math.floor((id - 1) / 20) * 20, Math.floor((id - 1) / 20) * 20 + 20).map(item => '<option value="' + item.id + '" ' + (item.id === id ? 'selected' : '') + '>第 ' + item.id + ' 关 · ' + (profile.clearedStages.includes(item.id) ? '✓' : item.id <= profile.unlockedStage ? '可挑战' : '未解锁') + '</option>').join('') + '</select></label></div>' +
-      '<div class="chapter-brief"><span class="chapter-chip">普通 ' + s.normalCount + ' · 精英 ' + s.eliteCount + ' · Boss ' + s.bossCount + '</span><span class="chapter-chip">虫王 ' + s.bossSchedule[0] + ' 秒起 · 清空小怪立即接续</span><span class="chapter-chip">首通 ☀ ' + s.reward.seeds + ' · ◆ ' + s.reward.cores + reward + '</span></div></div>' +
+      '<div class="chapter-brief"><span class="chapter-chip">普通 ' + s.normalCount + ' · 精英 ' + s.eliteCount + ' · Boss ' + s.bossCount + '</span><span class="chapter-chip">虫王 ' + s.bossSchedule[0] + ' 秒起 · ' + (s.bossCount > 1 ? '每' + s.bossInterval + '秒一位，可同时在场' : '固定时间登场') + '</span><span class="chapter-chip">首通 ☀ ' + s.reward.seeds + ' · ◆ ' + s.reward.cores + reward + '</span></div></div>' +
       '<div class="menu-footer lobby-footer">' + trainingEntry + '<div class="lobby-actions"><button class="lobby-play primary" id="start" ' + (!unlocked ? 'disabled' : '') + '><span class="action-icon">▶</span><strong>' + (unlocked ? '进入游戏' : '关卡未解锁') + '</strong><small>' + (unlocked ? '挑战第 ' + id + ' 关' : '先通关第 ' + (id - 1) + ' 关') + '</small></button>' +
       [['navArmory', '⚒', '装备', '搭配与强化'], ['navHeroes', '✦', '英雄', '13 位英雄可选择'], ['navOrchard', '♧', '果园', '精灵与养成'], ['navWorld', '⚑', '世界', '建家 · 造兵 · 公会']].map(([key, icon, name, detail]) => '<button class="lobby-feature secondary" id="' + key + '" ' + (!featuresUnlocked() ? 'disabled title="首次通关后解锁"' : '') + '><span class="action-icon">' + (featuresUnlocked() ? icon : '🔒') + '</span><strong>' + name + '</strong><small>' + (featuresUnlocked() ? detail : '首次通关后解锁') + '</small></button>').join('') + '</div>' +
       '<div class="lobby-bottom"><span class="lobby-note">' + (!storageAvailable ? '浏览器存储不可用，进度仅在当前页面中保留' : escapeHTML(sessionGreeting) + (sessionGreeting ? ' · ' : '') + '出战：' + growth.hero(profile.selectedHero).name) + '</span><div class="lobby-links"><button class="chapter-map-link leaderboard-entry" id="navLeaderboard">🏆 通关排行</button><button class="chapter-map-link" id="navMap" ' + (!unlocked ? 'disabled' : '') + '>本关地形与饰品 ↗</button></div></div></div>', true);
@@ -649,7 +649,7 @@
     if (training) return exitTraining();
     if (!currentAccount) { showCover(); return false; }
     state = 'lobby'; keys.clear(); pointer = null; enemies = []; bullets = []; gems = []; particles = []; still = 0; shake = 0;
-    bossIndex = 0; bossKills = 0; nonBossKills = 0; nextBossAllowedAt = 0; bossArrivalUntil = 0; heroEffects = [];
+    bossIndex = 0; bossKills = 0; nonBossKills = 0; bossArrivalUntil = 0; heroEffects = [];
     runMode = 'stage'; stageVictoryReady = false; setMap(selectedStage); player = freshPlayer(); stageXP = experience.create(stage());
     resetRelics(challengeStarted || runRelicDefs.length !== 6); challengeStarted = false; updateCamera(); updateHUD();
     renderLobby();
@@ -876,7 +876,7 @@
     resetRelics(challengeStarted); challengeStarted = true;
     heroEffects = [];
     elapsed = 0; nextStageUpgradeAt = experience.interval(1); kills = 0; shotClock = 0; still = 0; shake = 0; choices = []; runRewarded = false;
-    cinematicTime = 0; bossIndex = 0; bossKills = 0; nonBossKills = 0; nextBossAllowedAt = 0; bossArrivalUntil = 0; victoryRewardHTML = '';
+    cinematicTime = 0; bossIndex = 0; bossKills = 0; nonBossKills = 0; bossArrivalUntil = 0; victoryRewardHTML = '';
     runMode = 'stage'; stageVictoryReady = false; endlessEntered = false; endlessWave = 0;
     frontierRewards?.begin(activeStage.id);
     stageXP = experience.create(activeStage);
@@ -945,7 +945,7 @@
     runMode = 'training'; training = { step: 0, distance: 0, standTime: 0, xpCollected: 0, mapOpened: false, firstEntry: firstEntry === true, center, saved };
     player = freshPlayer(); enemies = []; bullets = []; gems = []; particles = []; heroEffects = []; skillEffects = [];
     keys.clear(); pointer = null; elapsed = 0; kills = 0; shotClock = 0; still = 0; shake = 0; choices = [];
-    bossKills = 0; nonBossKills = 0; bossIndex = 0; nextBossAllowedAt = 0; bossArrivalUntil = 0;
+    bossKills = 0; nonBossKills = 0; bossIndex = 0; bossArrivalUntil = 0;
     runRewarded = false; stageVictoryReady = false; endlessEntered = false; victoryRewardHTML = '';
     runRelicDefs = [relicDefs.find(def => def.key === 'lightning')]; selectedRelic = runRelicDefs[0].id;
     relicDrops = [{ id: selectedRelic, key: 'lightning', slotId: 'training-relic', slotIndex: 0, x: center.x + 1000, y: center.y, claimed: false }];
@@ -1006,7 +1006,7 @@
       { icon: '✦', title: '安全时停下来，火力更强', text: '停下 ' + combat.standDelay + ' 秒后蓄力完成：伤害 +35%，射速 +35%。虫群靠近或虫王准备冲锋时，立刻移动避开，找到空隙再站定输出。' },
       { icon: '◆', title: '捡经验，选出你的构筑', text: '击杀掉落发光经验，靠近即可拾取。升级时三选一，也可按 1 / 2 / 3。关卡中攻击与属性各最多 4 种、每种 5 级；配方两项满级后自动合成超级技能。' },
       { icon: hero.skillIcon, title: '施放专属技能，探索特殊饰品', text: '当前英雄：' + hero.name + '，按 E 或右下按钮施放“' + hero.skillName + '”。' + hero.skillDescription + '每局从 50 件饰品随机投放 6 件，按 M 查看位置；拾取后右下角显示效果。' },
-      { icon: '⚠', title: '留意虫群苏醒和虫王预警', text: '普通虫与精英按时间逐批加入。首位虫王通常 ' + activeStage.bossSchedule[0] + ' 秒到达，场上最多 1 位。普通虫和精英全清后，待登场虫王立即接续；小怪尚在时，击败虫王后休整 ' + combat.bossRecovery + ' 秒。前三关虫王登场护壳1.5秒，减伤90%，然后正常受伤。看到冲锋预警就绕开攻击方向。' },
+      { icon: '⚠', title: '留意虫群苏醒和虫王预警', text: '普通虫与精英按时间逐批加入。首位虫王固定 ' + activeStage.bossSchedule[0] + ' 秒到达，后续每 ' + activeStage.bossInterval + ' 秒登场；上一位未死也不会阻挡下一位，可以多位同时在场。击杀和清空小怪都不改变排程；暂停、升级和轮盘冻结实战时间。前三关虫王登场护壳1.5秒，减伤90%，然后正常受伤。看到冲锋预警就绕开攻击方向。' },
       { icon: '♧', title: '救回精灵，继续守护果园', text: '清理本关全部虫群与虫王即可通关，材料自动保存，可培养果园、精灵、英雄和装备。通关后可进入无尽，突破肉鸽种类与等级上限。P / Esc 暂停；“提示词”按钮可重看引导和开发对话。' }
     ];
   }
@@ -1082,6 +1082,71 @@
     else resume();
     updateHUD(); focusReturn?.focus?.(); return true;
   }
+  function openItemStore(source = el('openStoreShop'), tab = 'shop') {
+    if (!currentAccount || training || !['lobby', 'heroes', 'armory', 'orchard', 'playing', 'paused'].includes(state)) return false;
+    storeReturnState = state; storeFocusReturn = source; storeTab = tab === 'recharge' ? 'recharge' : 'shop';
+    state = 'itemStore'; keys.clear(); pointer = null; renderItemStore(); return true;
+  }
+  function renderItemStore(message = '', success = false) {
+    if (state !== 'itemStore' || !currentAccount) return false;
+    const revision = ++storeRevision, c = profile.commerce;
+    const diamond = '<img src="assets/store/diamond.svg" alt="" width="18" height="18">';
+    const content = storeTab === 'recharge'
+      ? '<div class="commerce-section-title"><h3>给钻石账户补充能量</h3><p>当前是免费测试模式，点击充值立即到账，不支付真钱。</p></div><div class="diamond-packs">' + store.packs.map((pack, i) =>
+        '<article class="diamond-pack' + (i === 1 ? ' recommended' : '') + '"><span class="pack-label">' + pack.name + '</span><img src="assets/store/diamond.svg" alt="钻石" width="100" height="100"><strong>' + pack.diamonds.toLocaleString('en-US') + '<small>钻石</small></strong><p>免费测试充值 · 无真实支付</p><button type="button" class="primary" data-commerce-topup="' + pack.id + '">免费测试充值</button></article>').join('') + '</div>'
+      : '<div class="commerce-section-title"><h3>钻石商城</h3><p>用钻石购买外观或补给。外观不会增加生命、伤害或拾取范围。</p></div><div class="commerce-products">' + store.products.map(product => {
+        const owned = store.owns(profile, product.id), equipped = c.equippedAura === product.id || c.equippedFrame === product.id;
+        return '<article class="commerce-product"><div class="product-visual"><span class="product-category">' + product.category + '</span><img src="' + product.art + '" alt="' + product.name + '" width="130" height="130">' + (owned ? '<span class="product-owned">✓ 已拥有</span>' : '') + '</div><div class="product-description"><h4>' + product.name + '</h4><p>' + product.description + '</p><div class="product-bottom"><span class="diamond-price">' + diamond + product.price + '</span><button type="button" class="' + (owned ? 'secondary' : 'primary') + '" ' + (owned ? 'data-commerce-equip' : 'data-commerce-buy') + '="' + product.id + '">' + (owned ? equipped ? '已装备 · 取消' : '装备外观' : '钻石购买') + '</button></div></div></article>';
+      }).join('') + '</div>';
+    const records = c.receipts.slice(-5).reverse().map(record => {
+      const label = record.kind === 'preview-topup' ? store.getPack(record.sku)?.name + '测试充值' : store.get(record.sku)?.name;
+      return '<li><span>' + escapeHTML(label || record.sku) + '</span><strong class="' + (record.delta > 0 ? 'credit' : 'debit') + '">' + (record.delta > 0 ? '+' : '') + record.delta + ' ◆</strong></li>';
+    }).join('');
+    showPanel('果园钻石商城', '商业化体验 / DIAMOND STORE',
+      '<div class="commerce-toolbar"><nav aria-label="钻石商城分类"><button type="button" class="commerce-tab' + (storeTab === 'shop' ? ' active' : '') + '" id="commerceShopTab" aria-pressed="' + (storeTab === 'shop') + '">商城商品</button><button type="button" class="commerce-tab' + (storeTab === 'recharge' ? ' active' : '') + '" id="commerceRechargeTab" aria-pressed="' + (storeTab === 'recharge') + '">钻石充值</button></nav><div class="commerce-wallet">' + diamond + '<span><small>当前钻石</small><strong>' + c.diamonds.toLocaleString('en-US') + '</strong></span><button type="button" id="commerceWalletPlus" aria-label="点击加号测试充值钻石">＋</button></div></div>' +
+      '<div class="commerce-mode"><span></span><strong>免费测试模式</strong><p>充值不花真钱；商城购买会实际扣除钻石。</p></div>' + content +
+      '<p class="commerce-feedback' + (message ? success ? ' success' : ' error' : '') + '" id="commerceFeedback" role="status">' + escapeHTML(message || (storeTab === 'shop' ? '先点击钻石旁的＋测试充值，再用钻石购买商品。' : '充值后自动返回商城，钻石可购买外观与补给。')) + '</p>' +
+      (records ? '<details class="commerce-records"><summary>最近测试记录 · 非真实支付订单</summary><ul>' + records + '</ul></details>' : '') +
+      '<div class="commerce-save-note">当前钻石与商品只保存在此浏览器的登录账号中，不是云端钱包，也不是付费凭证。换浏览器或清理存储可能丢失；真实支付尚未开放。</div>',
+      '<button type="button" class="secondary" id="closeItemStore">返回' + (['playing', 'paused'].includes(storeReturnState) ? '战斗' : '游戏') + '</button>', 'Esc 返回 · 查看、充值与购买期间战斗暂停');
+    overlay.classList.add('store-overlay'); overlay.setAttribute?.('role', 'dialog'); overlay.setAttribute?.('aria-modal', 'true'); overlay.setAttribute?.('aria-label', '钻石商城与免费测试充值');
+    el('commerceShopTab').onclick = () => { storeTab = 'shop'; renderItemStore(); };
+    el('commerceRechargeTab').onclick = el('commerceWalletPlus').onclick = () => { storeTab = 'recharge'; renderItemStore(); };
+    overlay.querySelectorAll('[data-commerce-topup]').forEach(button => { button.onclick = () => topUpDiamonds(button.dataset.commerceTopup, revision); });
+    overlay.querySelectorAll('[data-commerce-buy]').forEach(button => { button.onclick = () => buyDiamondProduct(button.dataset.commerceBuy, revision); });
+    overlay.querySelectorAll('[data-commerce-equip]').forEach(button => { button.onclick = () => performCommerce('equip', button.dataset.commerceEquip, revision); });
+    el('closeItemStore').onclick = closeItemStore; updateHUD(); el('closeItemStore').focus?.(); return true;
+  }
+  function performCommerce(kind, id, revision = storeRevision) {
+    if (state !== 'itemStore' || !currentAccount || training || revision !== storeRevision) return false;
+    const result = store.transaction(profile, kind, id);
+    if (!result.ok) { renderItemStore(result.message); return false; }
+    const previous = { commerce: profile.commerce, seeds: profile.seeds, cores: profile.cores };
+    Object.assign(profile, { commerce: result.commerce, seeds: result.seeds, cores: result.cores });
+    if (!saveProfile()) {
+      Object.assign(profile, previous);
+      renderItemStore('存档写入失败：本次钻石、商品与材料变动已撤销，请允许浏览器存储后重试。'); return false;
+    }
+    // Profile-only transaction: current HP, XP, skills, bosses and waves never reset.
+    if (kind === 'preview-topup') storeTab = 'shop';
+    renderItemStore(result.message, true); return true;
+  }
+  function topUpDiamonds(pack, revision = storeRevision) { return performCommerce('preview-topup', pack, revision); }
+  function buyDiamondProduct(product, revision = storeRevision) { return performCommerce('diamond-purchase', product, revision); }
+  function closeItemStore() {
+    if (state !== 'itemStore') return false;
+    const focus = storeFocusReturn; storeFocusReturn = null; keys.clear(); pointer = null; overlay.classList.remove('store-overlay');
+    if (storeReturnState === 'lobby') { state = 'lobby'; renderLobby(previewStage); }
+    else if (storeReturnState === 'heroes') showHeroes();
+    else if (storeReturnState === 'armory') showArmory();
+    else if (storeReturnState === 'orchard') showOrchard();
+    else if (storeReturnState === 'paused') { state = 'playing'; pause(); }
+    else { state = 'playing'; overlay.classList.add('hidden'); }
+    updateHUD(); focus?.focus?.(); return true;
+  }
+  el('openStoreLobby').onclick = () => openItemStore(el('openStoreLobby'), 'recharge');
+  el('openStoreShop').onclick = () => openItemStore(el('openStoreShop'), 'shop');
+  el('openStoreRun').onclick = () => openItemStore(el('openStoreRun'));
   function sound(freq, length = .05, volume = .015) {
     if (!audioCtx || audioCtx.state !== 'running') return;
     const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.type = 'sine';
@@ -1227,11 +1292,10 @@
     updateHUD(); return true;
   }
   function readyBoss() {
-    const cleared = runMode === 'stage' && !enemies.some(e => !e.boss && e.hp > 0);
-    if (!cleared && elapsed < nextBossAllowedAt) return null;
-    const active = enemies.filter(e => e.boss && e.introduced && e.hp > 0).length;
-    if (active >= activeStage.bossActiveCap) return null;
-    return enemies.find(e => e.boss && !e.introduced && e.hp > 0 && (cleared || elapsed >= e.bossArrivalAt)) || null;
+    if (runMode !== 'stage') return null;
+    // Absolute battle-time deadline only. Alive bosses, kills and cleared bugs
+    // never postpone or accelerate another boss's arrival.
+    return enemies.find(e => e.boss && !e.introduced && e.hp > 0 && elapsed >= e.bossArrivalAt) || null;
   }
   function beginnerBossHealth() {
     // Measure the actual chosen attacks on an isolated dummy; no live cooldown,
@@ -1265,10 +1329,16 @@
       boss.arrivalGuardUntil = elapsed + activeStage.beginner.arrivalGuard;
     }
     applyTimeGrowth(boss);
-    const angle = Math.random() * Math.PI * 2;
-    boss.x = Math.max(boss.r + 25, Math.min(WORLD_W - boss.r - 25, player.x + Math.cos(angle) * 235));
-    boss.y = Math.max(boss.r + 25, Math.min(WORLD_H - boss.r - 25, player.y + Math.sin(angle) * 235));
-    const point = world.safePoint(boss.x, boss.y, boss.r + 22, obstacles, WORLD_W, WORLD_H); boss.x = point.x; boss.y = point.y;
+    const angle = Math.random() * Math.PI * 2 + boss.bossOrder * 2.399963;
+    // Bounded spread avoids spawning a new boss directly inside a living one.
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const direction = angle + attempt * 2.399963, radius = 260 + attempt * 12;
+      const x = Math.max(boss.r + 25, Math.min(WORLD_W - boss.r - 25, player.x + Math.cos(direction) * radius));
+      const y = Math.max(boss.r + 25, Math.min(WORLD_H - boss.r - 25, player.y + Math.sin(direction) * radius));
+      const point = world.safePoint(x, y, boss.r + 22, obstacles, WORLD_W, WORLD_H);
+      boss.x = point.x; boss.y = point.y;
+      if (!enemies.some(e => e !== boss && e.boss && e.introduced && e.hp > 0 && Math.hypot(e.x - boss.x, e.y - boss.y) < e.r + boss.r + 20)) break;
+    }
     boss.pursuitAt = elapsed; boss.aggro = true; boss.chargeClock = Math.min(3, boss.chargeInterval);
     bossArrivalUntil = elapsed + 4;
     burst(boss.x, boss.y, boss.color, 14); sound(110, .4, .04); updateHUD(); return true;
@@ -1456,6 +1526,17 @@
     if (state !== 'help' && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
     if (e.repeat) return;
     const k = e.key.toLowerCase();
+    if (state === 'itemStore') {
+      if (['escape', 'p'].includes(k)) { e.preventDefault(); closeItemStore(); }
+      else if (k === 'tab') {
+        const buttons = [...overlay.querySelectorAll('button, [tabindex="0"]')].filter(button => !button.disabled);
+        const first = buttons[0], last = buttons.at(-1), active = document.activeElement;
+        if (first && (e.shiftKey && active === first || !e.shiftKey && active === last || !buttons.includes(active))) {
+          e.preventDefault(); (e.shiftKey ? last : first).focus?.();
+        }
+      }
+      return;
+    }
     if (state === 'help') {
       if (k === 'tab') {
         const focusable = [...overlay.querySelectorAll('button, [tabindex="0"]')].filter(node => !node.disabled);
@@ -1671,7 +1752,7 @@
         const amount = Math.max(0, Math.min(player.killHeal, player.maxHp * combat.killHealPerSecond - spent, player.maxHp - player.hp));
         healPlayer(amount); if (amount) player.killHealEvents.push({ at: elapsed, amount });
       }
-      if (e.boss) { bossKills++; nextBossAllowedAt = elapsed + combat.bossRecovery; } else nonBossKills++;
+      if (e.boss) bossKills++; else nonBossKills++;
       if (runMode !== 'training' && (e.elite || e.boss)) rouletteQueue.push({ count: e.boss ? 3 : 1, boss: !!e.boss });
       const reward = runMode !== 'training' && (e.elite || e.boss) ? 0 : runMode === 'training' ? e.xp : runMode === 'stage' ? stageXP.grant(e.xp, player.xpMult, e) : e.xp * player.xpMult;
       if (e.boss) player.xp += runMode === 'stage' ? stageXP.collect(reward, e) : reward;
@@ -1693,13 +1774,22 @@
       if (training && state === 'playing' && player.xp >= player.need) offerUpgrade();
       return;
     }
+    // Process every due arrival before a reward/upgrade can open a menu.
+    // Normally one is due; an overdue catch-up tick must not delay the rest.
+    if (runMode === 'stage') while (announceBossArrival()) {}
     updateHUD();
     if (checkStageCompletion()) return;
     if (offerUpgrade()) return;
-    if (runMode === 'stage') announceBossArrival();
   }
   function updateHUD() {
     const activeHUD = isRunActive(), hudButtonsReady = ['playing', 'paused'].includes(state);
+    const storeEnabled = !!currentAccount && !training && ['lobby', 'heroes', 'armory', 'orchard', 'playing', 'paused'].includes(state);
+    el('commerceHeader').classList.toggle('hidden', !currentAccount || !!training);
+    el('openStoreLobby').disabled = el('openStoreShop').disabled = !storeEnabled;
+    el('diamondBalance').textContent = profile.commerce.diamonds.toLocaleString('en-US');
+    el('storeHud').classList.toggle('hidden', !activeHUD || !!training); el('openStoreRun').disabled = !storeEnabled;
+    el('storeItemState').textContent = profile.commerce.diamonds.toLocaleString('en-US') + ' 钻石';
+    el('heroIcon').classList.toggle('commerce-gold-frame', !training && profile.commerce.equippedFrame === 'gold_frame' && store.owns(profile, 'gold_frame'));
     const pauseAction = state === 'help' ? '返回' : state === 'paused' ? '继续' : '暂停';
     const pauseButton = el('pause');
     if (pauseButton.dataset.action !== pauseAction || !pauseButton.innerHTML.includes('pause-label')) {
@@ -1749,7 +1839,7 @@
     el('damageStat').textContent = seedDamage().toFixed(1); el('rateStat').textContent = player.rate.toFixed(1) + ' / 秒';
     el('speedStat').textContent = Math.round(player.speed); el('shotsStat').textContent = player.shots; el('pickupStat').textContent = Math.round(player.pickup); el('killsStat').textContent = inRun ? kills : 0;
     el('stageName').textContent = training ? '新手引导关 · ' + trainingCatalog.name : '第 ' + s.id + ' / ' + stages.length + ' 关 · ' + (runMode === 'endless' && inRun ? '无尽虫潮' : s.name);
-    el('pursuitRule').innerHTML = runMode === 'endless' && inRun ? '每 8 秒一波，数量与强度持续增加<br>可随时结束，材料获得即保存' : '普通：开局 ' + s.initialPursuers + '，每 ' + s.pursuitInterval + ' 秒 +' + s.batchSize + '<br>精英：' + s.eliteFirstAt + ' 秒首批，每 ' + s.eliteInterval + ' 秒 +' + s.eliteBatchSize + '<br>Boss ' + s.bossSchedule[0] + ' 秒起 · 清空小怪立即接续 · 同时最多 ' + s.bossActiveCap + ' 位';
+    el('pursuitRule').innerHTML = runMode === 'endless' && inRun ? '每 8 秒一波，数量与强度持续增加<br>可随时结束，材料获得即保存' : '普通：开局 ' + s.initialPursuers + '，每 ' + s.pursuitInterval + ' 秒 +' + s.batchSize + '<br>精英：' + s.eliteFirstAt + ' 秒首批，每 ' + s.eliteInterval + ' 秒 +' + s.eliteBatchSize + '<br>Boss ' + s.bossSchedule[0] + ' 秒起' + (s.bossCount > 1 ? ' · 每 ' + s.bossInterval + ' 秒一位 · 可同时在场，不等击杀' : ' · 固定时间登场，不受清场影响');
     el('loadout').textContent = gearDefs[profile.equipped.weapon].name + ' · ' + gearDefs[profile.equipped.armor].name + ' · ' + gearDefs[profile.equipped.charm].name;
     const hero = growth.hero(player.heroId);
     el('heroName').textContent = hero.name + ' · ' + hero.role; if (el('heroIcon').dataset.hero !== hero.id) { el('heroIcon').innerHTML = heroPortrait(hero); el('heroIcon').dataset.hero = hero.id; }
@@ -1757,23 +1847,23 @@
     el('heroSkill').textContent = player.heroClock > 0 ? hero.skillIcon + ' ' + hero.skillName + ' · ' + player.heroClock.toFixed(1) + 's' : hero.skillIcon + ' ' + hero.skillName + ' · E';
     el('heroSkill').title = hero.skillDescription + ' ' + hero.passiveDescription;
     el('runBuild').textContent = '暴击 ' + Math.round(player.critChance * 100) + '% · 穿透 ' + statText(player.pierce) + ' · 减伤 ' + statText(player.defense + (elapsed < player.guardUntil ? player.guardDefense : 0)) + ' · 回复 ' + statText(player.regen) + '/秒' + (elapsed < player.guardUntil ? ' · 护体 ' + (player.guardUntil - elapsed).toFixed(1) + 's' : '');
-    const boss = inRun ? enemies.find(e => e.boss && e.introduced && e.hp > 0) : null;
+    const activeBosses = inRun ? enemies.filter(e => e.boss && e.introduced && e.hp > 0) : [];
+    const boss = activeBosses[0] || null, latestBoss = activeBosses.find(e => e.bossOrder === bossIndex - 1) || boss;
     el('bossHud').classList.toggle('hidden', !boss);
-    if (boss) { el('bossName').textContent = (boss.bossOrder + 1) + ' / ' + s.bossCount + ' · ' + boss.name; el('bossHp').style.width = Math.max(0, boss.hp / boss.maxHp * 100) + '%'; el('bossHpText').textContent = Math.ceil(Math.max(0, boss.hp)) + ' / ' + boss.maxHp + (elapsed < (boss.arrivalGuardUntil || 0) ? ' · 护壳 ' + (boss.arrivalGuardUntil - elapsed).toFixed(1) + '秒 · 减伤90%' : ''); }
-    const pendingBoss = inRun && runMode === 'stage' ? enemies.find(e => e.boss && !e.introduced && e.hp > 0) : null;
-    const arrivalNotice = !!boss && elapsed < bossArrivalUntil;
-    el('bossForecast').classList.toggle('hidden', !arrivalNotice && (!pendingBoss || !!boss));
+    if (boss) { el('bossName').textContent = (boss.bossOrder + 1) + ' / ' + s.bossCount + ' · ' + boss.name + (activeBosses.length > 1 ? ' · 同场 ' + activeBosses.length + ' 位' : ''); el('bossHp').style.width = Math.max(0, boss.hp / boss.maxHp * 100) + '%'; el('bossHpText').textContent = Math.ceil(boss.hp) + ' / ' + boss.maxHp + (elapsed < (boss.arrivalGuardUntil || 0) ? ' · 护壳减伤90%' : ''); }
+    const pendingBoss = runMode === 'stage' && inRun ? enemies.find(e => e.boss && !e.introduced && e.hp > 0) : null;
+    const arrivalNotice = !!latestBoss && elapsed < bossArrivalUntil;
+    el('bossForecast').classList.toggle('hidden', !arrivalNotice && !pendingBoss);
     el('bossForecast').classList.toggle('arrival-notice', arrivalNotice);
     if (arrivalNotice) {
-      const label = '⚠ Boss登场 · ' + boss.name + ' · 第 ' + (boss.bossOrder + 1) + ' / ' + s.bossCount + ' 位' + (elapsed < (boss.arrivalGuardUntil || 0) ? ' · 护壳展开，减伤90%' : '');
+      const label = '⚠ Boss登场 · ' + latestBoss.name + (activeStage.beginner ? ' · 护壳展开，先移动躲开' : ' · 注意冲锋预警') + (activeBosses.length > 1 ? ' · 同场 ' + activeBosses.length + ' 位' : '');
       if (el('bossForecast').textContent !== label) el('bossForecast').textContent = label;
-    } else if (pendingBoss && !boss) {
-      const cleared = !enemies.some(e => !e.boss && e.hp > 0);
-      const wait = cleared ? 0 : Math.max(0, Math.ceil(Math.max(pendingBoss.bossArrivalAt, nextBossAllowedAt) - elapsed));
-      const label = (bossKills ? '下一位虫王' : '首位虫王') + ' · ' + (wait ? wait + ' 秒后抵达' : '即将抵达') + ' · 每次仅 1 位';
+    } else if (pendingBoss) {
+      const wait = Math.max(0, Math.ceil(pendingBoss.bossArrivalAt - elapsed));
+      const label = (bossIndex ? '下一位虫王' : '首位虫王') + ' · ' + (wait ? wait + ' 秒后抵达' : '即将抵达') + (activeBosses.length ? ' · 场上 ' + activeBosses.length + ' 位，不等击杀' : ' · 固定时间登场');
       if (el('bossForecast').textContent !== label) el('bossForecast').textContent = label;
     }
-    el('bossOthers').innerHTML = (inRun ? enemies.filter(e => e.boss && e.introduced && e.hp > 0 && e !== boss) : []).map(e => '<div class="boss-extra"><strong>' + (e.bossOrder + 1) + ' · ' + e.name + '</strong><div class="bar"><div class="fill" style="width:' + Math.max(0, e.hp / e.maxHp * 100) + '%"></div></div><small>' + Math.ceil(e.hp) + ' / ' + e.maxHp + '</small></div>').join('');
+    el('bossOthers').innerHTML = activeBosses.filter(e => e !== boss).map(e => '<div class="boss-extra"><strong>' + (e.bossOrder + 1) + ' · ' + e.name + '</strong><div class="bar"><div class="fill" style="width:' + Math.max(0, e.hp / e.maxHp * 100) + '%"></div></div><small>' + Math.ceil(e.hp) + ' / ' + e.maxHp + '</small></div>').join('');
     el('endlessHud').classList.toggle('hidden', !(runMode === 'endless' && isRunActive()));
     el('endlessWave').textContent = '∞ 第 ' + endlessWave + ' 波 · 已击杀 ' + kills;
     el('endlessLoot').textContent = '已存入：☀ ' + endlessCreditedSeeds + '　◆ ' + endlessCreditedCores;
@@ -1951,6 +2041,17 @@
     for (const side of [-1, 1]) { ctx.strokeStyle = '#e5ce8e'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(e.r * .9, side * 10); ctx.lineTo(e.r + 12, side * 17); ctx.stroke(); ellipse(e.r * .9, side * 10, 4, 4, '#ffecb1'); ellipse(e.r * .95, side * 10, 2, 2, '#582e27'); }
     ctx.restore();
   }
+  function drawCommerceAura(p) {
+    if (training || !isRunActive() || profile.commerce.equippedAura !== 'star_aura' || !store.owns(profile, 'star_aura')) return;
+    ctx.save(); ctx.lineWidth = 2; ctx.strokeStyle = '#dfc17c'; ctx.shadowColor = '#99e4e9'; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.ellipse(p.x, p.y + 19, 33, 12, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = '#9ce9e5'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(p.x, p.y + 19, 26, 8, 0, 0, Math.PI * 2); ctx.stroke();
+    for (let i = 0; i < 4; i++) {
+      const angle = elapsed * .45 + i * Math.PI / 2, x = p.x + Math.cos(angle) * 33, y = p.y + 19 + Math.sin(angle) * 12;
+      ctx.fillStyle = '#fff0ba'; ctx.beginPath(); ctx.moveTo(x, y - 4); ctx.lineTo(x + 3, y); ctx.lineTo(x, y + 4); ctx.lineTo(x - 3, y); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
   function draw() {
     ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
     ctx.save(); if (shake) ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake); ctx.translate(-camera.x, -camera.y); background();
@@ -1973,6 +2074,7 @@
     for (const e of enemies) if (e.aggro && e.hp > 0 && onScreen(e)) bug(e);
     for (const b of bullets) { if (!onScreen(b)) continue; ctx.strokeStyle = b.hero ? '#ff859c88' : '#e7d18c66'; ctx.lineWidth = b.critical ? 4 : 3; ctx.beginPath(); ctx.moveTo(b.x - b.vx * .023, b.y - b.vy * .023); ctx.lineTo(b.x, b.y); ctx.stroke(); ellipse(b.x, b.y, b.size || 5, (b.size || 5) * .6, b.color || player.bulletColor); }
     const p = player; ellipse(p.x, p.y + 17, 21, 8, '#14251e77');
+    drawCommerceAura(p);
     if (still > 0 && (isRunActive() || state === 'ended')) {
       ctx.strokeStyle = still >= combat.standDelay ? '#d4ec83' : '#b5cd6766'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, p.y, 27, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, still / combat.standDelay)); ctx.stroke();
     }

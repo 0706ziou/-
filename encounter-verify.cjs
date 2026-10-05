@@ -17,7 +17,7 @@ check('Opening chapters each schedule one corresponding boss at sixty seconds wh
     assert.deepEqual(Array.from(stage.bossIds), [stage.id]);
     assert.deepEqual(Array.from(stage.bossSchedule), [60]);
     assert.equal(stage.bossCount, 1);
-    assert.equal(stage.bossActiveCap, 1);
+    assert.equal(stage.bossActiveCap, stage.bossCount);
   }
 });
 check('First chapter retains its scheduled eligibility and single-boss cap', () => {
@@ -43,7 +43,7 @@ check('Opening boss base health and disclosed arrival guard fit a readable begin
     assert(beginner.arrivalGuard >= 1 && beginner.arrivalGuard <= 2);
     assert(beginner.bossHp / standingDps >= 7 && beginner.bossHp / standingDps <= 15);
     assert(stage.description.includes('护壳') && stage.description.includes('减伤90%'));
-    assert(stage.description.includes('小怪清空则立即到达'));
+    assert(stage.description.includes('清空小怪不提前'));
   }
 });
 for (const stage of stages.slice(0, 20)) {
@@ -85,12 +85,12 @@ for (const stage of stages.slice(0, 20)) {
     assert(lastAt >= (opening ? 25 : 50) && lastAt <= (opening ? 53 : 150), `Elites remain staggered, last at ${lastAt}`);
     assert(stage.eliteFirstAt < stage.bossSchedule[0]);
   });
-  check(`Chapter ${stage.id}: time eligibility and recovery remain configured for a field with surviving small bugs`, () => {
+  check(`Chapter ${stage.id}: absolute time schedules do not contain kill recovery or concurrency gates`, () => {
     assert.equal(stage.bossSchedule.length, stage.bossCount);
     assert(Object.isFrozen(stage.bossSchedule));
     assert(stage.bossSchedule[0] >= 60 && stage.bossSchedule[0] <= 65);
-    assert.equal(stage.bossActiveCap, 1);
-    assert.equal(stage.bossRecovery, 12);
+    assert.equal(stage.bossActiveCap, stage.bossCount);
+    assert.equal(stage.bossRecovery, 0);
     for (let i = 0; i < stage.bossSchedule.length; i++) {
       const at = stage.bossSchedule[i];
       assert(Number.isFinite(at) && at >= 60);
@@ -136,8 +136,8 @@ check('Fourth chapter deliberately starts the full roster after three gentle ope
   assert(stages[3].slow.hp / stages[2].slow.hp <= 2.2);
   assert(stages[3].fast.speed < 205);
 });
-check('Late boss schedules retain a serialized queue before the small-bug clear override applies', () => {
-  assert.equal(stages[19].bossSchedule[19], 478);
+check('Stage twenty schedules every boss independently across a ten-and-a-half minute release window', () => {
+  assert.equal(stages[19].bossSchedule[19], 630);
   assert(stages[19].bossSchedule[19] > 180);
 });
 check('All hundred chapters have unique identities and matching boss and rescued-spirit coverage', () => {
@@ -151,7 +151,7 @@ check('All hundred chapters have unique identities and matching boss and rescued
   }
 });
 for (const stage of stages.slice(20)) {
-  check(`Chapter ${stage.id}: bounded late roster, exact XP, serial eligibility and movement escapes persist`, () => {
+  check(`Chapter ${stage.id}: bounded late roster, exact XP, independent arrivals and movement escapes persist`, () => {
     assert.equal(stage.normalCount, 398);
     assert(stage.eliteCount >= 45 && stage.eliteCount <= 64);
     assert(stage.bossCount >= 5 && stage.bossCount <= 10);
@@ -166,7 +166,7 @@ for (const stage of stages.slice(20)) {
     assert(stage.xpRewards.slice(stage.normalCount).every(xp => xp === 0));
     assert.equal(stage.xpRewards.reduce((sum, xp) => sum + xp, 0), stage.experience.budget);
     assert(stage.experience.choices >= 8 && stage.experience.choices <= 14);assert.equal(stage.experience.levelCap, 31);
-    assert.equal(stage.bossActiveCap, 1);assert.equal(stage.bossRecovery, 12);
+    assert.equal(stage.bossActiveCap, stage.bossCount);assert.equal(stage.bossRecovery, 0);
     assert.equal(stage.bossSchedule[0], 60);
     assert.equal(stage.bossSchedule.length, stage.bossCount);
     for (let i = 1; i < stage.bossSchedule.length; i++) assert(stage.bossSchedule[i] - stage.bossSchedule[i - 1] >= 22);

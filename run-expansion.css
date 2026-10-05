@@ -624,3 +624,9 @@ body.run-hud-active .arena > .hud {
 .roulette-overlay .menu-footer { flex-shrink:0; }
 @media(max-width:650px) { .roulette-overlay .menu-dialog { max-height:calc(100dvh - 54px); }.roulette-overlay .wheel-cabinet { width:230px; height:230px; }.roulette-overlay .wheel-name { font-size:14px; }.roulette-overlay .wheel-rarity { font-size:10px; }.roulette-overlay .wheel-legend { margin:12px 0 8px; }.roulette-overlay .roulette-eyebrow { margin-bottom:9px; } }
 @media(max-height:560px) and (min-width:651px) { .roulette-overlay .menu-dialog { max-height:calc(100dvh - 38px); }.roulette-overlay .wheel-reward strong { margin:2px 0 0; line-height:16px; }.roulette-overlay .receipt-note { font-size:8px; }.roulette-overlay .menu-footer { padding:7px 0; } }
+/* Multiple active bosses keep separate HP bars without covering the whole battlefield. */
+.boss-hud #bossOthers { max-height:140px; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; pointer-events:auto; scrollbar-width:thin; }
+@media(max-width:480px) { .boss-hud #bossOthers { max-height:90px; } }
+@media (max-width:600px) and (min-height:501px) {
+  body.run-hud-active:not(.training-active) .arena .boss-forecast { left:calc(30% + 18px); right:7px; transform:none; max-width:none; }
+}

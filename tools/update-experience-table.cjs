@@ -7,7 +7,7 @@ const range = value => value.min === value.max ? String(value.min) : value.min +
 const tablePath = path.join(root, '20关数值表.txt');
 const table = ['果园保卫战 — 前20关实际数值表', '',
   '前三关为新手关：72/96/120只普通虫，1/2/3只精英，各1位虫王；脱离伤害3秒后每秒恢复2生命。',
-  '第四关起保留原强度。所有关卡同时最多1位Boss，后续Boss需等待前一位被击杀及12秒喘息。',
+  '第四关起保留原基础数值；Boss首只60秒，后续按独立时间表登场，上一只未死也不等待，可同时在场。',
   '普通虫提供经验，前两关经验降低45%；精英轮盘抽1个，Boss抽3个肉鸽词条。经验加成不增加本关经验总量。清场剩余成长及最后轮盘进入无尽后领取。',
   '新账号首次通关解锁装备、英雄、果园、世界并触发点击指引；第二关起不再重复养成指引。',
   '以下为基础数值；后续登场怪物随实战时间增强，完整倍率与升级次数见经验升级数值表.txt。',
@@ -19,7 +19,7 @@ for (const stage of stages.slice(0,20)) {
   }
   table.push('  普通追击：开局'+stage.initialPursuers+'，每'+stage.pursuitInterval+'秒新增'+stage.batchSize,
     '  精英追击：'+stage.eliteFirstAt+'秒首批，每'+stage.eliteInterval+'秒新增'+stage.eliteBatchSize,
-    '  Boss时间资格：'+stage.bossSchedule.join('/')+'秒（同时最多1位）');
+    '  Boss登场时间：'+stage.bossSchedule.join('/')+'秒（上一只未死也登场）');
   for(const id of stage.bossIds) {const boss=context.window.ORCHARD_BOSSES[id-1],b=stage.beginner;table.push('  Boss '+id+' '+boss.name+'：生命'+(b?.bossHp??boss.hp)+' / 移速'+(b?.bossSpeed??boss.speed)+' / 伤害'+(b?.bossDamage??boss.damage)+' / 冲刺速度'+(b?.chargeSpeed??boss.chargeSpeed));}
   table.push('  每只Boss经验：'+range(stage.experience.ranges.boss), '  通关奖励：阳光籽'+stage.reward.seeds+'，果核'+stage.reward.cores, '');
 }
@@ -50,6 +50,11 @@ lines.push('','怪物随时间强化：','后续虫群首次进入追击时锁�
 for(const [name,s]of [['新手关',stages[0]],['普通关',stages[3]]])for(const at of [0,30,60,120,180,300,600]){
  const pairs=['normal','elite','boss'].map(kind=>{const m=pressure.multipliers(s,at,kind);return `${m.hp.toFixed(2)} / ${m.damage.toFixed(2)}`;});lines.push(`${name} | ${at}秒 | ${pairs.join(' | ')}`);
 }
+lines.push('','100关Boss独立时间表（关号 名称 | Boss数量 | 登场间隔 | 所有登场时刻/实战秒）');
+for (const s of stages) lines.push(s.id+' '+s.name+' | '+s.bossCount+' | '+(s.bossCount>1?s.bossInterval+'秒':'单Boss')+' | '+s.bossSchedule.join('/'));
+lines.push('只按实战时间判定；上一只未死也不阻挡下一只。击杀与清空小怪不改变时间表；暂停、升级、轮盘不计时。',
+ '间隔设定：首60秒让前期构筑建立；4～20关按round(42−(关号−4)×12/16)秒，21～100关按round(36−(关号−21)×6/79)秒。',
+ '相比旧的22秒最短资格排程，新间隔更宽，为并存Boss及已有时间血量增长留出空间。仍需完整实战校准不同英雄的压力。');
 lines.push('','精致轮盘：扇区显示实际词条名称、图标、品质；固定指针落点与抽中奖励一致。Boss三连抽按每次更新后的合法词条池结算，防止满级词条被无效抽取。',
  '转动时按钮锁定，结束后显示收获卡片（名称、品质、等级、效果），再次点击仅继续游戏，不重复发奖。构筑已满时改为生命补给。');
 fs.writeFileSync(path.join(root,'经验升级数值表.txt'),lines.join('\n')+'\n');

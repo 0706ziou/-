@@ -1,7 +1,7 @@
 /*
  * 果园远征：100关、五个篇章。前三关为新手关，4～20关保留原配置；后80关固定398普通虫、精英45→64、Boss短队列与渐进数值。
- * Boss 时间授予登场资格：首位 60 秒起；普通与精英清空后立即接续，忽略剩余时间。
- * 所有关卡同时最多 1 位 Boss；小怪尚在时，击败后额外 12 秒喘息，再按资格排程逐位放行。
+ * Boss 使用独立绝对时间表：首位 60 秒；前一位未死也不阻挡下一位，可同时在场。
+ * 4～20关间隔42→30秒；21～100关间隔36→30秒。击杀和清空小怪均不改排程。
  * 普通追击开局 20→36，每批 20→32，间隔 10→7 秒；精英首批 16→12 秒。
  * 普通、精英和 Boss 按不同压力曲线分别调校，飞虫始终慢于基础玩家 205 移速。
  * 表中 XP 字段仅是相对权重；从 10,000 XP 基准扣除轮盘替代部分，前两关普通经验再乘 55%。
@@ -34,7 +34,7 @@
       reward: { seeds: 63, cores: 2 }, firstClearGear: 'weapon_pea'
     },
     {
-      id: 3, name: '苔石果园', description: '利用苔石边缘清出退路；每45秒轮到一位虫王，击败后仍有喘息时间。',
+      id: 3, name: '苔石果园', description: '利用苔石边缘清出退路；虫王按独立时间表登场，不依赖上一位的击杀。',
       fastCount: 144,
       slow: { hp: 55, speed: 80, damage: 15, xp: 2 },
       fast: { hp: 37, speed: 132, damage: 11, xp: 3 },
@@ -56,7 +56,7 @@
       reward: { seeds: 81, cores: 3 }, firstClearGear: null
     },
     {
-      id: 5, name: '溪边果坡', description: '桥头集中火力，移动时留出另一座桥；虫王按40秒间隔排程，小怪清空后立即接续。',
+      id: 5, name: '溪边果坡', description: '桥头集中火力，移动时留出另一座桥；虫王按独立时间排程，未击败的虫王会与新虫王同时在场。',
       fastCount: 148,
       slow: { hp: 68, speed: 85, damage: 17, xp: 3 },
       fast: { hp: 45, speed: 139, damage: 12, xp: 4 },
@@ -100,7 +100,7 @@
       reward: { seeds: 129, cores: 5 }, firstClearGear: null
     },
     {
-      id: 9, name: '密叶迷径', description: '飞虫接近半数，交替横移与站定；虫王只会逐只登场。',
+      id: 9, name: '密叶迷径', description: '飞虫接近半数，交替横移与站定；虫王到时加入战场，注意避开多只虫王的冲锋。',
       fastCount: 196,
       slow: { hp: 106, speed: 96, damage: 20, xp: 3 },
       fast: { hp: 69, speed: 155, damage: 14, xp: 4 },
@@ -111,7 +111,7 @@
       reward: { seeds: 141, cores: 5 }, firstClearGear: null
     },
     {
-      id: 10, name: '厚皮瓜田', description: '中段厚壳试炼，形成至少一种攻击技能再迎战；Boss排程间隔30秒。',
+      id: 10, name: '厚皮瓜田', description: '中段厚壳试炼，形成至少一种攻击技能再迎战；Boss按时间登场，上一只未死也不会推迟。',
       fastCount: 176,
       slow: { hp: 118, speed: 99, damage: 21, xp: 4 },
       fast: { hp: 76, speed: 159, damage: 15, xp: 5 },
@@ -155,7 +155,7 @@
       reward: { seeds: 207, cores: 8 }, firstClearGear: null
     },
     {
-      id: 14, name: '金穗花圃', description: '精英生命继续增加，利用花圃通路分割虫团；虫王逐只通过试炼。',
+      id: 14, name: '金穗花圃', description: '精英生命继续增加，利用花圃通路分割虫团；虫王按时间加入试炼，尽快清理以免叠加。',
       fastCount: 208,
       slow: { hp: 166, speed: 111, damage: 25, xp: 4 },
       fast: { hp: 108, speed: 175, damage: 18, xp: 5 },
@@ -221,7 +221,7 @@
       reward: { seeds: 351, cores: 12 }, firstClearGear: null
     },
     {
-      id: 20, name: '果园终极保卫战', description: '终局按顺序挑战20位虫王，始终只面对一位；小怪清空后立即接续，小怪尚在时击杀后休整12秒。',
+      id: 20, name: '果园终极保卫战', description: '终局60秒起每30秒登场一位，共20位虫王；未击败的虫王留场，下一位不等待。',
       fastCount: 236,
       slow: { hp: 246, speed: 129, damage: 32, xp: 6 },
       fast: { hp: 156, speed: 192, damage: 23, xp: 7 },
@@ -242,7 +242,7 @@
     const bossIds = Array.from({ length: bossCount - 1 }, (_, i) => Math.max(1, id - bossCount + 1 + i)).concat(id);
     stages.push({
       id, chapter: chapter + 1, name: chapters[chapter] + ' · ' + base.name,
-      description: chapters[chapter] + '第' + ((id - 1) % 20 + 1) + '站：' + (id % 20 === 0 ? '篇章决战，依次迎战10位虫王。' : '虫群逐步增强，搭配英雄训练与研究再出发。') + '小怪清空后虫王立即接续，小怪尚在时击败虫王后休整12秒。',
+      description: chapters[chapter] + '第' + ((id - 1) % 20 + 1) + '站：' + (id % 20 === 0 ? '篇章决战，按时间迎战10位虫王，可同时在场。' : '虫群逐步增强，搭配英雄训练与研究再出发。') + '虫王按独立时间表登场，前一位未死也会加入战斗。',
       fastCount: 236 + step % 5 * 4,
       slow: stats(stages[19].slow, Math.min(144, 129 + step * .18)),
       fast: stats(stages[19].fast, Math.min(194, 192 + step * .025)),
@@ -269,10 +269,18 @@
       eliteFirstAt: 25, eliteInterval: 14, eliteBatchSize: 1,
       bossCount: 1, bossIds: [rank], bossFirstAt: 60, bossInterval: 45,
       beginner: Object.freeze({ bossHp: [900, 1200, 1600][index], bossTargetSeconds: 8 + rank, arrivalGuard: 1.5, bossDamage: 2 + rank, bossSpeed: 45 + rank * 5, chargeSpeed: 105 + rank * 10, chargeInterval: 8, regeneration: 2, regenerationDelay: 3 }),
-      description: '新手友好：' + (48 + rank * 24) + '只普通虫、' + rank + '只精英和1位虫王。脱离伤害3秒后每秒恢复2生命；虫王60秒登场，小怪清空则立即到达。虫王更加耐打，登场护壳1.5秒减伤90%。'
+      description: '新手友好：' + (48 + rank * 24) + '只普通虫、' + rank + '只精英和1位虫王。脱离伤害3秒后每秒恢复2生命；虫王固定60秒登场，清空小怪不提前。虫王更加耐打，登场护壳1.5秒减伤90%。'
     });
   }
   for (const stage of stages) if (chapterEquipment[stage.id]) stage.firstClearGear = chapterEquipment[stage.id];
+  // Independent timers replace kill-gated queues. Wider gaps than the old
+  // 22-second eligibility queue account for overlapping bosses and time HP growth.
+  for (const stage of stages) {
+    stage.bossFirstAt = 60;
+    stage.bossInterval = stage.id <= 3 ? 45 : stage.id <= 20
+      ? Math.round(42 - (stage.id - 4) * 12 / 16)
+      : Math.round(36 - (stage.id - 21) * 6 / 79);
+  }
   // Reinforcements lock their strength on their first activation. Active
   // enemies never refill HP, and combat/menu time cannot change these rates.
   function pressureMultipliers(stage, seconds, kind = 'normal') {
@@ -309,8 +317,8 @@
       bossCount,
       bossIds: Object.freeze(stage.bossIds || Array.from({ length: bossCount }, (_, i) => i + 1)),
       bossSchedule,
-      bossActiveCap: 1,
-      bossRecovery: 12,
+      bossActiveCap: bossCount,
+      bossRecovery: 0,
       enemyCount: normalCount + eliteCount + bossCount,
       slow: Object.freeze(stage.slow),
       fast: Object.freeze(stage.fast),

@@ -18,6 +18,7 @@ const navigationSource = fs.readFileSync(__dirname+'/navigation.js','utf8');
 const mapRendererSource = fs.readFileSync(__dirname+'/map-renderer.js','utf8');
 const conversationSource = fs.readFileSync(__dirname+'/conversation-data.js','utf8');
 const authSource = fs.readFileSync(__dirname+'/auth-data.js','utf8');
+const storeSource = fs.readFileSync(__dirname+'/store-data.js','utf8');
 const trainingSource = fs.readFileSync(__dirname+'/training-data.js','utf8');
 const frontierRewardsSource = fs.readFileSync(__dirname+'/frontier-rewards.js','utf8');
 let gameSource = fs.readFileSync(__dirname+'/game.js','utf8');
@@ -31,11 +32,10 @@ gameSource = gameSource.replace(boot,
   submitLogin,acceptAccount,logoutAccount,showCover,
   get currentAccount(){return currentAccount},get currentSaveKey(){return currentSaveKey},get loginBusy(){return loginBusy},
   get previewStage(){return previewStage},get helpTab(){return helpTab},get tutorialStep(){return tutorialStep},get helpReturnState(){return helpReturnState},
-  showOrchard,upgradeOrchard,upgradeSprite,orchardCost,spriteCost,completeRescue,readyBoss,announceBossArrival,
+  openItemStore,closeItemStore,topUpDiamonds,buyDiamondProduct,performCommerce,drawCommerceAura,get storeRevision(){return storeRevision},store,get storeReturnState(){return storeReturnState},showOrchard,upgradeOrchard,upgradeSprite,orchardCost,spriteCost,completeRescue,readyBoss,announceBossArrival,
   startEndless,spawnEndlessWave,bankEndlessRewards,finishEndless,rouletteTick,pressure,applyTimeGrowth,
   dropExperience,XP_NODE_CAP,get W(){return W},get H(){return H},WORLD_W,WORLD_H,seedDamage,experienceNeed,upgradeBase,experience,checkStageCompletion,
   get stageXP(){return stageXP},
-  get nextBossAllowedAt(){return nextBossAllowedAt},
   relicDefs,relicPoints,relicEffects,builds,resetRelics,claimRelic,updateSkills,activateDash,showRelicMap,closeRelicMap,isRunActive,skillHit,healPlayer,
   get runRelicDefs(){return runRelicDefs},set runRelicDefs(v){runRelicDefs=v},
   get noticeQueue(){return noticeQueue},get currentNotice(){return currentNotice},get noticeClock(){return noticeClock},
@@ -130,6 +130,7 @@ function createGame(storage = new Map(), options = {}) {
   vm.createContext(sandbox);
   vm.runInContext(authSource,sandbox,{filename:'auth-data.js'});
   if(!options.auth)sandbox.window.ORCHARD_AUTH={create:()=>({profileKey:()=> 'orchard-save-v1',getLastAccount:()=>''})};
+  vm.runInContext(storeSource,sandbox,{filename:'store-data.js'});
   vm.runInContext(experienceSource,sandbox,{filename:'experience-data.js'});
   vm.runInContext(progressionSource,sandbox,{filename:'progression.js'});
   vm.runInContext(orchardSource,sandbox,{filename:'orchard-data.js'});
@@ -198,7 +199,7 @@ function clearStage(t) {
   t.shotClock=Infinity;t.update(.001);
   for(let i=0;i<t.activeStage.bossCount;i++){
     drainUpgradeChoices(t);
-    t.elapsed=Math.max(t.elapsed,t.activeStage.bossSchedule[i],t.nextBossAllowedAt);
+    t.elapsed=Math.max(t.elapsed,t.activeStage.bossSchedule[i]);
     if(t.state==='playing')t.update(.001);
     assert.equal(t.state,'playing');assert.equal(t.state,'playing');
     const boss=t.enemies.find(e=>e.boss&&e.aggro);assert(boss);assert.equal(boss.stageId,t.activeStage.bossIds[i]);boss.hp=0;
@@ -652,7 +653,7 @@ test('First twenty stages have complete rising combat values, valid batches and 
     assert.deepEqual(Array.from(s.bossIds),s.id<=3?[s.id]:Array.from({length:s.id},(_,i)=>i+1));
     assert.equal(s.bossSchedule.length,s.bossCount);assert(s.bossSchedule[0]>=60&&s.bossSchedule[0]<=65);
     assert(s.bossSchedule.every((at,i)=>at>=60&&(i===0||at-s.bossSchedule[i-1]>=22)));
-    assert.equal(s.bossActiveCap,1);assert.equal(s.bossRecovery,12);assert(!Object.hasOwn(s,'bossTriggers'));
+    assert.equal(s.bossActiveCap,s.bossCount);assert.equal(s.bossRecovery,0);assert(!Object.hasOwn(s,'bossTriggers'));
     assert.equal(s.fastCount%2,0);assert.equal(s.initialPursuers%2,0);assert.equal(s.batchSize%2,0);
     for(const type of ['slow','fast'])for(const stat of ['hp','speed','damage','xp']){
       assert(Number.isFinite(s[type][stat])&&s[type][stat]>0);
@@ -689,7 +690,7 @@ test('Every stage spawns the exact normal, elite and accumulated boss roster wit
       assert.equal(e.pursuitAt,i<s.initialPursuers?0:(1+Math.floor((i-s.initialPursuers)/s.batchSize))*s.pursuitInterval);
     }
     const lastTime=Math.max(s.bossSchedule[0],...t.enemies.filter(e=>!e.boss).map(e=>e.pursuitAt));t.elapsed=lastTime;t.player.inv=1e9;t.shotClock=Infinity;
-    t.update(.001);assert.equal(t.enemies.filter(e=>e.aggro).length,s.normalCount+s.eliteCount+1);assert.equal(t.state,'playing');
+    t.update(.001);assert.equal(t.enemies.filter(e=>e.aggro).length,s.normalCount+s.eliteCount+s.bossSchedule.filter(at=>at<=lastTime+.001).length);assert.equal(t.state,'playing');
   }
 });
 test('Elite reinforcements use their own clock independently of ordinary pursuit batches',({t})=>{
@@ -743,7 +744,7 @@ test('Stage two pays after all bugs and does not restart the feature guide',({t,
 test('Stage twenty encounters every earlier boss in order and pays only after the complete roster is defeated',({t,bosses,element})=>{
   prepareStage(t,20);const s=t.activeStage,before=JSON.stringify(t.profile),seen=[];
   for(let i=0;i<20;i++){
-    t.elapsed=Math.max(s.bossSchedule[i],t.nextBossAllowedAt);drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);
+    t.elapsed=s.bossSchedule[i];drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);
     assert.equal(t.state,'playing');assert.equal(t.bossIndex,i+1);assert(element('bossForecast').textContent.includes(bosses[i].name));
     const hp=t.player.hp,time=t.elapsed;for(let frame=0;frame<15;frame++)t.frame(1000+(i*20+frame)*40);
     assert.equal(t.state,'playing');assert.equal(t.player.hp,hp);assert(t.elapsed>time);
@@ -770,36 +771,34 @@ test('Returning to or reloading a stage restarts elite and boss schedules withou
   assert.equal(loaded.t.enemies.filter(e=>e.elite&&e.aggro).length,0);assert.equal(loaded.t.readyBoss(),null);
   assert.equal(JSON.stringify(loaded.t.profile),oldProfile);
 });
-test('Boss clear handoff immediately activates the first boss before its scheduled time',({t,element})=>{
+test('Clearing small bugs never brings the first boss ahead of its fixed time',({t,element})=>{
   t.player.inv=1e9;t.shotClock=Infinity;
   killNonBossCount(t,t.activeStage.normalCount+t.activeStage.eliteCount);drainUpgradeChoices(t);t.update(.001);
-  assert.equal(t.state,'playing');assert(t.elapsed<t.activeStage.bossSchedule[0]);assert.equal(t.bossIndex,1);
-  const boss=t.enemies.find(e=>e.boss);assert(boss.introduced);assert(boss.aggro);assert.equal(t.readyBoss(),null);
-  assert(element('bossForecast').textContent.includes('Boss登场'));assert(!element('bossHud').classList.contains('hidden'));
+  assert.equal(t.state,'playing');assert(t.elapsed<t.activeStage.bossSchedule[0]);assert.equal(t.bossIndex,0);
+  const boss=t.enemies.find(e=>e.boss);assert(!boss.introduced);assert(!boss.aggro);assert.equal(t.readyBoss(),null);
+  assert(!element('bossForecast').classList.contains('hidden'));assert(element('bossHud').classList.contains('hidden'));
+  t.elapsed=t.activeStage.bossSchedule[0];t.update(0);assert(boss.introduced&&boss.aggro);
 });
-test('Boss clear handoff skips both schedule and recovery for every remaining boss with one active at a time',({t})=>{
-  prepareStage(t,6);const s=t.activeStage;t.elapsed=5;
-  killNonBossCount(t,s.normalCount+s.eliteCount);drainUpgradeChoices(t);
-  const seen=[];
-  for(let order=1;order<=s.bossCount;order++){
-    if(t.state==='playing')t.update(.001);
-    assert.equal(t.state,'playing');assert.equal(t.bossIndex,order);
-    const active=t.enemies.filter(e=>e.boss&&e.introduced&&e.hp>0);assert.equal(active.length,1);
-    seen.push(active[0].stageId);assert.equal(t.readyBoss(),null);active[0].hp=0;t.update(.001);drainUpgradeChoices(t);
-    assert.equal(t.bossKills,order);
-    if(order<s.bossCount)assert(t.elapsed<t.nextBossAllowedAt,'The next boss bypasses the twelve-second recovery after the field is clear');
+test('Independent arrivals keep every scheduled boss alive without waiting for kills',({t})=>{
+  prepareStage(t,6);const s=t.activeStage;t.player.inv=1e9;t.shotClock=Infinity;
+  for(const e of t.enemies){e.speed=0;e.chargeClock=1e9;}
+  for(let order=0;order<s.bossCount;order++){
+    t.elapsed=s.bossSchedule[order]-.001;t.update(0);assert.equal(t.bossIndex,order);
+    t.elapsed=s.bossSchedule[order];t.update(0);
+    const active=t.enemies.filter(e=>e.boss&&e.introduced&&e.aggro&&e.hp>0);
+    assert.equal(active.length,order+1);assert.equal(t.bossKills,0);assert.equal(t.readyBoss(),null);
+    assert.deepEqual(Array.from(active,e=>e.stageId),Array.from(s.bossIds).slice(0,order+1));
   }
-  assert.deepEqual(seen,Array.from(s.bossIds));assert(t.elapsed<s.bossSchedule[0]);assert.equal(t.state,'rescue');
 });
-test('Boss clear handoff still waits while even one dormant elite remains alive',({t})=>{
+test('Killing a boss and the last elite cannot change the next boss deadline',({t})=>{
   prepareStage(t,6);const s=t.activeStage,elite=t.enemies.find(e=>e.elite);t.elapsed=1;
-  for(const e of t.enemies)if(!e.boss&&e!==elite)e.hp=0;t.update(.001);
-  assert.equal(t.bossIndex,0);assert.equal(t.readyBoss(),null);assert(!elite.aggro);
-  drainUpgradeChoices(t);t.elapsed=s.bossSchedule[0];t.update(.001);assert.equal(t.bossIndex,1);
-  t.enemies.find(e=>e.boss&&e.introduced).hp=0;t.update(.001);drainUpgradeChoices(t);
+  for(const e of t.enemies)if(!e.boss&&e!==elite)e.hp=0;t.update(.001);drainUpgradeChoices(t);
+  assert.equal(t.bossIndex,0);assert.equal(t.readyBoss(),null);
+  t.elapsed=s.bossSchedule[0];t.update(0);assert.equal(t.bossIndex,1);
+  t.enemies.find(e=>e.boss&&e.introduced).hp=0;t.update(0);drainUpgradeChoices(t);
+  elite.hp=0;t.update(0);drainUpgradeChoices(t);t.update(0);
   assert.equal(t.bossIndex,1);assert.equal(t.readyBoss(),null);
-  elite.hp=0;t.update(.001);drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);
-  assert.equal(t.bossIndex,2);assert(t.elapsed<t.nextBossAllowedAt);
+  t.elapsed=s.bossSchedule[1];t.update(0);assert.equal(t.bossIndex,2);
 });
 test('Beginner Boss arrival calibrates visible health once without consuming build or relic cooldowns',({t,element,drawCalls})=>{
   prepareStage(t,1);
@@ -823,7 +822,7 @@ test('Beginner Boss health keeps a thirty-choice offensive build visible through
     prepareStage(t,id);
     for(const choice of loadout)for(let rank=0;rank<5;rank++)assert(t.builds.choose(t.player,choice,2).applied);
     if(loadout.includes('fireball'))for(const drop of t.relicDrops){drop.x=t.player.x;drop.y=t.player.y;assert(t.claimRelic(drop.id));}
-    t.enemies=t.enemies.filter(e=>e.boss);assert(t.announceBossArrival());const boss=t.enemies[0];
+    t.enemies=t.enemies.filter(e=>e.boss);t.elapsed=t.activeStage.bossSchedule[0];assert(t.announceBossArrival());const boss=t.enemies[0];
     boss.speed=0;boss.chargeClock=1e9;boss.damage=0;boss.x=t.player.x+65;boss.y=t.player.y;t.shotClock=0;
     assert(!t.world.blocksSegment(t.player.x,t.player.y,boss.x,boss.y,t.obstacles),'The sustained fire lane must be unobstructed');
     const arrived=t.elapsed;
@@ -833,25 +832,13 @@ test('Beginner Boss health keeps a thirty-choice offensive build visible through
     assert(seconds>=7&&seconds<=16,'A mature thirty-choice build should see an opening boss for about 8–15 seconds; stage '+id+' lasted '+seconds.toFixed(2));
   }
 });
-test('Later chapters serialize all time-ready bosses and keep the twelve-second recovery frozen while paused',({t})=>{
+test('A catch-up frame activates all due bosses once and pauses freeze independent clocks',({t})=>{
   prepareStage(t,6);const s=t.activeStage,before=JSON.stringify(t.profile);t.elapsed=s.bossSchedule.at(-1)+20;
-  for(let order=1;order<=s.bossCount;order++){
-    t.update(.001);assert.equal(t.state,'playing');assert.equal(t.bossIndex,order);
-    const arriving=t.enemies.find(e=>e.boss&&e.introduced&&e.aggro&&e.hp>0);
-    assert(arriving);assert.equal(arriving.stageId,order);assert.equal(t.nonBossKills,0);
-    assert(arriving.aggro);
-    assert.equal(t.enemies.filter(e=>e.boss&&e.aggro&&e.hp>0).length,1);
-    t.update(.001);assert.equal(t.state,'playing');assert.equal(t.readyBoss(),null);
-    assert(t.enemies.filter(e=>e.boss&&e.stageId>order).every(e=>!e.introduced&&!e.aggro));
-    arriving.hp=0;t.update(.001);drainUpgradeChoices(t);assert.equal(t.bossKills,order);
-    assert.equal(t.enemies.filter(e=>e.boss&&e.aggro&&e.hp>0).length,0);
-    const recovery=t.nextBossAllowedAt,time=t.elapsed;assert(Math.abs(recovery-time-12)<1e-8);
-    t.pause();for(let i=0;i<10;i++)t.frame(1000+order*500+i*40);assert.equal(t.elapsed,time);assert.equal(t.nextBossAllowedAt,recovery);t.resume();
-    t.elapsed=recovery-.002;t.update(.001);assert.equal(t.state,'playing');assert.equal(t.readyBoss(),null);
-    t.elapsed=recovery;assert.equal(t.nonBossKills,0);assert.equal(JSON.stringify(t.profile),before);
-  }
-  assert.equal(t.bossIndex,s.bossCount);assert.equal(t.readyBoss(),null);
-  assert.equal(t.nonBossKills,0);assert.equal(JSON.stringify(t.profile),before);
+  t.update(0);assert.equal(t.state,'playing');assert.equal(t.bossIndex,s.bossCount);
+  assert.equal(t.enemies.filter(e=>e.boss&&e.aggro&&e.hp>0).length,s.bossCount);
+  t.update(0);assert.equal(t.bossIndex,s.bossCount);assert.equal(t.readyBoss(),null);
+  const time=t.elapsed;t.pause();for(let i=0;i<10;i++)t.frame(1000+i*40);assert.equal(t.elapsed,time);t.resume();
+  assert.equal(t.bossKills,0);assert.equal(t.nonBossKills,0);assert.equal(JSON.stringify(t.profile),before);
 });
 test('All 100 victories unlock consecutive stages, pay rewards and award the intended gear',({t,element,rescues})=>{
   let seeds=0,cores=0;
@@ -1074,9 +1061,9 @@ test('Pausing after a boss arrival freezes combat, and hidden tabs still freeze 
   for(let i=0;i<150&&t.state==='rescue';i++){now+=40;t.frame(now)}assert.equal(t.state,'ended');
 });
 
-test('Earned upgrades are resolved before a simultaneous boss time arrival',({t})=>{
+test('A due boss activates before simultaneous reward menus freeze the battle',({t})=>{
   for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.player.xp=t.player.need;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);
-  assert.equal(t.state,'roulette');assert.equal(t.enemies.length,1);assert.equal(t.enemies[0].aggro,false);
+  assert.equal(t.state,'roulette');assert.equal(t.enemies.length,1);assert.equal(t.enemies[0].aggro,true);
   drainUpgradeChoices(t);assert.equal(t.player.level,2);assert.equal(t.state,'playing');t.update(.001);
   assert.equal(t.state,'playing');assert.equal(t.enemies.length,1);
 });
@@ -2347,7 +2334,7 @@ test('Campaign: later eighty chapters have bounded encounters, rising stats and 
     assert.equal(s.normalCount,398);assert.equal(s.eliteCount,44+Math.ceil((s.id-20)/4));
     assert(s.bossCount>=5&&s.bossCount<=10);assert.equal(s.bossIds.length,s.bossCount);
     assert.equal(new Set(s.bossIds).size,s.bossCount);assert.equal(s.bossIds.at(-1),s.id);
-    assert.equal(s.bossActiveCap,1);assert.equal(s.bossRecovery,12);
+    assert.equal(s.bossActiveCap,s.bossCount);assert.equal(s.bossRecovery,0);
     assert(s.bossIds.every(id=>bosses[id-1]?.stageId===id));
     for(const type of ['slow','fast','elite']){
       assert(s[type].hp>=previous[type].hp);assert(s[type].damage>=previous[type].damage);
