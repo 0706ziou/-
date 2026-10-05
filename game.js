@@ -55,6 +55,7 @@
   let runMode = 'stage', stageVictoryReady = false, endlessEntered = false;
   let training = null;
   let storeReturnState = 'lobby', storeFocusReturn = null, storeTab = 'shop', storeRevision = 0;
+  let permanentMenuRefresh = false;
   let stageXP = experience.create(stages[0]);
   let selectedGearSlot = 'weapon', selectedSprite = 0, selectedGarden = 1;
   let endlessWave = 0, waveClock = 0, endlessCreditedSeeds = 0, endlessCreditedCores = 0;
@@ -254,13 +255,54 @@
     loginAttempt++; currentAccount = null; currentSaveKey = SAVE_KEY; profile = freshProfile(); sessionGreeting = '';
     resetAccountSession(); showCover(); return true;
   }
+  function patchPermanentMenu(markup) {
+    const live = overlay.querySelector?.('.menu-dialog');
+    if (!live || !document.createElement) return false;
+    const template = document.createElement('template'); template.innerHTML = markup;
+    const fresh = template.content.firstElementChild; if (!fresh) return false;
+    // Upgrade layouts keep the same rows/cards. Update attributes and text in
+    // place so images, progress controls, buttons and nested scrollers survive.
+    function patch(node, next) {
+      if (node.nodeType !== next.nodeType || node.nodeName !== next.nodeName) {
+        node.replaceWith(next.cloneNode(true)); return;
+      }
+      if (node.nodeType === 3 || node.nodeType === 8) { if (node.nodeValue !== next.nodeValue) node.nodeValue = next.nodeValue; return; }
+      if (node.nodeType !== 1) return;
+      for (const attribute of [...node.attributes]) if (!next.hasAttribute(attribute.name)) node.removeAttribute(attribute.name);
+      for (const attribute of [...next.attributes]) if (node.getAttribute(attribute.name) !== attribute.value) node.setAttribute(attribute.name, attribute.value);
+      const oldChildren = [...node.childNodes], newChildren = [...next.childNodes];
+      for (let i = 0; i < newChildren.length; i++) {
+        if (oldChildren[i]) patch(oldChildren[i], newChildren[i]);
+        else node.appendChild(newChildren[i].cloneNode(true));
+      }
+      for (let i = newChildren.length; i < oldChildren.length; i++) oldChildren[i].remove();
+    }
+    patch(live, fresh); return true;
+  }
+  function updatePermanentMenu(action, render, source) {
+    if (!currentAccount || isRunActive() || !['heroes', 'armory', 'orchard'].includes(state) || source?.disabled) return false;
+    const scrolled = [overlay, ...overlay.querySelectorAll('*')].filter(node => node.scrollTop || node.scrollLeft)
+      .map(node => ({ node, top: node.scrollTop, left: node.scrollLeft }));
+    if (!action()) return false;
+    permanentMenuRefresh = true;
+    try { render(); }
+    finally {
+      permanentMenuRefresh = false;
+      // Restoring focus must not scroll the page to the upgraded control.
+      if (source?.isConnected && !source.disabled) source.focus({ preventScroll: true });
+      for (const saved of scrolled) if (saved.node.isConnected) { saved.node.scrollTop = saved.top; saved.node.scrollLeft = saved.left; }
+    }
+    return true;
+  }
   function show(html, menu = false) {
+    const markup = '<div class="dialog' + (menu ? ' menu-dialog' : '') + '">' + html + '</div>';
+    if (permanentMenuRefresh && menu && patchPermanentMenu(markup)) { overlay.classList.remove('hidden'); return; }
     window.ORCHARD_FRONTIER?.close();
     window.ORCHARD_LEADERBOARD?.close();
     overlay.classList.remove('upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay', 'armory-overlay', 'pause-overlay', 'roulette-overlay', 'store-overlay');
     arena.classList.remove('is-lobby');
-    for (const attribute of ['role', 'aria-modal', 'aria-label']) overlay.removeAttribute?.(attribute);
-    overlay.innerHTML = '<div class="dialog' + (menu ? ' menu-dialog' : '') + '">' + html + '</div>';
+    for (const attribute of ['role', 'aria-modal', 'aria-label', 'data-menu-kind']) overlay.removeAttribute?.(attribute);
+    overlay.innerHTML = markup;
     overlay.classList.remove('hidden');
   }
   function showMenu(title, subtitle, body, actions, activeTab, note = '进度自动保存 · 所有操作无需滚轮') {
@@ -270,6 +312,7 @@
       '<div class="menu-body">' + featureGuideHTML(activeTab) + body + '</div><div class="menu-footer"><div class="menu-actions">' + actions + '</div>' +
       '<nav class="menu-nav" aria-label="果园功能">' + tabs.map(([tab, name, id]) => '<button class="nav-button ' + (activeTab === tab ? 'active' : '') + '" id="' + id + '" ' + (!featuresUnlocked() && ['armory', 'heroes', 'orchard', 'world'].includes(tab) ? 'disabled title="首次通关后解锁" ' : '') + 'aria-pressed="' + (activeTab === tab) + '">' + name + '</button>').join('') + '</nav>' +
       '<div class="micro">' + (!storageAvailable ? '浏览器存储不可用，进度仅在当前页面中保留' : note) + '</div></div>', true);
+    overlay.dataset.menuKind = activeTab;
     el('navStages').onclick = startScreen; el('navHeroes').onclick = () => showHeroes(); el('navArmory').onclick = showArmory; el('navOrchard').onclick = showOrchard; el('navWorld').onclick = showWorld; el('navMap').onclick = showRelicMap;
     el('navLeaderboard').onclick = showLeaderboard;
     bindFeatureGuide(activeTab);
@@ -701,11 +744,11 @@
     overlay.querySelectorAll('[data-growth-tab]').forEach(b => { b.onclick = () => showHeroes(b.dataset.growthTab); });
     overlay.querySelectorAll('[data-hero-view]').forEach(b => { b.onclick = () => { heroSkillView = b.dataset.heroView; showHeroes(); }; });
     overlay.querySelectorAll('[data-inspect-hero]').forEach(b => { b.onclick = () => { inspectedHero = b.dataset.inspectHero; showHeroes('heroes'); }; });
-    overlay.querySelectorAll('[data-research]').forEach(b => { b.onclick = () => { if (researchTalent(b.dataset.research)) showHeroes('talents'); }; });
+    overlay.querySelectorAll('[data-research]').forEach(b => { b.onclick = () => updatePermanentMenu(() => researchTalent(b.dataset.research), () => showHeroes('talents'), b); });
     if (heroTab === 'heroes') {
       el('heroGrid').scrollTop = heroListScroll;
-      el('equipHero').onclick = () => { if (selectHero(inspectedHero)) showHeroes(); };
-      el('trainHero').onclick = () => { if (trainHero(inspectedHero)) showHeroes(); };
+      el('equipHero').onclick = () => updatePermanentMenu(() => selectHero(inspectedHero), () => showHeroes(), el('equipHero'));
+      el('trainHero').onclick = () => updatePermanentMenu(() => trainHero(inspectedHero), () => showHeroes(), el('trainHero'));
     }
     el('start').onclick = start; el('backLobby').onclick = startScreen; updateHUD(); return true;
   }
@@ -760,8 +803,8 @@
       }).join('') + '</div>', '<button class="primary" id="start">挑战第 ' + selectedStage + ' 关</button><button class="secondary" id="backLobby">返回关卡</button>', 'armory', '切换上方武器 / 护甲 / 饰品按钮查看全部装备 · 强化永久保留');
     el('backLobby').onclick = startScreen; el('start').onclick = start;
     overlay.querySelectorAll('[data-gear-slot]').forEach(b => b.onclick = () => showArmory(b.dataset.gearSlot));
-    overlay.querySelectorAll('[data-equip]').forEach(b => b.onclick = () => { if (equipGear(b.dataset.equip)) showArmory(); });
-    overlay.querySelectorAll('[data-enhance]').forEach(b => b.onclick = () => { if (upgradeGear(b.dataset.enhance)) showArmory(); });
+    overlay.querySelectorAll('[data-equip]').forEach(b => b.onclick = () => updatePermanentMenu(() => equipGear(b.dataset.equip), () => showArmory(), b));
+    overlay.querySelectorAll('[data-enhance]').forEach(b => b.onclick = () => updatePermanentMenu(() => upgradeGear(b.dataset.enhance), () => showArmory(), b));
     overlay.classList.add('armory-overlay');
     el('equipmentGrid').scrollTop = sameSlot ? listScroll : 0;
     updateHUD(); return true;
@@ -827,10 +870,10 @@
       '<div class="garden-summary"><strong>全队永久加成</strong><span>' + Object.entries(bonus).map(([type, value]) => bonusText(type, value)).join(' · ') + '</span></div></div><div class="orchard-controls">' +
       '<div class="stage-detail"><strong>扩建全部果园 · ' + level + ' / 10</strong><span>10 座果园共享扩建等级。每级全队：伤害 +1%、生命 +4、拾取范围 +2。每关首通救援一位精灵，每座住10位。</span><div class="menu-actions"><button class="secondary" id="growOrchard" ' + (level >= 10 || !canAfford(cost) ? 'disabled' : '') + '>' + (level >= 10 ? '果园已满级' : '扩建 · ☀' + cost.seeds + ' ◆' + cost.cores) + '</button></div></div>' +
       detail + '</div></div>', '<button class="primary" id="start">挑战第 ' + selectedStage + ' 关</button><button class="secondary" id="backLobby">返回关卡</button>', 'orchard', '点击园中的精灵切换培养对象 · 果园与精灵祝福全队共享');
-    el('growOrchard').onclick = () => { if (upgradeOrchard()) showOrchard(); };
+    el('growOrchard').onclick = () => updatePermanentMenu(upgradeOrchard, () => showOrchard(), el('growOrchard'));
     overlay.querySelectorAll('[data-garden-id]').forEach(b => b.onclick = () => showOrchard(Number(b.dataset.gardenId)));
     overlay.querySelectorAll('[data-select-sprite]').forEach(b => b.onclick = () => { selectedSprite = Number(b.dataset.selectSprite); showOrchard(); });
-    overlay.querySelectorAll('[data-grow-sprite]').forEach(b => b.onclick = () => { if (upgradeSprite(Number(b.dataset.growSprite))) showOrchard(); });
+    overlay.querySelectorAll('[data-grow-sprite]').forEach(b => b.onclick = () => updatePermanentMenu(() => upgradeSprite(Number(b.dataset.growSprite)), () => showOrchard(), b));
     bindSpritePortraits();
     el('backLobby').onclick = startScreen; el('start').onclick = start; return true;
   }

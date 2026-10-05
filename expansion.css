@@ -257,3 +257,8 @@
   .hero-card .hero-portrait { width: 25px; height: 25px; }
   .hero-card strong { font-size: 9px; }
 }
+/* Permanent growth upgrades keep nested scrolling and repeat-click targets stable. */
+.overlay:is([data-menu-kind="heroes"],[data-menu-kind="armory"],[data-menu-kind="orchard"]) .menu-body { overflow-anchor:none; }
+.overlay[data-menu-kind="heroes"] :is([data-research],#trainHero,#equipHero),
+.overlay[data-menu-kind="armory"] :is([data-enhance],[data-equip]),
+.overlay[data-menu-kind="orchard"] :is(#growOrchard,[data-grow-sprite]) { transform:none!important; }
