@@ -14,12 +14,12 @@ check('The wallet PLUS credits test diamonds, without consuming cash, seeds or c
  const {t,element,storage}=lobby();t.profile.seeds=120;t.profile.cores=30;element('openStoreLobby').onclick();assert.equal(t.state,'itemStore');
  assert(t.topUpDiamonds('medium'));assert.equal(t.profile.commerce.diamonds,600);assert.equal(t.profile.seeds,120);assert.equal(t.profile.cores,30);
  assert.equal(element('diamondBalance').textContent,'600');assert.equal(t.profile.commerce.receipts[0].delta,600);
- assert.equal(JSON.parse(storage.get(t.currentSaveKey)).commerce.diamonds,600);assert(element('overlay').innerHTML.includes('没有支付真钱'));
+ assert.equal(JSON.parse(storage.get(t.currentSaveKey)).commerce.diamonds,600);assert(element('commerceFeedback').textContent.includes('没有支付真钱'));
 });
 check('Insufficient funds cannot buy, award goods, change money or create a receipt',()=>{
  const g=lobby(),{t,element}=g;open(g);const profile=JSON.stringify(t.profile);
  for(const product of t.store.products)assert.equal(t.buyDiamondProduct(product.id),false);
- assert.equal(JSON.stringify(t.profile),profile);assert(element('overlay').innerHTML.includes('钻石不足'));assert.equal(t.buyDiamondProduct('fake'),false);
+ assert.equal(JSON.stringify(t.profile),profile);assert(element('commerceFeedback').textContent.includes('钻石不足'));assert.equal(t.buyDiamondProduct('fake'),false);
  assert.equal(t.performCommerce('unsupported','small'),false);t.closeItemStore();assert.equal(t.topUpDiamonds('medium'),false);assert.equal(t.buyDiamondProduct('star_aura'),false);
 });
 check('Diamond-priced cosmetics cost their exact price, equip once, and never add battle stats',()=>{
@@ -43,6 +43,7 @@ check('Stale or duplicate UI callbacks cannot charge twice or credit the same in
  const g=lobby(),{t,element}=g;open(g);element('commerceWalletPlus').onclick();
  const topup=element('overlay').querySelectorAll('[data-commerce-topup]').find(b=>b.dataset.commerceTopup==='medium').onclick;
  assert(topup());const after=JSON.stringify(t.profile);assert.equal(topup(),false);assert.equal(JSON.stringify(t.profile),after);
+ element('commerceShopTab').onclick();
  const buy=element('overlay').querySelectorAll('[data-commerce-buy]').find(b=>b.dataset.commerceBuy==='core_bundle').onclick;
  assert(buy());const bought=JSON.stringify(t.profile);assert.equal(buy(),false);assert.equal(JSON.stringify(t.profile),bought);
 });
@@ -60,7 +61,7 @@ check('Migration rejects malformed balances, unknown goods and old paid-buff own
 check('A failed save atomically rolls back both the debit and the awarded goods; retry succeeds exactly once',()=>{
  class Storage extends Map{set(k,v){if(this.fail)throw Error('quota');return super.set(k,v);}}
  const storage=new Storage(),g=lobby(storage),{t,element}=g;open(g);t.topUpDiamonds('medium');const before=JSON.stringify(t.profile),saved=storage.get(t.currentSaveKey);
- storage.fail=true;assert.equal(t.buyDiamondProduct('core_bundle'),false);assert.equal(JSON.stringify(t.profile),before);assert.equal(storage.get(t.currentSaveKey),saved);assert(element('overlay').innerHTML.includes('已撤销'));
+ storage.fail=true;assert.equal(t.buyDiamondProduct('core_bundle'),false);assert.equal(JSON.stringify(t.profile),before);assert.equal(storage.get(t.currentSaveKey),saved);assert(element('commerceFeedback').textContent.includes('已撤销'));
  assert.equal(t.topUpDiamonds('small'),false);assert.equal(JSON.stringify(t.profile),before);
  storage.fail=false;assert(t.buyDiamondProduct('core_bundle'));assert.equal(t.profile.commerce.diamonds,510);assert.equal(t.profile.cores,6);assert.equal(t.profile.commerce.receipts.length,2);
 });
@@ -88,5 +89,28 @@ check('Training and conflicting overlays cannot spend currency, and modal shortc
  t.exitTraining();t.startScreen();open(g);const back=element('closeItemStore');assert.equal(document.activeElement,back);listeners.keydown({key:'Tab',preventDefault(){}});assert.equal(document.activeElement,element('commerceShopTab'));
  for(const key of ['d','e',' ','m','h','1'])listeners.keydown({key,preventDefault(){}});assert.equal(t.state,'itemStore');assert.equal(t.keys.size,0);
  t.closeItemStore();t.start();t.player.xp=t.player.need;t.upgrade();assert.equal(t.openItemStore(),false);assert.equal(t.buyDiamondProduct('star_aura'),false);
+});
+check('Repeated supply purchases retain the exact dialog, live button and focused element',()=>{
+ const g=lobby(),{t,element,document}=g;open(g);t.topUpDiamonds('medium');
+ const dialog=element('overlay').innerHTML,button=element('overlay').querySelectorAll('[data-commerce-product]').find(b=>b.dataset.commerceProduct==='seed_bundle');
+ button.focus();
+ for(let i=0;i<4;i++){
+  assert(button.onclick());assert.equal(t.state,'itemStore');assert.equal(element('overlay').innerHTML,dialog);
+  assert.equal(document.activeElement,button);assert.equal(element('overlay').querySelectorAll('[data-commerce-product]').find(b=>b.dataset.commerceProduct==='seed_bundle'),button);
+ }
+ assert.equal(t.profile.seeds,720);assert.equal(t.profile.commerce.diamonds,360);assert.equal(element('commerceDiamondBalance').textContent,'360');
+});
+check('Test recharge stays on the recharge page and supports repeated clicks without losing focus',()=>{
+ const g=lobby(),{t,element,document}=g;element('openStoreLobby').onclick();
+ const button=element('overlay').querySelectorAll('[data-commerce-topup]').find(b=>b.dataset.commerceTopup==='small'),dialog=element('overlay').innerHTML;
+ button.focus();assert(button.onclick());assert(button.onclick());assert(button.onclick());
+ assert.equal(t.profile.commerce.diamonds,540);assert.equal(element('overlay').innerHTML,dialog);assert.equal(document.activeElement,button);
+ assert.equal(element('overlay').querySelectorAll('[data-commerce-topup]').length,3);assert.equal(element('overlay').querySelectorAll('[data-commerce-product]').length,0);
+ element('commerceShopTab').onclick();assert.equal(element('overlay').querySelectorAll('[data-commerce-product]').length,4);
+});
+check('Failures report in place without resetting the product page or focus',()=>{
+ const g=lobby(),{t,element,document}=g;open(g);const button=element('overlay').querySelectorAll('[data-commerce-product]').find(b=>b.dataset.commerceProduct==='core_bundle'),dialog=element('overlay').innerHTML;
+ button.focus();assert.equal(button.onclick(),false);assert.equal(element('overlay').innerHTML,dialog);assert.equal(document.activeElement,button);
+ assert(element('commerceFeedback').textContent.includes('钻石不足'));assert.equal(t.profile.commerce.diamonds,0);
 });
 console.log(`${count} diamond commerce checks passed.`);

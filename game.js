@@ -1089,47 +1089,78 @@
   }
   function renderItemStore(message = '', success = false) {
     if (state !== 'itemStore' || !currentAccount) return false;
-    const revision = ++storeRevision, c = profile.commerce;
+    storeRevision++; const c = profile.commerce;
     const diamond = '<img src="assets/store/diamond.svg" alt="" width="18" height="18">';
     const content = storeTab === 'recharge'
       ? '<div class="commerce-section-title"><h3>给钻石账户补充能量</h3><p>当前是免费测试模式，点击充值立即到账，不支付真钱。</p></div><div class="diamond-packs">' + store.packs.map((pack, i) =>
         '<article class="diamond-pack' + (i === 1 ? ' recommended' : '') + '"><span class="pack-label">' + pack.name + '</span><img src="assets/store/diamond.svg" alt="钻石" width="100" height="100"><strong>' + pack.diamonds.toLocaleString('en-US') + '<small>钻石</small></strong><p>免费测试充值 · 无真实支付</p><button type="button" class="primary" data-commerce-topup="' + pack.id + '">免费测试充值</button></article>').join('') + '</div>'
       : '<div class="commerce-section-title"><h3>钻石商城</h3><p>用钻石购买外观或补给。外观不会增加生命、伤害或拾取范围。</p></div><div class="commerce-products">' + store.products.map(product => {
         const owned = store.owns(profile, product.id), equipped = c.equippedAura === product.id || c.equippedFrame === product.id;
-        return '<article class="commerce-product"><div class="product-visual"><span class="product-category">' + product.category + '</span><img src="' + product.art + '" alt="' + product.name + '" width="130" height="130">' + (owned ? '<span class="product-owned">✓ 已拥有</span>' : '') + '</div><div class="product-description"><h4>' + product.name + '</h4><p>' + product.description + '</p><div class="product-bottom"><span class="diamond-price">' + diamond + product.price + '</span><button type="button" class="' + (owned ? 'secondary' : 'primary') + '" ' + (owned ? 'data-commerce-equip' : 'data-commerce-buy') + '="' + product.id + '">' + (owned ? equipped ? '已装备 · 取消' : '装备外观' : '钻石购买') + '</button></div></div></article>';
+        return '<article class="commerce-product"><div class="product-visual"><span class="product-category">' + product.category + '</span><img src="' + product.art + '" alt="' + product.name + '" width="130" height="130">' + '<span class="product-owned' + (owned ? '' : ' hidden') + '" data-commerce-owned="' + product.id + '">✓ 已拥有</span>' + '</div><div class="product-description"><h4>' + product.name + '</h4><p>' + product.description + '</p><div class="product-bottom"><span class="diamond-price">' + diamond + product.price + '</span><button type="button" class="' + (owned ? 'secondary' : 'primary') + '" ' + (owned ? 'data-commerce-equip' : 'data-commerce-buy') + '="' + product.id + '" data-commerce-product="' + product.id + '">' + (owned ? equipped ? '已装备 · 取消' : '装备外观' : '钻石购买') + '</button></div></div></article>';
       }).join('') + '</div>';
     const records = c.receipts.slice(-5).reverse().map(record => {
       const label = record.kind === 'preview-topup' ? store.getPack(record.sku)?.name + '测试充值' : store.get(record.sku)?.name;
       return '<li><span>' + escapeHTML(label || record.sku) + '</span><strong class="' + (record.delta > 0 ? 'credit' : 'debit') + '">' + (record.delta > 0 ? '+' : '') + record.delta + ' ◆</strong></li>';
     }).join('');
     showPanel('果园钻石商城', '商业化体验 / DIAMOND STORE',
-      '<div class="commerce-toolbar"><nav aria-label="钻石商城分类"><button type="button" class="commerce-tab' + (storeTab === 'shop' ? ' active' : '') + '" id="commerceShopTab" aria-pressed="' + (storeTab === 'shop') + '">商城商品</button><button type="button" class="commerce-tab' + (storeTab === 'recharge' ? ' active' : '') + '" id="commerceRechargeTab" aria-pressed="' + (storeTab === 'recharge') + '">钻石充值</button></nav><div class="commerce-wallet">' + diamond + '<span><small>当前钻石</small><strong>' + c.diamonds.toLocaleString('en-US') + '</strong></span><button type="button" id="commerceWalletPlus" aria-label="点击加号测试充值钻石">＋</button></div></div>' +
+      '<div class="commerce-toolbar"><nav aria-label="钻石商城分类"><button type="button" class="commerce-tab' + (storeTab === 'shop' ? ' active' : '') + '" id="commerceShopTab" aria-pressed="' + (storeTab === 'shop') + '">商城商品</button><button type="button" class="commerce-tab' + (storeTab === 'recharge' ? ' active' : '') + '" id="commerceRechargeTab" aria-pressed="' + (storeTab === 'recharge') + '">钻石充值</button></nav><div class="commerce-wallet">' + diamond + '<span><small>当前钻石</small><strong id="commerceDiamondBalance">' + c.diamonds.toLocaleString('en-US') + '</strong></span><button type="button" id="commerceWalletPlus" aria-label="点击加号测试充值钻石">＋</button></div></div>' +
       '<div class="commerce-mode"><span></span><strong>免费测试模式</strong><p>充值不花真钱；商城购买会实际扣除钻石。</p></div>' + content +
-      '<p class="commerce-feedback' + (message ? success ? ' success' : ' error' : '') + '" id="commerceFeedback" role="status">' + escapeHTML(message || (storeTab === 'shop' ? '先点击钻石旁的＋测试充值，再用钻石购买商品。' : '充值后自动返回商城，钻石可购买外观与补给。')) + '</p>' +
-      (records ? '<details class="commerce-records"><summary>最近测试记录 · 非真实支付订单</summary><ul>' + records + '</ul></details>' : '') +
+      '<details id="commerceRecords" class="commerce-records' + (records ? '' : ' hidden') + '"><summary>最近测试记录 · 非真实支付订单</summary><ul id="commerceRecordsList">' + records + '</ul></details>' +
       '<div class="commerce-save-note">当前钻石与商品只保存在此浏览器的登录账号中，不是云端钱包，也不是付费凭证。换浏览器或清理存储可能丢失；真实支付尚未开放。</div>',
-      '<button type="button" class="secondary" id="closeItemStore">返回' + (['playing', 'paused'].includes(storeReturnState) ? '战斗' : '游戏') + '</button>', 'Esc 返回 · 查看、充值与购买期间战斗暂停');
+      '<p class="commerce-feedback' + (message ? success ? ' success' : ' error' : '') + '" id="commerceFeedback" role="status" aria-live="polite" aria-atomic="true">' + escapeHTML(message || (storeTab === 'shop' ? '选择商品购买，购买后保留当前位置。' : '充值后留在本页，可连续充值；点「商城商品」去购物。')) + '</p><button type="button" class="secondary" id="closeItemStore">返回' + (['playing', 'paused'].includes(storeReturnState) ? '战斗' : '游戏') + '</button>', 'Esc 返回 · 查看、充值与购买期间战斗暂停');
     overlay.classList.add('store-overlay'); overlay.setAttribute?.('role', 'dialog'); overlay.setAttribute?.('aria-modal', 'true'); overlay.setAttribute?.('aria-label', '钻石商城与免费测试充值');
     el('commerceShopTab').onclick = () => { storeTab = 'shop'; renderItemStore(); };
     el('commerceRechargeTab').onclick = el('commerceWalletPlus').onclick = () => { storeTab = 'recharge'; renderItemStore(); };
+    bindCommerceControls();
+    el('closeItemStore').onclick = closeItemStore; updateHUD(); el('closeItemStore').focus?.({ preventScroll: true }); return true;
+  }
+  function bindCommerceControls() {
+    const revision = storeRevision;
     overlay.querySelectorAll('[data-commerce-topup]').forEach(button => { button.onclick = () => topUpDiamonds(button.dataset.commerceTopup, revision); });
-    overlay.querySelectorAll('[data-commerce-buy]').forEach(button => { button.onclick = () => buyDiamondProduct(button.dataset.commerceBuy, revision); });
-    overlay.querySelectorAll('[data-commerce-equip]').forEach(button => { button.onclick = () => performCommerce('equip', button.dataset.commerceEquip, revision); });
-    el('closeItemStore').onclick = closeItemStore; updateHUD(); el('closeItemStore').focus?.(); return true;
+    overlay.querySelectorAll('[data-commerce-product]').forEach(button => {
+      const id = button.dataset.commerceProduct, product = store.get(id), owned = store.owns(profile, id);
+      if (!product) return;
+      const equipped = profile.commerce.equippedAura === id || profile.commerce.equippedFrame === id;
+      delete button.dataset.commerceBuy; delete button.dataset.commerceEquip;
+      button.dataset[owned ? 'commerceEquip' : 'commerceBuy'] = id;
+      button.classList?.toggle('primary', !owned); button.classList?.toggle('secondary', owned);
+      button.textContent = owned ? equipped ? '已装备 · 取消' : '装备外观' : '钻石购买';
+      button.onclick = () => performCommerce(owned ? 'equip' : 'diamond-purchase', id, revision);
+    });
+  }
+  function refreshCommerceUI(message, success = false) {
+    if (state !== 'itemStore' || !currentAccount) return false;
+    const body = overlay.querySelector?.('.menu-body'), scrollTop = body?.scrollTop;
+    // Do not replace the dialog/cards or move focus: repeat purchases stay at
+    // the same screen location. Rotate callbacks to keep stale clicks harmless.
+    storeRevision++; const c = profile.commerce;
+    el('commerceDiamondBalance').textContent = c.diamonds.toLocaleString('en-US');
+    const wallet = overlay.querySelector?.('.menu-top .wallet');
+    if (wallet) wallet.textContent = '☀ 阳光籽 ' + profile.seeds + '　◆ 果核 ' + profile.cores;
+    overlay.querySelectorAll('[data-commerce-owned]').forEach(badge => { badge.classList.toggle('hidden', !store.owns(profile, badge.dataset.commerceOwned)); });
+    el('commerceRecords').classList.toggle('hidden', !c.receipts.length);
+    el('commerceRecordsList').innerHTML = c.receipts.slice(-5).reverse().map(record => {
+      const label = record.kind === 'preview-topup' ? store.getPack(record.sku)?.name + '测试充值' : store.get(record.sku)?.name;
+      return '<li><span>' + escapeHTML(label || record.sku) + '</span><strong class="' + (record.delta > 0 ? 'credit' : 'debit') + '">' + (record.delta > 0 ? '+' : '') + record.delta + ' ◆</strong></li>';
+    }).join('');
+    el('commerceFeedback').textContent = message + (success ? ' 余额：' + c.diamonds.toLocaleString('en-US') + '钻石。' : '');
+    el('commerceFeedback').classList.toggle('success', success); el('commerceFeedback').classList.toggle('error', !success);
+    bindCommerceControls(); updateHUD();
+    if (body && Number.isFinite(scrollTop)) body.scrollTop = scrollTop;
+    return true;
   }
   function performCommerce(kind, id, revision = storeRevision) {
     if (state !== 'itemStore' || !currentAccount || training || revision !== storeRevision) return false;
     const result = store.transaction(profile, kind, id);
-    if (!result.ok) { renderItemStore(result.message); return false; }
+    if (!result.ok) { refreshCommerceUI(result.message); return false; }
     const previous = { commerce: profile.commerce, seeds: profile.seeds, cores: profile.cores };
     Object.assign(profile, { commerce: result.commerce, seeds: result.seeds, cores: result.cores });
     if (!saveProfile()) {
       Object.assign(profile, previous);
-      renderItemStore('存档写入失败：本次钻石、商品与材料变动已撤销，请允许浏览器存储后重试。'); return false;
+      refreshCommerceUI('存档写入失败：本次钻石、商品与材料变动已撤销，请允许浏览器存储后重试。'); return false;
     }
     // Profile-only transaction: current HP, XP, skills, bosses and waves never reset.
-    if (kind === 'preview-topup') storeTab = 'shop';
-    renderItemStore(result.message, true); return true;
+    refreshCommerceUI(result.message, true); return true;
   }
   function topUpDiamonds(pack, revision = storeRevision) { return performCommerce('preview-topup', pack, revision); }
   function buyDiamondProduct(product, revision = storeRevision) { return performCommerce('diamond-purchase', product, revision); }
