@@ -4,7 +4,8 @@
  * 所有关卡同时最多 1 位 Boss；小怪尚在时，击败后额外 12 秒喘息，再按资格排程逐位放行。
  * 普通追击开局 20→36，每批 20→32，间隔 10→7 秒；精英首批 16→12 秒。
  * 普通、精英和 Boss 按不同压力曲线分别调校，飞虫始终慢于基础玩家 205 移速。
- * 表中 XP 字段仅是相对权重；每关精确分配 10,000 XP，完成 30 次关卡构筑选择。
+ * 表中 XP 字段仅是相对权重；从 10,000 XP 基准扣除轮盘替代部分，前两关普通经验再乘 55%。
+ * 升级成本独立递增，每关经验升级次数由实际普通经验预算计算，不固定为 30 次。
  * 经验加成提前发放固定储备，不增关卡总量；动画、暂停与升级冻结战斗排程。
  */
 (() => {
@@ -272,6 +273,26 @@
     });
   }
   for (const stage of stages) if (chapterEquipment[stage.id]) stage.firstClearGear = chapterEquipment[stage.id];
+  // Reinforcements lock their strength on their first activation. Active
+  // enemies never refill HP, and combat/menu time cannot change these rates.
+  function pressureMultipliers(stage, seconds, kind = 'normal') {
+    const beginner = !!stage.beginner;
+    const elapsed = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+    const minutes = Math.max(0, elapsed - (beginner ? 20 : 30)) / 60;
+    const profiles = beginner ? {
+      normal: { hpRate: .20, hpCap: 1.80, damageRate: .03, damageCap: 1.12 },
+      elite: { hpRate: .15, hpCap: 1.55, damageRate: .025, damageCap: 1.10 },
+      boss: { hpRate: .10, hpCap: 1.30, damageRate: .02, damageCap: 1.08 }
+    } : {
+      normal: { hpRate: .30, hpCap: 2.50, damageRate: .06, damageCap: 1.35 },
+      elite: { hpRate: .24, hpCap: 2.20, damageRate: .05, damageCap: 1.30 },
+      boss: { hpRate: .16, hpCap: 1.80, damageRate: .035, damageCap: 1.20 }
+    };
+    const p = profiles[kind] || profiles.normal;
+    return Object.freeze({ hp: Math.min(p.hpCap, 1 + minutes * p.hpRate),
+      damage: Math.min(p.damageCap, 1 + minutes * p.damageRate) });
+  }
+  window.ORCHARD_PRESSURE = Object.freeze({ multipliers: pressureMultipliers });
   window.ORCHARD_STAGES = Object.freeze(stages.map(stage => {
     const normalCount = stage.normalCount ?? 398;
     const eliteCount = stage.eliteCount ?? (4 + stage.id * 2);

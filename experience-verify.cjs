@@ -27,23 +27,18 @@ for (const stage of stages) {
     assert(rewards.slice(0,2).reduce((a,b)=>a+b,0) < xp.need(1));
   }
 }
-// Execute the actual roulette handler with deterministic UI and build mocks.
-const game = fs.readFileSync('game.js','utf8');
-const handler = game.slice(game.indexOf('  function openRoulette() {'),game.indexOf('  function upgrade() {'));
+// Exercise the shipped UI handler, including its labeled wheel and animation lock.
+const {createGame, quietField} = require('./verify.cjs');
 for (const count of [1,3]) {
-  const elements = { spinReward: {}, rewardWheel: {style:{}}, wheelResults: {} };
-  let applied = 0, completed = 0;
-  const context = { rouletteQueue: [{count,boss:count===3}], state:'playing', keys:new Set(), pointer:null,
-    player: {xp:0,need:180,maxHp:100,build:{levels:{}}},
-    el:id=>elements[id], showPanel:()=>{}, updateHUD:()=>{}, escapeHTML:s=>s,
-    overlay:{classList:{add:()=>{}}}, rarities:[{name:'普通',mult:1}],
-    builds:{pool:()=>[{id:'test',name:'词条'}],choose:(p,id)=>{applied++;p.build.levels[id]=applied;return {applied:true,newSuper:[]};}},
-    healPlayer:()=>{}, queueNotice:()=>{}, upgrade:()=>{throw Error('No XP upgrades');},
-    checkStageCompletion:()=>{completed++;}
-  };
-  vm.createContext(context); vm.runInContext(handler+';openRoulette();',context);
-  assert.equal(context.state,'roulette'); elements.spinReward.onclick(); assert.equal(applied,count);
-  assert.equal(context.player.xp,0); assert.equal(context.player.level,undefined);
-  elements.spinReward.onclick(); assert.equal(context.state,'playing'); assert.equal(completed,1);
+  const game=createGame(),{t,element}=game;t.start();
+  const victim=t.enemies.find(e=>count===3?e.boss:e.elite);quietField(t);
+  victim.hp=0;t.enemies.push(victim);t.update(0);assert.equal(t.state,'roulette');
+  const before=t.player.build.attackChoices+t.player.build.attributeChoices;
+  assert(element('overlay').innerHTML.includes('wheel-name'));
+  element('spinReward').onclick();
+  assert.equal(t.player.build.attackChoices+t.player.build.attributeChoices,before+count);
+  assert.equal(t.player.xp,0);assert.equal(t.player.level,1);
+  element('spinReward').onclick();assert.equal(t.state,'roulette');
+  t.rouletteTick(2);element('spinReward').onclick();assert.equal(t.state,'playing');
 }
-console.log('PASS: 100关经验账本、前两关节奏、精英单抽及Boss三连抽');
+console.log('PASS: 100关固定经验账本、递增升级曲线及精英/Boss真实轮盘奖励');

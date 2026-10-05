@@ -32,7 +32,7 @@ gameSource = gameSource.replace(boot,
   get currentAccount(){return currentAccount},get currentSaveKey(){return currentSaveKey},get loginBusy(){return loginBusy},
   get previewStage(){return previewStage},get helpTab(){return helpTab},get tutorialStep(){return tutorialStep},get helpReturnState(){return helpReturnState},
   showOrchard,upgradeOrchard,upgradeSprite,orchardCost,spriteCost,completeRescue,readyBoss,announceBossArrival,
-  startEndless,spawnEndlessWave,bankEndlessRewards,finishEndless,
+  startEndless,spawnEndlessWave,bankEndlessRewards,finishEndless,rouletteTick,pressure,applyTimeGrowth,
   dropExperience,XP_NODE_CAP,get W(){return W},get H(){return H},WORLD_W,WORLD_H,seedDamage,experienceNeed,upgradeBase,experience,checkStageCompletion,
   get stageXP(){return stageXP},
   get nextBossAllowedAt(){return nextBossAllowedAt},
@@ -214,7 +214,7 @@ function enterEndless(t) {
   assert(t.startEndless());drainUpgradeChoices(t);assert.equal(t.state,'playing');assert.equal(t.runMode,'endless');
 }
 function drainUpgradeChoices(t) {
-  for(let safety=0;['upgrade','roulette'].includes(t.state)&&safety<500;safety++){if(t.state==='roulette'){t.rewardElement('spinReward').onclick();t.rewardElement('spinReward').onclick();}else t.choose(0);}
+  for(let safety=0;['upgrade','roulette'].includes(t.state)&&safety<500;safety++){if(t.state==='roulette'){t.rewardElement('spinReward').onclick();t.rouletteTick(2);t.rewardElement('spinReward').onclick();}else t.choose(0);}
   assert.notEqual(t.state,'upgrade','Every accumulated experience reward must remain resolvable');
 }
 function freezeBuildAttacks(t) {
@@ -436,7 +436,7 @@ test('Pursuing enemies chase and contact damage has invulnerability',({t})=>{
   const hp=t.player.hp;t.update(.01);assert.equal(t.player.hp,hp-15);t.update(.01);assert.equal(t.player.hp,hp-15);
 });
 test('Kills drop XP and collecting it triggers three distinct random choices',({t})=>{
-  quietField(t);t.enemies.push(enemy(t.player.x+200,t.player.y,{hp:0}));
+  t.elapsed=12;quietField(t);t.enemies.push(enemy(t.player.x+200,t.player.y,{hp:0}));
   t.enemies.push(enemy(t.player.x+300,t.player.y,{hp:0,type:1,xp:3}));t.update(.01);
   assert.equal(t.kills,2);assert.equal(t.enemies.length,1);assert.equal(t.gems.length,2);
   assert.equal(t.gems.reduce((sum,g)=>sum+g.value,0),5);
@@ -523,7 +523,7 @@ test('Four slots per category exclude new types while preserving levels of selec
   assert(!t.builds.choose(t.player,'bees').applied);assert(!t.builds.choose(t.player,'xp').applied);assert.equal(t.player.build.attackSlots.length,4);assert.equal(t.player.build.attributeSlots.length,4);
 });
 test('Fully developed builds convert later XP into 25 percent healing without another build choice',({t,element})=>{
-  quietField(t);for(const id of ['damage','rate','shots','chain','speed','hp','pickup','range'])for(let i=0;i<5;i++)assert(t.builds.choose(t.player,id).applied);
+  t.elapsed=12;quietField(t);for(const id of ['damage','rate','shots','chain','speed','hp','pickup','range'])for(let i=0;i<5;i++)assert(t.builds.choose(t.player,id).applied);
   assert.equal(t.builds.pool(t.player).length,0);assert.equal(t.player.build.attackChoices,20);assert.equal(t.player.build.attributeChoices,20);
   t.player.hp=1;const maxHp=t.player.maxHp,level=t.player.level,buildBefore=JSON.stringify(t.player.build),need=t.player.need;t.player.xp=need;t.update(.01);
   assert.equal(t.state,'playing');assert.equal(t.player.level,level+1);assert.equal(t.player.xp,0);assert.equal(t.player.hp,Math.min(maxHp,1+maxHp*.25));assert.equal(JSON.stringify(t.player.build),buildBefore);
@@ -545,10 +545,10 @@ test('Upgrade descriptions state the rarity gain and selected cards match their 
   t.upgrade();for(const u of t.choices)assert.equal(u.desc,u.describe(u.rarity.mult,t.player));
 });
 test('Level costs increase smoothly and chapter XP matches ordinary rewards',({t})=>{
-  assert.equal(t.experienceNeed(1),180);assert.equal(t.experienceNeed(2),184);assert.equal(t.experienceNeed(3),189);
-  assert.equal(t.experienceNeed(10),243);assert.equal(t.experienceNeed(20),377);
-  assert.equal(t.experienceNeed(30),577);assert.equal(t.experienceNeed(31),601);
-  assert.equal(t.experienceNeed(40),844);assert.equal(t.experienceNeed(41),850);assert.equal(t.experienceNeed(42),885);
+  assert.equal(t.experienceNeed(1),140);assert.equal(t.experienceNeed(2),197);assert.equal(t.experienceNeed(3),262);
+  assert.equal(t.experienceNeed(10),941);assert.equal(t.experienceNeed(20),2591);
+  assert.equal(t.experienceNeed(30),5041);assert.equal(t.experienceNeed(31),5330);
+  assert.equal(t.experienceNeed(40),8291);assert.equal(t.experienceNeed(41),8660);assert.equal(t.experienceNeed(42),9037);
   for(let level=2;level<=100;level++)assert(t.experienceNeed(level)>t.experienceNeed(level-1));
   for(const s of t.stages){
     assert.equal(s.xpRewards.length,s.enemyCount);let xp=s.xpRewards.reduce((sum,value)=>sum+value,0),level=1;
@@ -561,27 +561,29 @@ test('Actual beginner kills and pickups slow opening growth within the chapter b
   const victims=t.enemies.filter(e=>!e.boss&&!e.elite).slice(0,20),total=victims.reduce((sum,e)=>sum+e.xp,0);assert.equal(t.player.xpMult,1);
   quietField(t);let selected=0,firstChoice=0;
   for(let i=0;i<victims.length;i++){
-    const victim=victims[i];victim.hp=0;victim.x=t.player.x;victim.y=t.player.y;t.enemies.push(victim);t.update(.001);
+    const victim=victims[i];victim.hp=0;victim.x=t.player.x;victim.y=t.player.y;t.enemies.push(victim);t.update(1);
     const collected=t.stageXP.collected,issued=t.stageXP.issued;
     if(t.state==='upgrade'&&!firstChoice)firstChoice=i+1;
     while(t.state==='upgrade'){const index=t.choices.findIndex(choice=>choice.id!=='xp');assert(index>=0);t.choose(index);selected++;}
     t.update(.001);assert.equal(t.stageXP.collected,collected);assert.equal(t.stageXP.issued,issued);assert.equal(t.gems.length,0);
   }
-  assert(firstChoice>=4);assert.equal(t.kills,20);assert.equal(t.stageXP.collected,total);assert(selected>=1);assert.equal(t.player.level,1+selected);assert.equal(t.state,'playing');
+  assert(firstChoice>=3);assert.equal(t.kills,20);assert.equal(t.stageXP.collected,total);assert(selected>=1);assert.equal(t.player.level,1+selected);assert.equal(t.state,'playing');
   assert.equal(element('level').textContent,'LV. '+t.player.level+' / 31');assert(t.stageXP.issued<=10000);
 });
 
-test('Stacked experience bonuses in beginner stages release early upgrades within the fixed ledger',({t})=>{
+test('Stacked experience bonuses retain XP without interrupting the opening battle',({t})=>{
   const victim=t.enemies.find(e=>!e.boss&&!e.elite&&e.type===1);quietField(t);t.player.xpMult=1.06*1.10*1.15*1.5+.08;
   victim.hp=0;victim.x=t.player.x;victim.y=t.player.y;t.enemies.push(victim);t.update(.001);
-  const award=Math.floor(victim.xp*t.player.xpMult);assert.equal(t.player.xp,award);assert.equal(t.state,'upgrade');
-  drainUpgradeChoices(t);assert(t.player.level>1);assert.equal(t.stageXP.collected,award);assert(t.stageXP.issued<=10000);
+  const award=Math.floor(victim.xp*t.player.xpMult);assert.equal(t.player.xp,award);assert.equal(t.state,'playing');
+  t.elapsed=12;t.update(0);assert.equal(t.state,'upgrade');drainUpgradeChoices(t);assert(t.player.level>1);assert.equal(t.stageXP.collected,award);assert(t.stageXP.issued<=10000);
 });
 
-test('Surplus XP offers a fresh choice for each earned level',({t})=>{
-  quietField(t);t.player.xp=t.experienceNeed(1)+t.experienceNeed(2)+t.experienceNeed(3);t.update(.01);assert.equal(t.state,'upgrade');
-  t.choose(0);assert.equal(t.player.level,2);assert.equal(t.state,'upgrade');assert.equal(t.choices.length,3);
-  t.choose(1);assert.equal(t.player.level,3);assert.equal(t.state,'upgrade');
+test('Surplus XP retains each earned level with battle between choices',({t})=>{
+  t.elapsed=12;quietField(t);t.player.xp=t.experienceNeed(1)+t.experienceNeed(2)+t.experienceNeed(3);t.update(.01);assert.equal(t.state,'upgrade');
+  t.choose(0);assert.equal(t.player.level,2);assert.equal(t.state,'playing');
+  t.elapsed+=t.experience.interval(t.player.level);t.update(0);assert.equal(t.state,'upgrade');assert.equal(t.choices.length,3);
+  t.choose(1);assert.equal(t.player.level,3);assert.equal(t.state,'playing');
+  t.elapsed+=6;t.update(0);assert.equal(t.state,'upgrade');
   t.choose(2);assert.equal(t.player.level,4);assert.equal(t.state,'playing');assert(t.player.xp<t.player.need);
 });
 test('Pause and upgrade dialogs freeze gameplay frames',({t})=>{
@@ -1890,6 +1892,7 @@ test('Range, projectile speed, stationary strength and XP attraction upgrades ch
   assert(Math.abs(gem.x-(t.player.x+100-320*1.15*.1))<1e-8);
 });
 test('A completed super and all its ranks survive endless entry while a fresh challenge resets every build slot',({t})=>{
+  prepareStage(t,3); // This chapter funds ten real XP choices on the slower curve.
   for(let n=0;n<5;n++)pickBuild(t,'chain');for(let n=0;n<5;n++)pickBuild(t,'range');
   // The ten fixture-supplied choices consume chapter XP instead of granting ten free ranks above the real budget.
   const spent=t.experience.budget(10);assert.equal(t.stageXP.collect(t.stageXP.grant(spent)),spent);
@@ -1928,7 +1931,7 @@ test('Stage XP bonuses release more of the same reserve early without fractional
   assert(trials[1]>trials[0]);
 },{start:false});
 test('Endless combat XP bypasses the settled chapter budget and funds a real sixth rank through the upgrade panel',({t,element})=>{
-  clearStage(t);const source=t.player.build.attackSlots[0];while(t.player.build.levels[source]<5)assert(t.builds.choose(t.player,source).applied);assert(t.startEndless());drainUpgradeChoices(t);
+  clearStage(t);if(!t.player.build.attackSlots.length)assert(t.builds.choose(t.player,'chain').applied);const source=t.player.build.attackSlots[0];while(t.player.build.levels[source]<5)assert(t.builds.choose(t.player,source).applied);assert(t.startEndless());drainUpgradeChoices(t);
   assert.equal(t.player.build.mode,'endless');const priorLevel=t.player.level,priorRank=t.player.build.levels[source];const previousPower=t.player.build.powers[source],ledger=JSON.stringify(t.stageXP.snapshot());
   t.shotClock=Infinity;t.enemies=[enemy(t.player.x,t.player.y,{hp:0,xp:t.player.need})];t.update(.001);
   assert.equal(t.state,'upgrade');assert(element('overlay').innerHTML.includes('无尽突破'));assert(!element('overlay').innerHTML.includes('每种最高 5 级'));

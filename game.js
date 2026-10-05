@@ -5,7 +5,7 @@
   const WORLD_W = Math.round(960 * Math.sqrt(50)), WORLD_H = Math.round(680 * Math.sqrt(50));
   let W = 960, H = 680;
   const stages = window.ORCHARD_STAGES;
-  const experience = window.ORCHARD_EXPERIENCE;
+  const experience = window.ORCHARD_EXPERIENCE, pressure = window.ORCHARD_PRESSURE;
   const rescueDefs = window.ORCHARD_RESCUES, bossDefs = window.ORCHARD_BOSSES;
   const gardenDefs = window.ORCHARD_GARDENS;
   const relicDefs = window.ORCHARD_RELICS;
@@ -65,8 +65,10 @@
   const ENDLESS_INTERVAL = 8, ENDLESS_ENEMY_CAP = 240;
   const endlessTuning = Object.freeze({ openingBonus: 16, perWave: 5, batchCap: 90, hp: .12, hpCurve: .002, damage: .045, speed: .012, speedCap: 1.3, xpEvery: 4 });
   const XP_NODE_CAP = 400;
+  // Battle time only: menus and pauses must not consume the breathing window.
+  let nextStageUpgradeAt = experience.interval(1);
   const runStates = ['playing', 'paused', 'upgrade', 'roulette', 'rescue'];
-  let rouletteQueue = [], pendingEndlessXP = 0;
+  let rouletteQueue = [], pendingEndlessXP = 0, rouletteAnimation = null;
   const gearDefs = {
     weapon_seed: { slot: 'weapon', name: '橙籽弹弓', icon: '🌱', desc: '22 伤害 · 每秒 3 轮，均衡起步', damage: 22, rate: 3, shots: 1, color: '#fff1b4' },
     weapon_pea: { slot: 'weapon', name: '豌豆速射器', icon: '🫛', desc: '16 伤害 · 每秒 4.3 轮，快速清理飞虫', damage: 16, rate: 4.3, shots: 1, color: '#bbeb88' },
@@ -255,7 +257,7 @@
   function show(html, menu = false) {
     window.ORCHARD_FRONTIER?.close();
     window.ORCHARD_LEADERBOARD?.close();
-    overlay.classList.remove('upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay', 'armory-overlay', 'pause-overlay');
+    overlay.classList.remove('upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay', 'armory-overlay', 'pause-overlay', 'roulette-overlay');
     arena.classList.remove('is-lobby');
     for (const attribute of ['role', 'aria-modal', 'aria-label']) overlay.removeAttribute?.(attribute);
     overlay.innerHTML = '<div class="dialog' + (menu ? ' menu-dialog' : '') + '">' + html + '</div>';
@@ -833,7 +835,7 @@
     el('backLobby').onclick = startScreen; el('start').onclick = start; return true;
   }
   // Run growth uses the starting build as a baseline; repeated picks never compound.
-  function experienceNeed(level) { return experience.need(level); }
+  function experienceNeed(level) { return runMode === 'training' && level === 1 ? 180 : experience.need(level); }
   function upgradeBase(p) {
     if (!p.baseStats) p.baseStats = Object.freeze({ damage: p.damage, rate: p.rate, speed: p.speed, pickup: p.pickup, shots: p.shots });
     return p.baseStats;
@@ -873,7 +875,7 @@
     activeStage = stage(); setMap(activeStage.id); player = freshPlayer(); enemies = []; bullets = []; gems = []; particles = [];
     resetRelics(challengeStarted); challengeStarted = true;
     heroEffects = [];
-    elapsed = 0; kills = 0; shotClock = 0; still = 0; shake = 0; choices = []; runRewarded = false;
+    elapsed = 0; nextStageUpgradeAt = experience.interval(1); kills = 0; shotClock = 0; still = 0; shake = 0; choices = []; runRewarded = false;
     cinematicTime = 0; bossIndex = 0; bossKills = 0; nonBossKills = 0; nextBossAllowedAt = 0; bossArrivalUntil = 0; victoryRewardHTML = '';
     runMode = 'stage'; stageVictoryReady = false; endlessEntered = false; endlessWave = 0;
     frontierRewards?.begin(activeStage.id);
@@ -1177,7 +1179,7 @@
     endlessWave = 0; endlessCreditedSeeds = 0; endlessCreditedCores = 0; waveClock = ENDLESS_INTERVAL;
     keys.clear(); pointer = null; overlay.classList.add('hidden');
     spawnEndlessWave(); player.xp += pendingEndlessXP; pendingEndlessXP = 0; updateHUD();
-    if (rouletteQueue.length) openRoulette(); else if (player.xp >= player.need) upgrade();
+    if (rouletteQueue.length) openRoulette(); else if (player.xp >= player.need) offerUpgrade();
     return true;
   }
   function spawnEndlessWave() {
@@ -1259,8 +1261,10 @@
     boss.introduced = true; bossIndex++;
     if (activeStage.beginner) {
       boss.hp = boss.maxHp = beginnerBossHealth();
+      boss.baseCombat.hp = boss.hp;
       boss.arrivalGuardUntil = elapsed + activeStage.beginner.arrivalGuard;
     }
+    applyTimeGrowth(boss);
     const angle = Math.random() * Math.PI * 2;
     boss.x = Math.max(boss.r + 25, Math.min(WORLD_W - boss.r - 25, player.x + Math.cos(angle) * 235));
     boss.y = Math.max(boss.r + 25, Math.min(WORLD_H - boss.r - 25, player.y + Math.sin(angle) * 235));
@@ -1292,37 +1296,89 @@
     }
     beginRescue(); return true;
   }
+  function wheelEntries() {
+    const pool = [...builds.pool(player)];
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    return Array.from({ length: 6 }, (_, i) => ({ def: pool.length ? pool[i % pool.length] : null,
+      rarity: pool.length ? rarities[i % rarities.length] : rarities[0] }));
+  }
+  function wheelSVG(entries) {
+    const radius = 147, center = 160, step = 360 / entries.length;
+    const point = degrees => { const radians = (degrees - 90) * Math.PI / 180; return [center + radius * Math.cos(radians), center + radius * Math.sin(radians)]; };
+    return entries.map((entry, i) => {
+      const angle = i * step, [x1, y1] = point(angle - step / 2), [x2, y2] = point(angle + step / 2);
+      const color = entry.rarity.mult === 2 ? '#604573' : entry.rarity.mult === 1.5 ? '#255864' : '#36543b';
+      const name = entry.def?.name || '生命补给', icon = entry.def?.icon || '♥';
+      return '<g class="wheel-sector" data-reward-id="' + (entry.def?.id || 'healing') + '"><title>' + escapeHTML(name + ' · ' + (entry.def ? entry.rarity.name : '恢复25%生命')) + '</title>' +
+        '<path d="M160 160 L' + x1 + ' ' + y1 + ' A147 147 0 0 1 ' + x2 + ' ' + y2 + ' Z" fill="' + color + '" stroke="#e8cc8c" stroke-width="1.3"/>' +
+        '<g transform="rotate(' + angle + ' 160 160)"><text x="160" y="46" class="wheel-icon">' + escapeHTML(icon) + '</text>' +
+        '<text x="160" y="68" class="wheel-name">' + escapeHTML(name) + '</text><text x="160" y="85" class="wheel-rarity" fill="' + entry.rarity.color + '">' + escapeHTML(entry.def ? entry.rarity.name : '生命 +25%') + '</text></g></g>';
+    }).join('');
+  }
+  function rouletteTick(dt) {
+    if (!rouletteAnimation || state !== 'roulette') return;
+    rouletteAnimation.remaining -= Math.max(0, dt);
+    if (rouletteAnimation.remaining > 0) return;
+    el('wheelResults').classList.add('is-revealed'); el('wheelResults').setAttribute?.('aria-busy', 'false');
+    el('wheelStatus').textContent = '好运已入袋 · 奖励已加入本局构筑';
+    el('spinReward').disabled = false; el('spinReward').textContent = '收下好运 · 继续守护';
+    rouletteAnimation = null; el('spinReward').focus?.(); sound(760, .16);
+  }
   function openRoulette() {
     if (!rouletteQueue.length || state === 'roulette') return;
     const reward = rouletteQueue.shift();
-    state = 'roulette'; keys.clear(); pointer = null;
-    showPanel(reward.boss ? '虫王幸运轮盘' : '精英幸运轮盘', '随机肉鸽奖励 / ' + reward.count + ' 个',
-      '<div style="text-align:center"><div id="rewardWheel" style="margin:20px auto;width:180px;height:180px;border-radius:50%;border:8px solid #f6c26b;background:conic-gradient(#8bd6df 0deg 60deg,#ddb0ef 60deg 120deg,#a9c38d 120deg 180deg,#8bd6df 180deg 240deg,#ddb0ef 240deg 300deg,#a9c38d 300deg);display:grid;place-items:center;transition:transform .7s ease-out"><strong>✦ 幸运轮盘 ✦</strong></div><div id="wheelResults">随机获得 ' + reward.count + ' 个词条，自动加入当前构筑</div></div>',
-      '<button class="primary" id="spinReward">转动轮盘</button>', '战斗已暂停 · 不消耗经验');
+    rouletteAnimation = null; state = 'roulette'; keys.clear(); pointer = null;
+    let entries = wheelEntries();
+    showPanel(reward.boss ? '虫王的丰收礼' : '精英的幸运礼', '幸运轮盘 / ' + (reward.boss ? 'Boss 三连抽' : '精英单抽') + ' / ' + reward.count + ' 个词条',
+      '<div class="roulette-layout"><section class="roulette-stage" aria-label="幸运奖励轮盘"><div class="roulette-eyebrow">ORCHARD LUCKY DRAW</div>' +
+      '<div class="wheel-cabinet"><div class="wheel-pointer" aria-hidden="true"></div><svg id="rewardWheel" class="reward-wheel" viewBox="0 0 320 320" role="img" aria-label="六个扇区显示可抽中的词条与品质">' + wheelSVG(entries) + '</svg>' +
+      '<div class="wheel-hub" aria-hidden="true"><span>✦</span><strong>果园好运</strong><small>LUCKY</small></div></div>' +
+      '<div class="wheel-legend"><span class="common">● 普通</span><span class="rare">● 稀有</span><span class="epic">● 史诗</span></div><p class="wheel-status" id="wheelStatus">' + (reward.boss ? '击败虫王，赢取 3 份构筑奖励' : '击败精英，赢取 1 份构筑奖励') + '</p></section>' +
+      '<section class="roulette-receipt"><div class="receipt-heading"><span>本次收获</span><b>' + (reward.boss ? 'THREE REWARDS' : 'ONE REWARD') + '</b></div><div id="wheelResults" class="wheel-results" aria-live="polite">' +
+      '<div class="receipt-empty"><span>✧</span><strong>好运，等你转动</strong><p>转盘上的词条均可抽中<br>奖励自动加入当前构筑</p></div></div><p class="receipt-note">不消耗经验 · 不占用升级次数<br>构筑已满时，自动转为生命补给</p></section></div>',
+      '<button class="primary roulette-spin" id="spinReward">✦ ' + (reward.boss ? '开启丰收三连抽' : '转动幸运轮盘') + '</button>', '战斗已暂停 · 指针落点对应实际抽中奖励');
+    overlay.classList.add('roulette-overlay'); overlay.setAttribute?.('role', 'dialog'); overlay.setAttribute?.('aria-modal', 'true');
+    overlay.setAttribute?.('aria-label', reward.boss ? '虫王三连抽轮盘' : '精英幸运轮盘');
     el('spinReward').onclick = () => {
       if (state !== 'roulette' || el('spinReward').disabled) return;
-      el('spinReward').disabled = true;
-      el('rewardWheel').style.transform = 'rotate(' + (1080 + Math.random() * 360) + 'deg)';
-      const results = [];
+      el('spinReward').disabled = true; el('spinReward').textContent = '好运转动中…';
+      const results = []; let selected = 0;
       for (let index = 0; index < reward.count; index++) {
-        const pool = builds.pool(player);
-        if (!pool.length) { healPlayer(player.maxHp * .25); results.push('构筑已满 · 恢复25%生命'); continue; }
-        const def = pool[Math.floor(Math.random() * pool.length)], rarity = rarities[Math.floor(Math.random() * rarities.length)];
+        // Refresh after each pick: a full skill or newly unlocked super changes the next pool.
+        if (index) entries = wheelEntries();
+        selected = Math.floor(Math.random() * entries.length);
+        const { def, rarity } = entries[selected];
+        if (!def) { healPlayer(player.maxHp * .25); results.push({ name: '生命补给', icon: '♥', rarity: rarities[0], description: '构筑已满 · 恢复最大生命的25%' }); continue; }
+        const description = def.describe?.(rarity.mult, player) || def.description || '强化当前构筑';
         const result = builds.choose(player, def.id, rarity.mult);
-        if (result.applied) results.push(rarity.name + ' · ' + def.name + ' Lv.' + player.build.levels[def.id]);
+        if (result.applied) results.push({ name: def.name, icon: def.icon, rarity, level: player.build.levels[def.id], description });
         for (const recipe of result.newSuper) queueNotice(recipe.name, recipe.description, recipe.icon, recipe.color, 'super');
       }
-      el('wheelResults').innerHTML = results.map(text => '<p>' + escapeHTML(text) + '</p>').join('');
-      el('spinReward').textContent = '领取全部奖励'; el('spinReward').disabled = false;
+      const wheel = el('rewardWheel'); wheel.innerHTML = wheelSVG(entries);
+      wheel.style.transition = 'none'; wheel.style.transform = 'rotate(0deg)';
+      wheel.getBoundingClientRect(); // Commit the starting layout before CSS interpolation.
+      wheel.style.transition = 'transform 1.75s cubic-bezier(.12,.7,.12,1)';
+      // Sector centers start at twelve o'clock. Pointer and real reward always agree.
+      wheel.style.transform = 'rotate(' + (1440 + (360 - selected * 60) % 360) + 'deg)';
+      el('wheelResults').innerHTML = results.map((item, i) => '<article class="wheel-reward" style="--reward-color:' + item.rarity.color + '"><span class="reward-number">0' + (i + 1) + '</span>' +
+        '<span class="reward-icon" aria-hidden="true">' + escapeHTML(item.icon || '✦') + '</span><div><small>' + escapeHTML(item.rarity.name) + (item.level ? ' · Lv.' + item.level : '') + '</small><strong>' + escapeHTML(item.name) + '</strong><p>' + escapeHTML(item.description) + '</p></div></article>').join('');
+      el('wheelResults').setAttribute?.('aria-busy', 'true'); el('wheelResults').classList.remove('is-revealed'); el('wheelResults').classList.add('has-rewards');
+      el('wheelStatus').textContent = reward.boss ? '三份好运正在揭晓…' : '指针即将揭晓你的好运…';
+      rouletteAnimation = { remaining: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 1.85 };
       el('spinReward').onclick = () => {
-        if (state !== 'roulette') return;
-        state = 'playing'; overlay.classList.add('hidden'); updateHUD();
+        if (state !== 'roulette' || el('spinReward').disabled) return;
+        rouletteAnimation = null; state = 'playing'; overlay.classList.add('hidden'); updateHUD();
         if (rouletteQueue.length) openRoulette();
-        else if (player.xp >= player.need) upgrade(); else checkStageCompletion();
+        else if (player.xp >= player.need) offerUpgrade(); else checkStageCompletion();
       };
-      updateHUD();
+      rouletteTick(0); updateHUD();
     };
-    updateHUD();
+    el('spinReward').focus?.(); updateHUD();
+  }
+  function offerUpgrade() {
+    if (player.xp < player.need) return false;
+    if (runMode === 'stage' && elapsed < nextStageUpgradeAt) return false;
+    upgrade(); return true;
   }
   function upgrade() {
     choices = randomChoices();
@@ -1354,7 +1410,7 @@
       const level = b.levels[u.id] || 0, recipe = builds.recipes.find(r => r.id === u.recipe);
       const recommended = target?.possible && [target.attack, target.attribute].includes(u.id);
       return '<button class="card' + (recommended ? ' recommended' : '') + '" data-choice="' + i + '" style="border-color:' + u.rarity.color + '" title="' + escapeHTML(u.desc) + '"><div class="build-category">' + (recommended ? '✦ 推荐 · ' + target.name : u.category === 'attack' ? '攻击' : '属性') + '</div><div class="card-icon"><img src="' + u.image + '" alt="' + u.name + '技能图示" width="72" height="72"></div><strong>' + u.name + '</strong><span>' + escapeHTML(builds.brief(u, u.rarity.mult, player)) + '</span><small style="color:' + u.rarity.color + '">' + u.rarity.name + ' · Lv.' + level + ' → ' + (level + 1) + '<br>按 ' + (i + 1) + ' 选择</small>' + (recipe ? '<div class="recipe-progress">' + (b.superSkills.includes(recipe.id) ? '✓ ' : '合成 → ') + recipe.name + '</div>' : '') + '</button>';
-    }).join('') + '</div>', '', (training ? '180 经验完成第一次成长 · 本次词条仅在练习中生效' : endless ? '无尽随机成长 · 等级持续提升' : '本关总经验 ' + stageXP.budget.toLocaleString('en-US') + ' · ' + activeStage.experience.choices + ' 次经验升级 · 精英抽1个 / Boss抽3个' + (stageXP.settled ? ' · 完成成长后救援' : '')) + ' · 战斗已暂停 · 按 1 / 2 / 3 选择');
+    }).join('') + '</div>', '', (training ? '180 经验完成第一次成长 · 本次词条仅在练习中生效' : endless ? '无尽随机成长 · 等级持续提升' : '本关总经验 ' + stageXP.budget.toLocaleString('en-US') + ' · ' + activeStage.experience.choices + ' 次经验升级 · 成长间隔随等级增加 · 精英抽1个 / Boss抽3个' + (stageXP.settled ? ' · 完成成长后救援' : '')) + ' · 战斗已暂停 · 按 1 / 2 / 3 选择');
     overlay.classList.add('upgrade-overlay');
     overlay.querySelectorAll('[data-choice]').forEach(b => b.onclick = () => choose(Number(b.dataset.choice)));
     overlay.querySelectorAll('[data-recipe-goal]').forEach(button => button.onclick = () => {
@@ -1369,9 +1425,10 @@
     const u = choices[i], result = builds.choose(player, u.id, u.rarity.mult); if (!result.applied) return;
     for (const recipe of result.newSuper) queueNotice(recipe.name, recipe.description, recipe.icon, recipe.color, 'super');
     player.xp -= player.need; player.level++; player.need = experienceNeed(player.level);
+    if (runMode === 'stage') nextStageUpgradeAt = elapsed + experience.interval(player.level);
     state = 'playing'; still = 0; overlay.classList.add('hidden'); updateHUD();
     if (training) { trainingTick(); updateHUD(); return; }
-    if (player.xp >= player.need) upgrade(); else checkStageCompletion();
+    if (player.xp >= player.need) offerUpgrade(); else checkStageCompletion();
   }
   el('pause').onclick = () => state === 'help' ? closeGameHelp() : pause();
   el('loginForm').onsubmit = event => { event.preventDefault(); void submitLogin(); };
@@ -1440,13 +1497,23 @@
     if (nearest && (distance < 26 ** 2 || gems.length >= XP_NODE_CAP)) nearest.value += value;
     else gems.push({ x, y, value });
   }
+  function applyTimeGrowth(enemy) {
+    if (runMode !== 'stage' || enemy.timeScaleApplied || !enemy.baseCombat || enemy.hp <= 0) return;
+    enemy.timeScaleApplied = true;
+    // Never grant a wounded monster extra HP. This also makes repeated updates idempotent.
+    if (enemy.hp < (enemy.maxHp ?? enemy.baseCombat.hp)) return;
+    const factor = pressure.multipliers(activeStage, elapsed, enemy.boss ? 'boss' : enemy.elite ? 'elite' : 'normal');
+    enemy.maxHp = enemy.hp = Math.ceil(enemy.baseCombat.hp * factor.hp);
+    enemy.damage = Math.round(enemy.baseCombat.damage * factor.damage * 10) / 10;
+    enemy.strengthAt = elapsed;
+  }
   function spawn() {
     const index = enemies.length, s = activeStage; let x, y;
     if (index >= s.normalCount + s.eliteCount) {
       const bossOrder = index - s.normalCount - s.eliteCount, baseBoss = bossDefs[s.bossIds[bossOrder] - 1];
       const boss = baseBoss && s.beginner ? { ...baseBoss, hp: s.beginner.bossHp, damage: s.beginner.bossDamage, speed: s.beginner.bossSpeed, chargeSpeed: s.beginner.chargeSpeed, chargeInterval: s.beginner.chargeInterval } : baseBoss;
       if (!boss) return;
-      enemies.push({ x: player.x, y: player.y, type: 2, boss: true, r: boss.radius, ...boss, maxHp: boss.hp, xp: s.fast.xp * 8,
+      enemies.push({ x: player.x, y: player.y, type: 2, boss: true, r: boss.radius, ...boss, maxHp: boss.hp, baseCombat: { hp: boss.hp, damage: boss.damage }, xp: s.fast.xp * 8,
         bossOrder, bossArrivalAt: s.bossSchedule[bossOrder], introduced: false,
         pursuitAt: Infinity, aggro: false, phase: 0, flash: 0, chargeClock: Math.min(1.8, boss.chargeInterval), windup: 0, dashTime: 0, dashX: 0, dashY: 0 });
       return;
@@ -1461,7 +1528,7 @@
     const point = world.safePoint(x, y, spawnRadius + 22, obstacles, WORLD_W, WORLD_H); x = point.x; y = point.y;
     if (index >= s.normalCount) {
       const eliteIndex = index - s.normalCount, pursuitAt = s.eliteFirstAt + Math.floor(eliteIndex / s.eliteBatchSize) * s.eliteInterval;
-      enemies.push({ x, y, type: 0, elite: true, r: 25, ...s.elite, maxHp: s.elite.hp,
+      enemies.push({ x, y, type: 0, elite: true, r: 25, ...s.elite, maxHp: s.elite.hp, baseCombat: { hp: s.elite.hp, damage: s.elite.damage },
         pursuitAt, aggro: false, phase: Math.random() * 6, flash: 0 });
       return;
     }
@@ -1469,7 +1536,7 @@
     const type = Math.floor((index + 1) * s.fastCount / s.normalCount) > Math.floor(index * s.fastCount / s.normalCount) ? 1 : 0;
     const stats = type ? s.fast : s.slow;
     const pursuitAt = index < s.initialPursuers ? 0 : (1 + Math.floor((index - s.initialPursuers) / s.batchSize)) * s.pursuitInterval;
-    enemies.push({ x, y, type, elite: false, r: type ? 15 : 19, ...stats, pursuitAt, aggro: pursuitAt === 0, phase: Math.random() * 6, flash: 0 });
+    enemies.push({ x, y, type, elite: false, r: type ? 15 : 19, ...stats, maxHp: stats.hp, baseCombat: { hp: stats.hp, damage: stats.damage }, timeScaleApplied: pursuitAt === 0, pursuitAt, aggro: pursuitAt === 0, phase: Math.random() * 6, flash: 0 });
   }
   function shoot(boost, overclock = 1) {
     let target = null, best = Infinity;
@@ -1538,7 +1605,7 @@
     for (const e of enemies) {
       if (e.hp <= 0) continue;
       const awake = elapsed >= e.pursuitAt;
-      if (awake && !e.aggro) placeAwakeningEnemy(e);
+      if (awake && !e.aggro) { applyTimeGrowth(e); placeAwakeningEnemy(e); }
       e.aggro = awake; e.flash = Math.max(0, e.flash - dt);
     }
     for (const drop of relicDrops) if (!drop.claimed && Math.hypot(drop.x - player.x, drop.y - player.y) <= 56) claimRelic(drop.id);
@@ -1623,12 +1690,12 @@
     if (training) {
       const distance = Math.hypot(player.x - trainingOrigin.x, player.y - trainingOrigin.y);
       trainingTick(dt, distance); updateHUD();
-      if (training && state === 'playing' && player.xp >= player.need) upgrade();
+      if (training && state === 'playing' && player.xp >= player.need) offerUpgrade();
       return;
     }
     updateHUD();
     if (checkStageCompletion()) return;
-    if (player.xp >= player.need) { upgrade(); return; }
+    if (offerUpgrade()) return;
     if (runMode === 'stage') announceBossArrival();
   }
   function updateHUD() {
@@ -1673,6 +1740,9 @@
     el('enemyTypes').textContent = runMode === 'endless' && inRun ? '无尽虫潮 · 连续增援' : '普通 ' + (inRun ? enemies.filter(e => !e.boss && !e.elite).length : s.normalCount) + ' · 精英 ' + (inRun ? enemies.filter(e => e.elite).length : s.eliteCount) + ' · Boss ' + (inRun ? bossKills : 0) + ' / ' + s.bossCount;
     el('level').textContent = 'LV. ' + player.level + (runMode === 'stage' && inRun ? ' / ' + experience.levelCap : '');
     el('xpFill').style.width = Math.min(100, player.xp / player.need * 100) + '%'; el('xpText').textContent = Number(player.xp.toFixed(1)) + ' / ' + player.need;
+    if (runMode === 'stage' && inRun && state !== 'upgrade' && player.xp >= player.need && elapsed < nextStageUpgradeAt) {
+      el('xpText').textContent += ' · 待选 ' + Math.ceil(nextStageUpgradeAt - elapsed) + 's';
+    }
     const boost = still >= combat.standDelay;
     el('stance').textContent = boost && inRun ? '✦ 站定蓄力 · 伤害 +' + Math.round((combat.standDamage - 1 + player.standPower) * 100) + '% / 射速 +35%' : still > 0 && inRun ? '✧ 蓄力中…' : '移动保命 · 停下蓄力';
     el('stance').classList.toggle('active', boost && inRun);
@@ -1925,6 +1995,7 @@
   function frame(now) {
     const dt = Math.min(.04, (now - lastTime) / 1000 || 0); lastTime = now;
     if (state === 'playing') update(dt);
+    else if (state === 'roulette' && !document.hidden) rouletteTick(dt);
     else if (state === 'rescue' && !document.hidden) {
       cinematicTime += dt;
       if (cinematicTime >= 3.8) completeRescue();

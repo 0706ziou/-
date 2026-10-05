@@ -50,16 +50,18 @@ for (const stage of stages.slice(0, 20)) {
   const sourceBoss = bosses[stage.id - 1], opening = !!stage.beginner;
   const boss = opening ? { ...sourceBoss, hp: stage.beginner.bossHp, speed: stage.beginner.bossSpeed,
     damage: stage.beginner.bossDamage, chargeSpeed: stage.beginner.chargeSpeed, chargeInterval: stage.beginner.chargeInterval } : sourceBoss;
-  check(`Chapter ${stage.id}: the fixed roster and exact thirty-choice XP budget remain intact`, () => {
+  check(`Chapter ${stage.id}: the fixed roster and ordinary-only XP budget match the growth curve`, () => {
     assert.equal(stage.normalCount, opening ? 48 + stage.id * 24 : 398);
     assert.equal(stage.eliteCount, opening ? stage.id : 4 + stage.id * 2);
     assert.equal(stage.bossCount, opening ? 1 : stage.id);
     assert.equal(stage.enemyCount, stage.normalCount + stage.eliteCount + stage.bossCount);
     assert.deepEqual(Array.from(stage.bossIds), opening ? [stage.id] : Array.from({ length: stage.id }, (_, i) => i + 1));
     assert.equal(stage.xpRewards.length, stage.enemyCount);
-    assert(stage.xpRewards.every(xp => Number.isInteger(xp) && xp > 0));
-    assert.equal(stage.xpRewards.reduce((sum, xp) => sum + xp, 0), 10000);
-    assert.equal(stage.experience.choices, 30);
+    assert(stage.xpRewards.every(xp => Number.isInteger(xp) && xp >= 0));
+    assert(stage.xpRewards.slice(0,stage.normalCount).every(xp => xp > 0));
+    assert(stage.xpRewards.slice(stage.normalCount).every(xp => xp === 0));
+    assert.equal(stage.xpRewards.reduce((sum, xp) => sum + xp, 0), stage.experience.budget);
+    assert(stage.experience.choices >= 8 && stage.experience.choices <= 14);
     assert.equal(stage.experience.levelCap, 31);
     assert(Object.isFrozen(stage));
   });
@@ -159,9 +161,11 @@ for (const stage of stages.slice(20)) {
     assert(stage.bossIds.every(id => bosses[id - 1]?.stageId === id));
     assert.equal(stage.enemyCount, stage.normalCount + stage.eliteCount + stage.bossCount);
     assert.equal(stage.xpRewards.length, stage.enemyCount);
-    assert(stage.xpRewards.every(xp => Number.isInteger(xp) && xp > 0));
-    assert.equal(stage.xpRewards.reduce((sum, xp) => sum + xp, 0), 10000);
-    assert.equal(stage.experience.choices, 30);assert.equal(stage.experience.levelCap, 31);
+    assert(stage.xpRewards.every(xp => Number.isInteger(xp) && xp >= 0));
+    assert(stage.xpRewards.slice(0,stage.normalCount).every(xp => xp > 0));
+    assert(stage.xpRewards.slice(stage.normalCount).every(xp => xp === 0));
+    assert.equal(stage.xpRewards.reduce((sum, xp) => sum + xp, 0), stage.experience.budget);
+    assert(stage.experience.choices >= 8 && stage.experience.choices <= 14);assert.equal(stage.experience.levelCap, 31);
     assert.equal(stage.bossActiveCap, 1);assert.equal(stage.bossRecovery, 12);
     assert.equal(stage.bossSchedule[0], 60);
     assert.equal(stage.bossSchedule.length, stage.bossCount);
