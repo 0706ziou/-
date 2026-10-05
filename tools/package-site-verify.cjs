@@ -27,7 +27,7 @@ check('Every loaded root file and all dynamic chapter, hero and terrain assets a
 check('Unused originals, authoring previews, tools, backups and account data are excluded', () => {
   for (const name of source.files.keys()) assert(!/^(?:tools\/|github-branch-backups\/|\.git\/)|\.txt$|(?:stage-\d+|orchard-cover|hero-preview)\.png$|^assets\/maps\//.test(name), name);
   assert(!source.files.has('assets/environment-atlas.png'));
-  assert(source.files.get('index.html').toString().includes('src="auth-data.js"'));
+  assert(source.files.get('index.html').toString().match(/src="auth-data\.js(?:\?[^"]*)?"/));
 });
 check('Traversal, absolute paths, hidden files and unknown root scripts cannot enter the release', () => {
   for (const name of ['../.env', '/etc/passwd', 'C:/secret.png', 'assets/../secret.png', '.env', 'assets/.private/secret.png', 'tools/secret.js', 'private.js']) {

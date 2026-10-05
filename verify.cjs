@@ -172,6 +172,7 @@ function createGame(storage = new Map(), options = {}) {
     Object.assign(viewport,{width,height});sandbox.window.devicePixelRatio=density;
     if(via==='resize')listeners.resize?.();else for(const observer of resizeObservers)observer.callback([{target:observer.target}]);
   };
+  sandbox.test.rewardElement=element;
   return {t:sandbox.test,element,listeners,drawCalls,storage,document:sandbox.document,bosses:sandbox.window.ORCHARD_BOSSES,rescues:sandbox.window.ORCHARD_RESCUES,relics:sandbox.window.ORCHARD_RELICS,setViewport,resizeObservers,setRandom:value=>{seededMath.random=()=>value}};
 }
 let count=0;const failures=[];
@@ -196,7 +197,7 @@ function clearStage(t) {
   for (const e of t.enemies) if (!e.boss) e.hp=0;
   t.shotClock=Infinity;t.update(.001);
   for(let i=0;i<t.activeStage.bossCount;i++){
-    while(t.state==='upgrade')t.choose(0);
+    drainUpgradeChoices(t);
     t.elapsed=Math.max(t.elapsed,t.activeStage.bossSchedule[i],t.nextBossAllowedAt);
     if(t.state==='playing')t.update(.001);
     assert.equal(t.state,'playing');assert.equal(t.state,'playing');
@@ -210,10 +211,10 @@ function clearStage(t) {
 }
 function enterEndless(t) {
   clearStage(t);t.gems=[];t.player.xp=0;
-  assert(t.startEndless());assert.equal(t.state,'playing');assert.equal(t.runMode,'endless');
+  assert(t.startEndless());drainUpgradeChoices(t);assert.equal(t.state,'playing');assert.equal(t.runMode,'endless');
 }
 function drainUpgradeChoices(t) {
-  for(let safety=0;t.state==='upgrade'&&safety<100;safety++)t.choose(0);
+  for(let safety=0;['upgrade','roulette'].includes(t.state)&&safety<500;safety++){if(t.state==='roulette'){t.rewardElement('spinReward').onclick();t.rewardElement('spinReward').onclick();}else t.choose(0);}
   assert.notEqual(t.state,'upgrade','Every accumulated experience reward must remain resolvable');
 }
 function freezeBuildAttacks(t) {
@@ -543,7 +544,7 @@ test('Upgrade descriptions state the rarity gain and selected cards match their 
   const damage=t.upgradeDefs.find(u=>u.id==='damage'),hp=t.upgradeDefs.find(u=>u.id==='hp');assert.notEqual(damage.describe(1,t.player),damage.describe(2,t.player));assert.notEqual(hp.describe(1,t.player),hp.describe(2,t.player));
   t.upgrade();for(const u of t.choices)assert.equal(u.desc,u.describe(u.rarity.mult,t.player));
 });
-test('Level costs increase smoothly and every chapter provides exactly thirty upgrade choices',({t})=>{
+test('Level costs increase smoothly and chapter XP matches ordinary rewards',({t})=>{
   assert.equal(t.experienceNeed(1),180);assert.equal(t.experienceNeed(2),184);assert.equal(t.experienceNeed(3),189);
   assert.equal(t.experienceNeed(10),243);assert.equal(t.experienceNeed(20),377);
   assert.equal(t.experienceNeed(30),577);assert.equal(t.experienceNeed(31),601);
@@ -551,12 +552,12 @@ test('Level costs increase smoothly and every chapter provides exactly thirty up
   for(let level=2;level<=100;level++)assert(t.experienceNeed(level)>t.experienceNeed(level-1));
   for(const s of t.stages){
     assert.equal(s.xpRewards.length,s.enemyCount);let xp=s.xpRewards.reduce((sum,value)=>sum+value,0),level=1;
-    assert.equal(xp,10000);assert.equal(xp,t.experience.budget());
+    assert.equal(xp,s.experience.budget);assert(xp<10000);
     while(xp>=t.experienceNeed(level)){xp-=t.experienceNeed(level);level++}
-    assert.equal(level,31);assert.equal(xp,0);
+    assert.equal(level,s.experience.choices+1);assert(xp<t.experienceNeed(level));
   }
 });
-test('Actual beginner kills and pickups offer earlier growth without changing the fixed XP budget',({t,element})=>{
+test('Actual beginner kills and pickups slow opening growth within the chapter budget',({t,element})=>{
   const victims=t.enemies.filter(e=>!e.boss&&!e.elite).slice(0,20),total=victims.reduce((sum,e)=>sum+e.xp,0);assert.equal(t.player.xpMult,1);
   quietField(t);let selected=0,firstChoice=0;
   for(let i=0;i<victims.length;i++){
@@ -566,7 +567,7 @@ test('Actual beginner kills and pickups offer earlier growth without changing th
     while(t.state==='upgrade'){const index=t.choices.findIndex(choice=>choice.id!=='xp');assert(index>=0);t.choose(index);selected++;}
     t.update(.001);assert.equal(t.stageXP.collected,collected);assert.equal(t.stageXP.issued,issued);assert.equal(t.gems.length,0);
   }
-  assert(firstChoice<=3);assert.equal(t.kills,20);assert.equal(t.stageXP.collected,total);assert(selected>2);assert.equal(t.player.level,1+selected);assert.equal(t.state,'playing');
+  assert(firstChoice>=4);assert.equal(t.kills,20);assert.equal(t.stageXP.collected,total);assert(selected>=1);assert.equal(t.player.level,1+selected);assert.equal(t.state,'playing');
   assert.equal(element('level').textContent,'LV. '+t.player.level+' / 31');assert(t.stageXP.issued<=10000);
 });
 
@@ -627,17 +628,17 @@ test('A timed boss encounter saves the rescued spirit only after the entire rost
   const profile=JSON.stringify(t.profile);
   for(const e of t.enemies)if(!e.boss)e.hp=0;
   t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.01);assert.equal(t.kills,t.activeStage.normalCount+t.activeStage.eliteCount);assert.equal(t.enemies.length,1);
-  assert.equal(t.state,'playing');assert.equal(JSON.stringify(t.profile),profile);
+  drainUpgradeChoices(t);t.update(.001);assert.equal(t.state,'playing');assert.equal(JSON.stringify(t.profile),profile);
   assert(element('bossForecast').textContent.includes(bosses[0].name));
   assert.equal(t.state,'playing');const boss=t.enemies[0];assert(boss.boss&&boss.aggro);
   assert.equal(boss.xp,t.activeStage.xpRewards[t.activeStage.normalCount+t.activeStage.eliteCount]);
-  boss.hp=0;t.update(.01);assert.equal(t.state,'upgrade');assert.equal(t.kills,t.activeStage.enemyCount);assert.equal(t.enemies.length,0);
-  assert(t.profile.clearedStages.includes(1),'The actual victory is saved while final growth choices remain pending');
-  drainUpgradeChoices(t);assert.equal(t.state,'rescue');assert.equal(t.player.level,31);assert.equal(t.player.xp,0);assert.equal(t.gems.length,0);
+  boss.hp=0;t.update(.01);assert.equal(t.state,'rescue');assert.equal(t.kills,t.activeStage.enemyCount);assert.equal(t.enemies.length,0);
+  assert(t.profile.clearedStages.includes(1),'Victory settles without pending roulette');
+  drainUpgradeChoices(t);assert.equal(t.state,'rescue');assert(t.player.level<=t.activeStage.experience.choices+1);assert.equal(t.gems.length,0);
   assert(element('overlay').innerHTML.includes(rescues[0].name));
   assert.equal(t.profile.unlockedStage,2);assert(t.profile.clearedStages.includes(1));assert.equal(t.profile.rescuedSprites.length,1);
   const saved=JSON.stringify(t.profile),reloaded=createGame(storage);assert.equal(JSON.stringify(reloaded.t.profile),saved);
-  t.completeRescue();assert.equal(t.state,'ended');assert.equal(JSON.stringify(t.profile),saved);t.draw();
+  t.completeRescue();assert.equal(t.state,'ended');assert.equal(t.selectedStage,2);assert.equal(JSON.stringify(t.profile),saved);t.draw();t.startScreen();assert.equal(t.selectedStage,2);assert(element('overlay').innerHTML.includes('挑战第 2 关'));
 });
 
 test('First twenty stages have complete rising combat values, valid batches and rewards',({t})=>{
@@ -720,21 +721,21 @@ test('The combat HUD separately counts ordinary bugs, elite reinforcements and d
   assert.equal(element('enemyTypes').textContent,`普通 ${s.normalCount-1} · 精英 ${s.eliteCount-1} · Boss 0 / ${s.bossCount}`);
   assert.equal(element('remaining').textContent,s.enemyCount-2);
 });
-test('A defeated elite gives its larger experience reward while surviving bugs retain Boss timing',({t})=>{
-  const elite=t.enemies.find(e=>e.elite);assert(elite.xp>t.activeStage.slow.xp);
+test('A defeated elite gives one roulette reward without XP',({t})=>{
+  const elite=t.enemies.find(e=>e.elite);assert.equal(elite.xp,0);
   elite.x=t.player.x+300;elite.y=t.player.y;elite.hp=0;
   t.enemies=[elite,enemy(40,40,{aggro:false,pursuitAt:Infinity})];t.shotClock=Infinity;t.update(.001);
   assert.equal(t.kills,1);assert.equal(t.nonBossKills,1);assert.equal(t.bossKills,0);
-  assert.equal(t.gems.length,1);assert.equal(t.gems[0].value,elite.xp*t.player.xpMult);
+  assert.equal(t.gems.length,0);assert.equal(t.state,'roulette');drainUpgradeChoices(t);
 });
-test('Stage two has one gentle boss, pays only after all bugs and unlocks the second guide once',({t,element})=>{
+test('Stage two pays after all bugs and does not restart the feature guide',({t,element})=>{
   prepareStage(t,2);const stage=t.activeStage,before=JSON.stringify(t.profile);assert.equal(stage.bossCount,1);
   t.elapsed=stage.bossSchedule[0]-.002;t.update(.001);assert.equal(t.readyBoss(),null);t.update(.002);
   assert.equal(t.bossIndex,1);const boss=t.enemies.find(e=>e.boss);assert.equal(boss.stageId,2);assert(boss.aggro);
   boss.hp=0;t.update(.001);drainUpgradeChoices(t);assert.equal(t.bossKills,1);assert.equal(JSON.stringify(t.profile),before);assert.equal(t.state,'playing');
-  killNonBossCount(t,stage.normalCount+stage.eliteCount);drainUpgradeChoices(t);assert.equal(t.state,'rescue');assert.equal(t.player.level,31);
-  assert.deepEqual(Array.from(t.profile.clearedStages),[2]);assert.equal(t.profile.seeds,stage.reward.seeds);assert.equal(t.profile.featureGuideRound,2);assert.equal(t.profile.featureGuideStep,0);
-  t.completeRescue();assert.equal(t.state,'ended');assert(element('overlay').innerHTML.includes('再练一次养成操作'));
+  killNonBossCount(t,stage.normalCount+stage.eliteCount);drainUpgradeChoices(t);assert.equal(t.state,'rescue');assert(t.player.level<=t.activeStage.experience.choices+1);
+  assert.deepEqual(Array.from(t.profile.clearedStages),[2]);assert.equal(t.profile.seeds,stage.reward.seeds);assert.equal(t.profile.featureGuideRound,1);assert.equal(t.profile.featureGuideStep,4);
+  t.completeRescue();assert.equal(t.state,'ended');assert(!element('overlay').innerHTML.includes('再练一次养成操作'));assert(element('overlay').innerHTML.includes('选择关卡'));
 });
 
 test('Stage twenty encounters every earlier boss in order and pays only after the complete roster is defeated',({t,bosses,element})=>{
@@ -751,8 +752,8 @@ test('Stage twenty encounters every earlier boss in order and pays only after th
   }
   assert.deepEqual(seen,Array.from(bosses.slice(0,20).map(b=>b.name)));assert.equal(t.nonBossKills,0);
   killNonBossCount(t,s.normalCount+s.eliteCount);assert.equal(t.nonBossKills,s.normalCount+s.eliteCount);
-  assert.equal(t.kills,s.enemyCount);assert.equal(t.enemies.length,0);assert.equal(t.state,'upgrade');assert(t.profile.clearedStages.includes(20));
-  drainUpgradeChoices(t);assert.equal(t.state,'rescue');assert.equal(t.player.level,31);assert.equal(t.player.xp,0);
+  assert.equal(t.kills,s.enemyCount);assert.equal(t.enemies.length,0);assert.equal(t.state,'rescue');assert(t.profile.clearedStages.includes(20));
+  drainUpgradeChoices(t);assert.equal(t.state,'rescue');assert(t.player.level<=t.activeStage.experience.choices+1);
   assert.equal(t.profile.seeds,s.reward.seeds);assert.equal(t.profile.cores,s.reward.cores);assert.deepEqual(Array.from(t.profile.rescuedSprites),[20]);
   t.completeRescue();assert.equal(t.state,'ended');assert(t.startEndless());assert(t.enemies.every(e=>!e.boss&&!e.elite));
 });
@@ -769,7 +770,7 @@ test('Returning to or reloading a stage restarts elite and boss schedules withou
 });
 test('Boss clear handoff immediately activates the first boss before its scheduled time',({t,element})=>{
   t.player.inv=1e9;t.shotClock=Infinity;
-  killNonBossCount(t,t.activeStage.normalCount+t.activeStage.eliteCount);
+  killNonBossCount(t,t.activeStage.normalCount+t.activeStage.eliteCount);drainUpgradeChoices(t);t.update(.001);
   assert.equal(t.state,'playing');assert(t.elapsed<t.activeStage.bossSchedule[0]);assert.equal(t.bossIndex,1);
   const boss=t.enemies.find(e=>e.boss);assert(boss.introduced);assert(boss.aggro);assert.equal(t.readyBoss(),null);
   assert(element('bossForecast').textContent.includes('Boss登场'));assert(!element('bossHud').classList.contains('hidden'));
@@ -792,7 +793,7 @@ test('Boss clear handoff still waits while even one dormant elite remains alive'
   prepareStage(t,6);const s=t.activeStage,elite=t.enemies.find(e=>e.elite);t.elapsed=1;
   for(const e of t.enemies)if(!e.boss&&e!==elite)e.hp=0;t.update(.001);
   assert.equal(t.bossIndex,0);assert.equal(t.readyBoss(),null);assert(!elite.aggro);
-  t.elapsed=s.bossSchedule[0];t.update(.001);assert.equal(t.bossIndex,1);
+  drainUpgradeChoices(t);t.elapsed=s.bossSchedule[0];t.update(.001);assert.equal(t.bossIndex,1);
   t.enemies.find(e=>e.boss&&e.introduced).hp=0;t.update(.001);drainUpgradeChoices(t);
   assert.equal(t.bossIndex,1);assert.equal(t.readyBoss(),null);
   elite.hp=0;t.update(.001);drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);
@@ -869,7 +870,7 @@ test('All 100 victories unlock consecutive stages, pay rewards and award the int
 });
 test('Replaying a cleared stage pays reduced currency without duplicate gear or stage records',({t})=>{
   clearStage(t);const s=t.activeStage,firstSeeds=t.profile.seeds,firstCores=t.profile.cores;
-  t.start();clearStage(t);
+  t.startScreen();t.selectStage(s.id);t.start();clearStage(t);
   assert.equal(t.profile.seeds,firstSeeds+Math.max(1,Math.floor(s.reward.seeds*.25)));
   assert.equal(t.profile.cores,firstCores+Math.max(1,Math.floor(s.reward.cores*.25)));
   assert.equal(t.profile.clearedStages.length,1);assert.equal(t.profile.unlockedStage,2);
@@ -1049,11 +1050,11 @@ test('Boss arrival preserves held input, projectiles and clocks, and only activa
 });
 
 test('Bosses activate immediately and rescue animations complete automatically through animation frames',({t})=>{
-  t.frame(1000);for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);
+  t.frame(1000);for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);
   let now=1000;
   for(let i=0;i<150&&t.state==='playing';i++){now+=40;t.frame(now)}
   assert.equal(t.state,'playing');const boss=t.enemies.find(e=>e.boss);assert(boss.aggro);boss.hp=0;t.update(.001);
-  assert.equal(t.state,'upgrade');drainUpgradeChoices(t);assert.equal(t.state,'rescue');const elapsed=t.elapsed,hp=t.player.hp;
+  assert.equal(t.state,'rescue');drainUpgradeChoices(t);assert.equal(t.state,'rescue');const elapsed=t.elapsed,hp=t.player.hp;
   for(let i=0;i<20;i++){now+=40;t.frame(now)}
   assert.equal(t.state,'rescue');assert.equal(t.elapsed,elapsed);assert.equal(t.player.hp,hp);
   for(let i=0;i<150&&t.state==='rescue';i++){now+=40;t.frame(now)}
@@ -1061,11 +1062,11 @@ test('Bosses activate immediately and rescue animations complete automatically t
   const paid=JSON.stringify(t.profile);t.completeRescue();assert.equal(JSON.stringify(t.profile),paid);
 });
 test('Pausing after a boss arrival freezes combat, and hidden tabs still freeze rescue animations',({t,document})=>{
-  t.frame(1000);for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);
+  t.frame(1000);for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);
   assert.equal(t.state,'playing');t.pause();const elapsed=t.elapsed;let now=1000;document.hidden=true;
   for(let i=0;i<150;i++){now+=40;t.frame(now)}
   assert.equal(t.state,'paused');assert.equal(t.elapsed,elapsed);document.hidden=false;t.resume();
-  t.enemies.find(e=>e.boss).hp=0;t.update(.001);assert.equal(t.state,'upgrade');drainUpgradeChoices(t);assert.equal(t.state,'rescue');document.hidden=true;
+  t.enemies.find(e=>e.boss).hp=0;t.update(.001);assert.equal(t.state,'rescue');drainUpgradeChoices(t);assert.equal(t.state,'rescue');document.hidden=true;
   for(let i=0;i<150;i++){now+=40;t.frame(now)}
   assert.equal(t.state,'rescue');document.hidden=false;
   for(let i=0;i<150&&t.state==='rescue';i++){now+=40;t.frame(now)}assert.equal(t.state,'ended');
@@ -1073,8 +1074,8 @@ test('Pausing after a boss arrival freezes combat, and hidden tabs still freeze 
 
 test('Earned upgrades are resolved before a simultaneous boss time arrival',({t})=>{
   for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.player.xp=t.player.need;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);
-  assert.equal(t.state,'upgrade');assert.equal(t.enemies.length,1);assert.equal(t.enemies[0].aggro,false);
-  t.choose(0);assert.equal(t.player.level,2);assert.equal(t.state,'playing');t.update(.001);
+  assert.equal(t.state,'roulette');assert.equal(t.enemies.length,1);assert.equal(t.enemies[0].aggro,false);
+  drainUpgradeChoices(t);assert.equal(t.player.level,2);assert.equal(t.state,'playing');t.update(.001);
   assert.equal(t.state,'playing');assert.equal(t.enemies.length,1);
 });
 test('Boss arrival notice is immediate despite queued relic notices and expires without clicks',({t,element})=>{
@@ -1099,7 +1100,7 @@ test('Freshly introduced bosses wait three combat seconds and then warn for nine
 });
 
 test('Boss charges warn before moving, keep their aimed direction and respect collision invulnerability',({t})=>{
-  for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);t.gems=[];
+  for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);t.gems=[];
   const boss=t.enemies[0];boss.x=t.player.x-boss.r-t.player.r-5;boss.y=t.player.y;boss.chargeClock=0;
   const x=boss.x,y=boss.y,hp=t.player.hp;t.update(.01);assert(boss.windup>0);assert.equal(boss.x,x);assert.equal(t.player.hp,hp);
   t.update(.4);t.update(.4);assert.equal(boss.x,x);assert.equal(boss.y,y);assert.equal(t.player.hp,hp);
@@ -1111,11 +1112,11 @@ test('Boss charges warn before moving, keep their aimed direction and respect co
   assert.equal(boss.x,t.WORLD_W-boss.r-22);
 });
 test('Defeat or abandoned boss encounters never rescue a spirit or pay clear rewards',({t})=>{
-  for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);
+  for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);
   const before=JSON.stringify(t.profile);t.player.hp=1;t.player.inv=0;
   const boss=t.enemies.find(e=>e.boss);boss.x=t.player.x;boss.y=t.player.y;t.update(.001);
   assert.equal(t.state,'ended');assert.equal(JSON.stringify(t.profile),before);t.completeRescue();assert.equal(JSON.stringify(t.profile),before);
-  t.start();for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);
+  t.start();for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);
   t.startScreen();assert.equal(JSON.stringify(t.profile),before);assert.equal(t.state,'lobby');
 });
 test('The orchard starts empty and exposes rescued residents through the lobby and results',(game)=>{
@@ -1157,7 +1158,7 @@ test('Rescued spirit training charges materials, adds combat benefits and stops 
 });
 test('Orchard and spirit growth survive reload and repeated clears preserve training',({t,storage,rescues})=>{
   clearStage(t);t.showOrchard();t.profile.seeds=2000;t.profile.cores=100;const id=rescues[0].id;
-  assert(t.upgradeOrchard());assert(t.upgradeSprite(id));t.start();clearStage(t);
+  assert(t.upgradeOrchard());assert(t.upgradeSprite(id));assert(t.selectStage(1));t.start();clearStage(t);
   assert.equal(t.profile.rescuedSprites.length,1);assert.equal(t.profile.spriteLevels[id],1);
   t.start();const expected={...t.player};const saved=JSON.stringify(t.profile),reloaded=createGame(storage);
   assert.equal(JSON.stringify(reloaded.t.profile),saved);reloaded.t.start();
@@ -1192,10 +1193,10 @@ test('Legacy saves migrate their cleared stages into residents and bound new gro
 test('Endless mode is available only after a real boss victory and completed rescue',({t,element})=>{
   assert.equal(t.runMode,'stage');assert(!t.startEndless());assert(!t.finishEndless());
   t.pause();assert(!t.startEndless());t.resume();
-  for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);
+  for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);
   assert.equal(t.state,'playing');assert(!t.startEndless());
   assert(!t.startEndless());t.enemies.find(e=>e.boss).hp=0;t.update(.001);
-  assert.equal(t.state,'upgrade');assert(!t.startEndless());drainUpgradeChoices(t);
+  assert.equal(t.state,'rescue');assert(!t.startEndless());drainUpgradeChoices(t);
   assert.equal(t.state,'rescue');assert(!t.startEndless());t.completeRescue();
   assert(element('overlay').innerHTML.includes('id="startEndless"'));t.player.xp=0;t.gems=[];
   assert(t.startEndless());assert(!t.startEndless());
@@ -1206,9 +1207,9 @@ test('Endless mode is available only after a real boss victory and completed res
 test('Endless entry keeps the current build and experience, heals health and resets its own stats',({t,element})=>{
   clearStage(t);t.player.upgrades.damage=2;t.player.damage*=1.6;t.player.shots=4;t.player.hp=3;t.player.xp=2;t.gems=[{x:40,y:40,value:7}];
   const before={...t.player},saved=JSON.stringify(t.profile),gem=t.gems[0];
-  element('startEndless').onclick();assert.equal(t.state,'playing');assert.equal(t.runMode,'endless');
-  for(const key of ['damage','rate','shots','speed','pickup','level','xp','need','maxHp'])assert.equal(t.player[key],before[key]);
-  assert.equal(t.player.upgrades.damage,2);assert.equal(t.player.hp,t.player.maxHp);assert(t.player.inv>0);
+  element('startEndless').onclick();assert.equal(t.state,'roulette');assert.equal(t.runMode,'endless');
+  for(const key of ['damage','rate','shots','speed','pickup','level','need','maxHp'])assert.equal(t.player[key],before[key]);
+  assert(t.player.xp>=before.xp);assert.equal(t.player.upgrades.damage,2);assert.equal(t.player.hp,t.player.maxHp);assert(t.player.inv>0);
   assert.equal(t.gems[0],gem);assert.equal(t.elapsed,0);assert.equal(t.kills,0);assert.equal(t.endlessWave,1);
   assert.equal(JSON.stringify(t.profile),saved);assert(t.enemies.length>0);assert(t.enemies.every(e=>e.aggro&&!e.boss));
 });
@@ -1287,8 +1288,8 @@ test('The visible endless exit button and defeat both retain the saved clear and
 });
 test('New endless XP resolves as random upgrades at entry without losing the completed stage build',({t})=>{
   clearStage(t);t.gems=[];t.player.xp=t.player.need;const level=t.player.level;
-  assert(t.startEndless());assert.equal(t.state,'upgrade');assert.equal(t.runMode,'endless');assert.equal(t.endlessWave,1);
-  t.choose(0);assert.equal(t.player.level,level+1);assert.equal(t.state,'playing');assert.equal(t.player.xp,0);
+  assert(t.startEndless());assert.equal(t.state,'roulette');drainUpgradeChoices(t);assert.equal(t.state,'playing');assert.equal(t.runMode,'endless');assert.equal(t.endlessWave,1);
+  assert(t.player.level>=level+1);assert.equal(t.state,'playing');assert(t.player.xp<t.player.need);
 });
 test('Nearby and capped experience drops merge without losing any earned value',({t})=>{
   t.gems=[];t.dropExperience(40,40,2);t.dropExperience(52,49,3);
@@ -1452,7 +1453,7 @@ test('Skill cooldowns freeze in pause, upgrades and rescue while boss arrivals k
   const frozenFrames=(first)=>{const before=snapshot();for(let i=0;i<15;i++)t.frame(first+i*40);assert.equal(snapshot(),before)};
   t.pause();frozenFrames(1040);t.resume();t.player.xp=t.player.need;t.upgrade();frozenFrames(2000);
   assert.equal(t.showRelicMap(),false);assert.equal(t.activateDash(),false);t.choose(0);
-  for(const e of t.enemies)if(!e.boss)e.hp=0;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);assert.equal(t.state,'playing');
+  for(const e of t.enemies)if(!e.boss)e.hp=0;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);assert.equal(t.state,'playing');
   const beforeArrivalFrames=snapshot();for(let i=0;i<15;i++)t.frame(3000+i*40);assert.notEqual(snapshot(),beforeArrivalFrames);
   assert(t.showRelicMap());t.closeRelicMap();t.enemies.find(e=>e.boss&&e.aggro).hp=0;t.update(.001);
   drainUpgradeChoices(t);assert.equal(t.state,'rescue');frozenFrames(4000);assert.equal(t.showRelicMap(),false);
@@ -1608,7 +1609,7 @@ test('Hero skill control is available on keyboard and phone and cooldown/effects
   function waitFrames(time){const before=frozen();for(let i=0;i<10;i++)t.frame(time+i*40);assert.equal(frozen(),before);assert.equal(t.activateHeroSkill(),false)}
   t.pause();waitFrames(1100);t.resume();t.showRelicMap();waitFrames(2000);t.closeRelicMap();
   t.player.xp=t.player.need;t.upgrade();waitFrames(3000);t.choose(0);
-  for(const e of t.enemies)if(!e.boss)e.hp=0;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);assert.equal(t.state,'playing');
+  for(const e of t.enemies)if(!e.boss)e.hp=0;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);assert.equal(t.state,'playing');
   const clockBeforeArrivalFrames=t.player.heroClock;for(let i=0;i<10;i++)t.frame(4000+i*40);assert(t.player.heroClock<clockBeforeArrivalFrames);
   t.enemies.find(e=>e.boss&&e.aggro).hp=0;t.update(.001);drainUpgradeChoices(t);assert.equal(t.state,'rescue');waitFrames(5000);
 });
@@ -1893,7 +1894,7 @@ test('A completed super and all its ranks survive endless entry while a fresh ch
   // The ten fixture-supplied choices consume chapter XP instead of granting ten free ranks above the real budget.
   const spent=t.experience.budget(10);assert.equal(t.stageXP.collect(t.stageXP.grant(spent)),spent);
   clearStage(t);const build=t.player.build,levels=JSON.stringify(build.levels);assert(t.startEndless());
-  assert.equal(t.player.level,31);
+  assert(t.player.level<=t.activeStage.experience.choices+1);
   assert.equal(t.player.build,build);assert.equal(JSON.stringify(t.player.build.levels),levels);assert(t.player.build.superSkills.includes('skyweb'));
   t.finishEndless(true);t.start();assert.equal(t.player.build.attackSlots.length,0);assert.equal(t.player.build.attributeSlots.length,0);assert.equal(t.player.build.superSkills.length,0);
 });
@@ -1903,18 +1904,18 @@ test('Passive relic map descriptions show a lasting buff without undefined coold
   assert.equal(element('relicSlots').querySelectorAll('[data-owned-relic]')[0],button);assert.equal(typeof button.onclick,'function');button.onclick();
   assert.equal(t.state,'relicMap');assert(element('overlay').innerHTML.includes('本局持续属性增益'));assert(!element('overlay').innerHTML.includes('undefined'));
 });
-test('All shipped real chapter clears reconcile exactly 10000 XP into thirty ranks before rescue under varying XP bonuses',({t})=>{
+test('All shipped real chapter clears reconcile the ordinary XP budget with remaining growth deferred until endless under varying XP bonuses',({t})=>{
   for(const stage of t.stages){
     const id=stage.id;
     prepareStage(t,id);t.player.xpMult=[1,1.2,1.65,2.8][(id-1)%4];clearStage(t);
-    assert.equal(t.player.level,31);assert.equal(t.player.xp,0);assert.equal(t.player.need,601);
-    assert.equal(t.stageXP.budget,10000);assert.equal(t.stageXP.issued,10000);assert.equal(t.stageXP.collected,10000);assert(t.stageXP.settled);
+    assert(t.player.level<=t.activeStage.experience.choices+1);assert.equal(t.player.need,t.experienceNeed(t.player.level));
+    assert.equal(t.stageXP.budget,stage.experience.budget);assert.equal(t.stageXP.issued,stage.experience.budget);assert.equal(t.stageXP.collected,t.activeStage.experience.budget);assert(t.stageXP.settled);
     const build=t.player.build,summary=t.builds.summary(t.player);
-    assert.equal(t.gems.length,0);assert.equal(build.mode,'stage');assert.equal(build.attackChoices+build.attributeChoices,30);
+    assert.equal(t.gems.length,0);assert.equal(build.mode,'stage');assert(build.attackChoices+build.attributeChoices>=0);assert(build.attackChoices+build.attributeChoices<=40);
     assert(build.attackChoices<=20&&build.attributeChoices<=20);assert(build.attackSlots.length<=4&&build.attributeSlots.length<=4);
     assert(Object.values(build.levels).every(level=>level>=1&&level<=5));
     // Thirty choices may fill six slots to rank five; unused slots still allow further growth.
-    assert.equal(summary.limits.totalChoices,40);assert.equal(summary.exhausted,false);
+    assert.equal(summary.limits.totalChoices,40);assert.equal(summary.exhausted,t.builds.pool(t.player).length===0);assert(t.startEndless());drainUpgradeChoices(t);assert.equal(t.player.level,stage.experience.choices+1);assert(t.player.xp<t.player.need);
   }
 });
 test('Stage XP bonuses release more of the same reserve early without fractional gems or an extra final upgrade',()=>{
@@ -1922,24 +1923,24 @@ test('Stage XP bonuses release more of the same reserve early without fractional
     const {t}=createGame();t.start();t.player.xpMult=multiplier;t.shotClock=Infinity;
     const victim=t.enemies.find(e=>!e.boss&&!e.elite);victim.hp=0;t.update(.001);
     assert(t.stageXP.issued>0);assert(Number.isInteger(t.stageXP.issued));
-    const early=t.stageXP.issued;clearStage(t);assert.equal(t.stageXP.collected,10000);assert.equal(t.player.level,31);assert.equal(t.player.xp,0);return early;
+    const early=t.stageXP.issued;clearStage(t);assert.equal(t.stageXP.collected,t.activeStage.experience.budget);assert(t.player.level<=t.activeStage.experience.choices+1);return early;
   });
   assert(trials[1]>trials[0]);
 },{start:false});
 test('Endless combat XP bypasses the settled chapter budget and funds a real sixth rank through the upgrade panel',({t,element})=>{
-  clearStage(t);const source=t.player.build.attackSlots[0];assert.equal(t.player.build.levels[source],5);assert(t.startEndless());
-  assert.equal(t.player.build.mode,'endless');const previousPower=t.player.build.powers[source],ledger=JSON.stringify(t.stageXP.snapshot());
+  clearStage(t);const source=t.player.build.attackSlots[0];while(t.player.build.levels[source]<5)assert(t.builds.choose(t.player,source).applied);assert(t.startEndless());drainUpgradeChoices(t);
+  assert.equal(t.player.build.mode,'endless');const priorLevel=t.player.level,priorRank=t.player.build.levels[source];const previousPower=t.player.build.powers[source],ledger=JSON.stringify(t.stageXP.snapshot());
   t.shotClock=Infinity;t.enemies=[enemy(t.player.x,t.player.y,{hp:0,xp:t.player.need})];t.update(.001);
   assert.equal(t.state,'upgrade');assert(element('overlay').innerHTML.includes('无尽突破'));assert(!element('overlay').innerHTML.includes('每种最高 5 级'));
   t.choices.splice(0,t.choices.length,{...t.builds.get(source),rarity:{mult:1,name:'普通',color:'#abc'}});t.choose(0);
-  assert.equal(t.player.level,32);assert.equal(t.player.build.levels[source],6);assert(t.player.build.powers[source]>previousPower);
-  assert.equal(t.player.build.attackChoices+t.player.build.attributeChoices,31);assert.equal(JSON.stringify(t.stageXP.snapshot()),ledger);
-  assert(element('buildSlots').innerHTML.includes('Lv.6'));assert(!element('buildSlots').innerHTML.includes('/20 次'));
+  assert.equal(t.player.level,priorLevel+1);assert.equal(t.player.build.levels[source],priorRank+1);assert(t.player.build.powers[source]>previousPower);
+  assert(t.player.build.attackChoices+t.player.build.attributeChoices>=t.activeStage.experience.choices+1);assert.equal(JSON.stringify(t.stageXP.snapshot()),ledger);
+  assert(element('buildSlots').innerHTML.includes('Lv.'+(priorRank+1)));assert(!element('buildSlots').innerHTML.includes('/20 次'));
 });
 test('A fifth distinct skill is learnable in endless and new challenges restore the four-slot five-rank rules',({t})=>{
-  clearStage(t);assert(t.startEndless());const newAttack=t.builds.defs.find(def=>def.category==='attack'&&!t.player.build.attackSlots.includes(def.id)&&t.builds.available(t.player,def.id));assert(newAttack);
-  pickBuild(t,newAttack.id);assert.equal(t.player.build.attackSlots.length,5);assert.equal(t.player.build.levels[newAttack.id],1);
-  const existing=t.player.build.attributeSlots[0],previousLevel=t.player.build.levels[existing];pickBuild(t,existing);assert.equal(t.player.build.levels[existing],previousLevel+1);
+  clearStage(t);assert(t.startEndless());drainUpgradeChoices(t);const newAttack=t.builds.defs.find(def=>def.category==='attack'&&!t.player.build.attackSlots.includes(def.id)&&t.builds.available(t.player,def.id));assert(newAttack);
+  const slots=t.player.build.attackSlots.length;pickBuild(t,newAttack.id);assert.equal(t.player.build.attackSlots.length,slots+1);assert.equal(t.player.build.levels[newAttack.id],1);
+  const existing=t.player.build.attributeSlots.find(id=>t.builds.available(t.player,id)),previousLevel=t.player.build.levels[existing];pickBuild(t,existing);assert.equal(t.player.build.levels[existing],previousLevel+1);
   t.finishEndless(true);t.start();assert.equal(t.player.build.mode,'stage');assert.equal(t.player.level,1);assert.equal(t.player.xp,0);
   assert.equal(t.player.build.attackSlots.length,0);assert.equal(t.builds.getLimits(t.player).maxLevel,5);assert.equal(t.stageXP.issued,0);
 });
@@ -2107,11 +2108,11 @@ test('New UI: conversation content is escaped and its snapshot is declared befor
 },{start:false});
 test('New UI: help is unavailable in conflicting overlays and endless waves freeze during reading',(game)=>{
   const {t}=game;t.showRelicMap();assert(!t.openGameHelp());t.closeRelicMap();t.upgrade();assert(!t.openGameHelp());t.choose(0);
-  clearStage(t);assert(!t.openGameHelp());assert(t.startEndless());quietField(t);assert(t.openGameHelp());const wave=t.endlessWave,elapsed=t.elapsed;
+  clearStage(t);assert(!t.openGameHelp());assert(t.startEndless());drainUpgradeChoices(t);quietField(t);assert(t.openGameHelp());const wave=t.endlessWave,elapsed=t.elapsed;
   for(let i=0;i<100;i++)t.frame(1000+i*40);assert.equal(t.endlessWave,wave);assert.equal(t.elapsed,elapsed);t.closeGameHelp();assert.equal(t.runMode,'endless');assert.equal(t.state,'playing');
 });
 test('New UI: help isolates keyboard focus and cannot activate the background endless exit',(game)=>{
-  const {t,element,listeners,document}=game;clearStage(t);t.startEndless();t.openGameHelp();
+  const {t,element,listeners,document}=game;clearStage(t);t.startEndless();drainUpgradeChoices(t);t.openGameHelp();
   assert.equal(element('overlay').ariaProps.role,'dialog');assert.equal(element('overlay').ariaProps['aria-modal'],'true');
   assert(element('endEndless').disabled);assert.equal(element('endEndless').onclick(),false);assert.equal(t.state,'help');
   let prevented=false;listeners.keydown({key:'Tab',preventDefault(){prevented=true}});
@@ -2349,7 +2350,7 @@ test('Campaign: later eighty chapters have bounded encounters, rising stats and 
       assert(s[type].hp>=previous[type].hp);assert(s[type].damage>=previous[type].damage);
       assert(s[type].speed<205);
     }
-    assert.equal(s.xpRewards.reduce((a,b)=>a+b,0),10000);assert.equal(s.experience.choices,30);
+    assert.equal(s.xpRewards.reduce((a,b)=>a+b,0),s.experience.budget);assert(s.experience.choices<30);
     previous=s;
   }
 });

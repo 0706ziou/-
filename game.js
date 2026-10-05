@@ -65,7 +65,8 @@
   const ENDLESS_INTERVAL = 8, ENDLESS_ENEMY_CAP = 240;
   const endlessTuning = Object.freeze({ openingBonus: 16, perWave: 5, batchCap: 90, hp: .12, hpCurve: .002, damage: .045, speed: .012, speedCap: 1.3, xpEvery: 4 });
   const XP_NODE_CAP = 400;
-  const runStates = ['playing', 'paused', 'upgrade', 'rescue'];
+  const runStates = ['playing', 'paused', 'upgrade', 'roulette', 'rescue'];
+  let rouletteQueue = [], pendingEndlessXP = 0;
   const gearDefs = {
     weapon_seed: { slot: 'weapon', name: '橙籽弹弓', icon: '🌱', desc: '22 伤害 · 每秒 3 轮，均衡起步', damage: 22, rate: 3, shots: 1, color: '#fff1b4' },
     weapon_pea: { slot: 'weapon', name: '豌豆速射器', icon: '🫛', desc: '16 伤害 · 每秒 4.3 轮，快速清理飞虫', damage: 16, rate: 4.3, shots: 1, color: '#bbeb88' },
@@ -154,6 +155,7 @@
     catch { storageAvailable = false; return false; }
   }
   function freshPlayer() {
+    rouletteQueue = []; pendingEndlessXP = 0;
     const weapon = gearDefs[profile.equipped.weapon], armor = gearDefs[profile.equipped.armor], charm = gearDefs[profile.equipped.charm];
     const wl = profile.inventory[profile.equipped.weapon].level, al = profile.inventory[profile.equipped.armor].level, cl = profile.inventory[profile.equipped.charm].level;
     const bonus = orchardBonuses(), heroStats = growth.makeRunStats(profile), hp = armor.hp + al * gearGrowth.hp + bonus.hp + heroStats.hp;
@@ -308,7 +310,8 @@
     if (!featuresUnlocked() || profile.featureGuideStep >= featureGuideSteps().length) return '';
     const step = featureGuideSteps()[profile.featureGuideStep];
     if (tab !== 'lobby' && tab !== step.tab) return '';
-    const secondRound = profile.featureGuideRound === 2;
+    if (profile.featureGuideRound === 2) return '';
+    const secondRound = false;
     return '<aside class="feature-guide" aria-live="polite"><div><strong>' + (profile.featureGuideStep + 1) + ' / ' + featureGuideSteps().length + ' · ' + (tab === 'lobby' ? secondRound ? '第二关成长练习：' : '新功能已解锁：' : '认识') + step.name + '</strong><p>' + (tab === 'lobby' ? '点击下方发光的「' + step.name + '」按钮，' + (secondRound ? '再熟悉一次通关后的养成操作。' : '看看首次通关带来的新成长。') : step.tip) + '</p></div>' + (tab === 'lobby' ? '<button class="secondary" id="skipFeatureGuide">跳过指引</button>' : '<button class="primary" id="nextFeatureGuide" data-world-action="guide-done">' + (profile.featureGuideStep === featureGuideSteps().length - 1 ? '完成指引' : '了解了，下一项') + '</button>') + '</aside>';
   }
   function advanceFeatureGuide(tab) {
@@ -316,7 +319,7 @@
     profile.featureGuideStep++; saveProfile(); window.ORCHARD_FRONTIER?.close(); startScreen(); return true;
   }
   function bindFeatureGuide(tab) {
-    if (!featuresUnlocked() || profile.featureGuideStep >= featureGuideSteps().length) return;
+    if (!featuresUnlocked() || profile.featureGuideRound === 2 || profile.featureGuideStep >= featureGuideSteps().length) return;
     const step = featureGuideSteps()[profile.featureGuideStep];
     if (tab === 'lobby') {
       el(step.id)?.classList.add('feature-guide-target');
@@ -1109,7 +1112,7 @@
       stageVictoryReady = true;
       const firstClear = !profile.clearedStages.includes(activeStage.id);
       if (firstClear && profile.clearedStages.length === 0) { profile.featureGuideRound = 1; profile.featureGuideStep = 0; }
-      if (firstClear && activeStage.id === 2) { profile.featureGuideRound = 2; profile.featureGuideStep = 0; }
+      if (firstClear && activeStage.id >= 2) profile.featureGuideStep = featureGuideSteps().length;
       const seeds = firstClear ? activeStage.reward.seeds : Math.max(1, Math.floor(activeStage.reward.seeds * .25));
       const cores = firstClear ? activeStage.reward.cores : Math.max(1, Math.floor(activeStage.reward.cores * .25));
       profile.seeds += seeds; profile.cores += cores;
@@ -1149,12 +1152,12 @@
     if (runMode === 'endless') { finishEndless(win); return; }
     if (state === 'ended') return;
     state = 'ended'; keys.clear(); pointer = null;
-    if (win) grantVictoryRewards();
+    if (win) { grantVictoryRewards(); selectedStage = Math.min(stages.length, activeStage.id + 1); }
     showPanel(win ? '青叶果园，平安无恙。' : '小果子，歇一歇。', '第 ' + activeStage.id + ' 关 / ' + activeStage.name, '<div class="result-layout"><div class="result-summary"><p>' +
       (win ? '本关 ' + activeStage.bossCount + ' 位虫王已全部击败，精灵已经回家。' : '虫群暂时占了上风。培养精灵、强化装备后，再试一次。') + '</p>' + (win ? victoryRewardHTML + worldRewardHTML() : '') +
       '<div class="result-stats"><div><b>' + kills + ' / ' + activeStage.enemyCount + '</b><span>驱赶害虫</span></div><div><b>' + player.level + '</b><span>本关成长等级</span></div></div>' +
-      '</div>' + (win ? '<div class="endless-offer"><strong>∞ 无尽虫潮 · 突破成长</strong><span>保留本关构筑，补满生命，放开种类与等级上限。<br>每 8 秒一波，材料获得即保存，可随时结束。</span></div>' : '<div class="endless-offer"><strong>🌱 下一次，带着成长出发。</strong><span>到果园培养伙伴，或在工坊强化装备。局外成长永久保留。</span></div>') + '</div>',
-      (win ? '<button class="primary" id="startEndless">进入无尽模式 ∞</button>' : '') + (win && activeStage.id < stages.length ? '<button class="secondary" id="nextStage">挑战下一关</button>' : '<button class="secondary" id="restart">再挑战一次</button>') + '<button class="secondary" id="resultWorld" ' + (!featuresUnlocked() ? 'disabled' : '') + '>进入世界</button><button class="secondary" id="resultOrchard" ' + (!featuresUnlocked() ? 'disabled' : '') + '>看看果园</button><button class="secondary" id="resultArmory" ' + (!featuresUnlocked() ? 'disabled' : '') + '>装备与养成</button><button class="' + (win && profile.featureGuideStep < featureGuideSteps().length ? 'primary' : 'secondary') + '" id="backLobby">' + (win && profile.featureGuideStep < featureGuideSteps().length ? profile.featureGuideRound === 2 ? '再练一次养成操作' : '新功能已解锁 · 开始指引' : '选择关卡') + '</button>', '奖励与关卡进度自动保存');
+      '</div>' + (win ? '<div class="endless-offer"><strong>∞ 无尽虫潮 · 突破成长</strong><span>保留本关构筑，补满生命，放开种类与等级上限。<br>清场剩余成长与最后轮盘进入无尽后领取。<br>每 8 秒一波，材料获得即保存，可随时结束。</span></div>' : '<div class="endless-offer"><strong>🌱 下一次，带着成长出发。</strong><span>到果园培养伙伴，或在工坊强化装备。局外成长永久保留。</span></div>') + '</div>',
+      (win ? '<button class="primary" id="startEndless">进入无尽模式 ∞</button>' : '') + (win && activeStage.id < stages.length ? '<button class="secondary" id="nextStage">挑战下一关</button>' : '<button class="secondary" id="restart">再挑战一次</button>') + '<button class="secondary" id="resultWorld" ' + (!featuresUnlocked() ? 'disabled' : '') + '>进入世界</button><button class="secondary" id="resultOrchard" ' + (!featuresUnlocked() ? 'disabled' : '') + '>看看果园</button><button class="secondary" id="resultArmory" ' + (!featuresUnlocked() ? 'disabled' : '') + '>装备与养成</button><button class="' + (win && profile.featureGuideRound !== 2 && profile.featureGuideStep < featureGuideSteps().length ? 'primary' : 'secondary') + '" id="backLobby">' + (win && profile.featureGuideRound !== 2 && profile.featureGuideStep < featureGuideSteps().length ? profile.featureGuideRound === 2 ? '再练一次养成操作' : '新功能已解锁 · 开始指引' : '选择关卡') + '</button>', '奖励与关卡进度自动保存');
     bindSpritePortraits();
     if (win && activeStage.id < stages.length) el('nextStage').onclick = () => { selectStage(activeStage.id + 1); start(); };
     else el('restart').onclick = start;
@@ -1173,8 +1176,8 @@
     player.guardUntil = 0; player.guardDefense = 0; player.leechEvents = []; player.killHealEvents = [];
     endlessWave = 0; endlessCreditedSeeds = 0; endlessCreditedCores = 0; waveClock = ENDLESS_INTERVAL;
     keys.clear(); pointer = null; overlay.classList.add('hidden');
-    spawnEndlessWave(); updateHUD();
-    if (player.xp >= player.need) upgrade();
+    spawnEndlessWave(); player.xp += pendingEndlessXP; pendingEndlessXP = 0; updateHUD();
+    if (rouletteQueue.length) openRoulette(); else if (player.xp >= player.need) upgrade();
     return true;
   }
   function spawnEndlessWave() {
@@ -1278,14 +1281,48 @@
   }
   function completeRescue() { if (state !== 'rescue') return false; finish(true); return true; }
   function checkStageCompletion() {
-    if (runMode !== 'stage' || enemies.length || bossKills < activeStage.bossCount || nonBossKills < activeStage.normalCount + activeStage.eliteCount) return false;
-    // Finish the exact XP budget once, including every crystal left anywhere on the map.
+    const cleared = runMode === 'stage' && !enemies.length && bossKills >= activeStage.bossCount && nonBossKills >= activeStage.normalCount + activeStage.eliteCount;
+    if (!cleared) {
+      if (rouletteQueue.length) { openRoulette(); return true; }
+      return false;
+    }
     if (!stageXP.settled) {
-      stageXP.finish(); player.xp += stageXP.collect(stageXP.issued - stageXP.collected); gems = [];
+      stageXP.finish(); pendingEndlessXP += stageXP.collect(stageXP.issued - stageXP.collected); gems = [];
       grantVictoryRewards();
     }
-    if (player.xp >= player.need) { upgrade(); return true; }
     beginRescue(); return true;
+  }
+  function openRoulette() {
+    if (!rouletteQueue.length || state === 'roulette') return;
+    const reward = rouletteQueue.shift();
+    state = 'roulette'; keys.clear(); pointer = null;
+    showPanel(reward.boss ? '虫王幸运轮盘' : '精英幸运轮盘', '随机肉鸽奖励 / ' + reward.count + ' 个',
+      '<div style="text-align:center"><div id="rewardWheel" style="margin:20px auto;width:180px;height:180px;border-radius:50%;border:8px solid #f6c26b;background:conic-gradient(#8bd6df 0deg 60deg,#ddb0ef 60deg 120deg,#a9c38d 120deg 180deg,#8bd6df 180deg 240deg,#ddb0ef 240deg 300deg,#a9c38d 300deg);display:grid;place-items:center;transition:transform .7s ease-out"><strong>✦ 幸运轮盘 ✦</strong></div><div id="wheelResults">随机获得 ' + reward.count + ' 个词条，自动加入当前构筑</div></div>',
+      '<button class="primary" id="spinReward">转动轮盘</button>', '战斗已暂停 · 不消耗经验');
+    el('spinReward').onclick = () => {
+      if (state !== 'roulette' || el('spinReward').disabled) return;
+      el('spinReward').disabled = true;
+      el('rewardWheel').style.transform = 'rotate(' + (1080 + Math.random() * 360) + 'deg)';
+      const results = [];
+      for (let index = 0; index < reward.count; index++) {
+        const pool = builds.pool(player);
+        if (!pool.length) { healPlayer(player.maxHp * .25); results.push('构筑已满 · 恢复25%生命'); continue; }
+        const def = pool[Math.floor(Math.random() * pool.length)], rarity = rarities[Math.floor(Math.random() * rarities.length)];
+        const result = builds.choose(player, def.id, rarity.mult);
+        if (result.applied) results.push(rarity.name + ' · ' + def.name + ' Lv.' + player.build.levels[def.id]);
+        for (const recipe of result.newSuper) queueNotice(recipe.name, recipe.description, recipe.icon, recipe.color, 'super');
+      }
+      el('wheelResults').innerHTML = results.map(text => '<p>' + escapeHTML(text) + '</p>').join('');
+      el('spinReward').textContent = '领取全部奖励'; el('spinReward').disabled = false;
+      el('spinReward').onclick = () => {
+        if (state !== 'roulette') return;
+        state = 'playing'; overlay.classList.add('hidden'); updateHUD();
+        if (rouletteQueue.length) openRoulette();
+        else if (player.xp >= player.need) upgrade(); else checkStageCompletion();
+      };
+      updateHUD();
+    };
+    updateHUD();
   }
   function upgrade() {
     choices = randomChoices();
@@ -1293,7 +1330,7 @@
       let levels = 0;
       while (player.xp >= player.need) { player.xp -= player.need; player.level++; player.need = experienceNeed(player.level); healPlayer(player.maxHp * .25); levels++; }
       if (levels) queueNotice('构筑已完成', '升级 ' + levels + ' 次，每次恢复最大生命的 25%；词条槽位和等级保持上限。', '♥', '#bce4a0', 'supply');
-      state = 'playing'; overlay.classList.add('hidden'); updateHUD(); return;
+      state = 'playing'; overlay.classList.add('hidden'); updateHUD(); checkStageCompletion(); return;
     }
     state = 'upgrade'; keys.clear(); pointer = null;
     renderUpgrade(); sound(620, .14);
@@ -1317,7 +1354,7 @@
       const level = b.levels[u.id] || 0, recipe = builds.recipes.find(r => r.id === u.recipe);
       const recommended = target?.possible && [target.attack, target.attribute].includes(u.id);
       return '<button class="card' + (recommended ? ' recommended' : '') + '" data-choice="' + i + '" style="border-color:' + u.rarity.color + '" title="' + escapeHTML(u.desc) + '"><div class="build-category">' + (recommended ? '✦ 推荐 · ' + target.name : u.category === 'attack' ? '攻击' : '属性') + '</div><div class="card-icon"><img src="' + u.image + '" alt="' + u.name + '技能图示" width="72" height="72"></div><strong>' + u.name + '</strong><span>' + escapeHTML(builds.brief(u, u.rarity.mult, player)) + '</span><small style="color:' + u.rarity.color + '">' + u.rarity.name + ' · Lv.' + level + ' → ' + (level + 1) + '<br>按 ' + (i + 1) + ' 选择</small>' + (recipe ? '<div class="recipe-progress">' + (b.superSkills.includes(recipe.id) ? '✓ ' : '合成 → ') + recipe.name + '</div>' : '') + '</button>';
-    }).join('') + '</div>', '', (training ? '180 经验完成第一次成长 · 本次词条仅在练习中生效' : endless ? '无尽随机成长 · 等级持续提升' : '本关总经验 ' + stageXP.budget.toLocaleString('en-US') + ' · ' + experience.choices + ' 次升级' + (stageXP.settled ? ' · 完成成长后救援' : '')) + ' · 战斗已暂停 · 按 1 / 2 / 3 选择');
+    }).join('') + '</div>', '', (training ? '180 经验完成第一次成长 · 本次词条仅在练习中生效' : endless ? '无尽随机成长 · 等级持续提升' : '本关总经验 ' + stageXP.budget.toLocaleString('en-US') + ' · ' + activeStage.experience.choices + ' 次经验升级 · 精英抽1个 / Boss抽3个' + (stageXP.settled ? ' · 完成成长后救援' : '')) + ' · 战斗已暂停 · 按 1 / 2 / 3 选择');
     overlay.classList.add('upgrade-overlay');
     overlay.querySelectorAll('[data-choice]').forEach(b => b.onclick = () => choose(Number(b.dataset.choice)));
     overlay.querySelectorAll('[data-recipe-goal]').forEach(button => button.onclick = () => {
@@ -1568,7 +1605,8 @@
         healPlayer(amount); if (amount) player.killHealEvents.push({ at: elapsed, amount });
       }
       if (e.boss) { bossKills++; nextBossAllowedAt = elapsed + combat.bossRecovery; } else nonBossKills++;
-      const reward = runMode === 'training' ? e.xp : runMode === 'stage' ? stageXP.grant(e.xp, player.xpMult, e) : e.xp * player.xpMult;
+      if (runMode !== 'training' && (e.elite || e.boss)) rouletteQueue.push({ count: e.boss ? 3 : 1, boss: !!e.boss });
+      const reward = runMode !== 'training' && (e.elite || e.boss) ? 0 : runMode === 'training' ? e.xp : runMode === 'stage' ? stageXP.grant(e.xp, player.xpMult, e) : e.xp * player.xpMult;
       if (e.boss) player.xp += runMode === 'stage' ? stageXP.collect(reward, e) : reward;
       else if (reward > 0) dropExperience(e.x, e.y, reward);
       burst(e.x, e.y, e.boss ? e.color : e.elite ? '#f6c26b' : e.type ? '#e1aa80' : '#aec582', e.boss ? 36 : e.elite ? 16 : 8); return false;
