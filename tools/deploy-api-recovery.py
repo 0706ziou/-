@@ -23,11 +23,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-COMMIT = "f357c0b8372fe56b14cd55b62d2e49485b748080"
-TREE = "def47b0b6b7e65d3a148c318eb126c01638c4b52"
-RUNTIME_FINGERPRINT = "4b6f58737ee57d3d625e8168bea58e340a45e1bfc234bf1c9ed9e4b3bd564538"
+COMMIT = "e38a11399757031912bafb1c484c37a3872af679"
+TREE = "14c6752bad45ff9422857f57a5ec86b42353af9d"
+RUNTIME_FINGERPRINT = "23d01d045eafaa0f452373ae64f6d9d1676863b1861d49155bb395421b314fbb"
 RUNTIME_FILES = 138
-RUNTIME_BYTES = 23763421
+RUNTIME_BYTES = 23766739
 REVIEWED_OBJECTS = 14
 TRUSTED_CACHE = {
     "2dfd8d6017b9561191fc755282c697da161a484550a61585d8d7614d38d079bb",  # previous reviewed raw release
@@ -37,6 +37,7 @@ TRUSTED_CACHE = {
     "7ab2e63bf2a0ed0e5a0b385d94f7abd39d7afcbc926199cc394d5a2204cf6c00",  # previous reviewed roulette release
     "22bfad0d2c6b6dd8b4d73945e90b45fd7c34f6d79acdf47c4873eabefce2bcf0",  # previously deployed progressive growth release
     "3bb34c6f22159c48c3fac64d97a1fbde3e97e7151de2f6f88dd2d41527c51b36",  # previously deployed diamond commerce release
+    "4b6f58737ee57d3d625e8168bea58e340a45e1bfc234bf1c9ed9e4b3bd564538",  # previously deployed in-place commerce release
     RUNTIME_FINGERPRINT,
     "c8c15291d877fd25457f9be8f684daaf5527f9db3d57fcf4bd60e59893a0af31",
     "7fa18ad8124df2a49971125d256dcb702807042d666f6d73d8af8dd8cb4a66a9",
