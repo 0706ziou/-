@@ -23,24 +23,25 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-COMMIT = "eb23ee05ced4c6a09eba39c806dc28d44136b2ef"
-TREE = "66047523c68a26d4f316a2a00a5acc98c59418ab"
-RUNTIME_FINGERPRINT = "22bfad0d2c6b6dd8b4d73945e90b45fd7c34f6d79acdf47c4873eabefce2bcf0"
-RUNTIME_FILES = 131
-RUNTIME_BYTES = 23726178
-REVIEWED_OBJECTS = 13
+COMMIT = "5a4e9c8998d90d72f535bb3a797144aa1f7b504e"
+TREE = "27cd1825bbac07261bd5cff87e6a831a70a511a8"
+RUNTIME_FINGERPRINT = "3bb34c6f22159c48c3fac64d97a1fbde3e97e7151de2f6f88dd2d41527c51b36"
+RUNTIME_FILES = 138
+RUNTIME_BYTES = 23760091
+REVIEWED_OBJECTS = 14
 TRUSTED_CACHE = {
     "2dfd8d6017b9561191fc755282c697da161a484550a61585d8d7614d38d079bb",  # previous reviewed raw release
     "5b6e01e552d14e87b8a0d3baf43f668c491b123bddeb763123d3d9de6cbbfdce",  # c149 raw runtime
     "dc296d324445c1a42c4bc1977ac4e980561187e639091e2260f7cff62bdab516",
     "5635e6a321e78c6ee4c8d2c9b4cfc1522ce908a4bce1c5cd8821c6c328144152",
     "7ab2e63bf2a0ed0e5a0b385d94f7abd39d7afcbc926199cc394d5a2204cf6c00",  # previous reviewed roulette release
+    "22bfad0d2c6b6dd8b4d73945e90b45fd7c34f6d79acdf47c4873eabefce2bcf0",  # previously deployed progressive growth release
     RUNTIME_FINGERPRINT,
     "c8c15291d877fd25457f9be8f684daaf5527f9db3d57fcf4bd60e59893a0af31",
     "7fa18ad8124df2a49971125d256dcb702807042d666f6d73d8af8dd8cb4a66a9",
 }
 SCRIPT_HASHES = {
-    "tools/deploy-ip-site.sh": "ab8e4faa3e9f5370e90565de74bbdcb87ecac39c8cdd31d74e5791e25aa98479",
+    "tools/deploy-ip-site.sh": "56b4a09084bc5a675e045b1edd015e9a4fb4f208180f9c86809cab3f0e0b5c00",
     "tools/deploy-world-server.sh": "b9876bfe10c0a503d5568207cbf6d821902d13d1c16e16135bffb21403baf305",
 }
 EXTRA_FILES = {".gitattributes", "tools/package-site.cjs", "tools/package-site-verify.cjs",
