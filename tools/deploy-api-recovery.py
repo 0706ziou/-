@@ -23,8 +23,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-COMMIT = "c2195dd697f036c867f19a9a0c1628a05cd3edbf"
-TREE = "8c06f6ff88eac4918235b32917c6c8d98553dcef"
+COMMIT = "54b2bb83ced344abbc8b435996cad175542b4f9e"
+TREE = "f40d3c3a796d2d143a53dc1d1bb3a4bab9b3e9ce"
 RUNTIME_FINGERPRINT = "b7513b1b206c1d09d096734ca94a481ec7f01345ae5f1b90820ca4c91842af4a"
 RUNTIME_FILES = 140
 RUNTIME_BYTES = 28403024
@@ -44,7 +44,7 @@ TRUSTED_CACHE = {
     "7fa18ad8124df2a49971125d256dcb702807042d666f6d73d8af8dd8cb4a66a9",
 }
 SCRIPT_HASHES = {
-    "tools/deploy-ip-site.sh": "53d3bef4c7acf6b5b18081de396dff9a75ed0d8e40a1dfb0bad6477436ab192e",
+    "tools/deploy-ip-site.sh": "62ba31c83741fb14fd3901a3a490988b1cfdc1f64691bf81eef9316f99fb2806",
     "tools/deploy-world-server.sh": "b9876bfe10c0a503d5568207cbf6d821902d13d1c16e16135bffb21403baf305",
 }
 EXTRA_FILES = {".gitattributes", "tools/package-site.cjs", "tools/package-site-verify.cjs",
