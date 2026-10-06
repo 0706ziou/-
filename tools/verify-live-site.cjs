@@ -9,9 +9,9 @@ const digest = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const MIME = { '.html': ['text/html'], '.css': ['text/css'], '.js': ['application/javascript', 'text/javascript'],
   '.json': ['application/json'], '.png': ['image/png'], '.webp': ['image/webp'], '.svg': ['image/svg+xml'] };
 
-function get(url, maxBytes) {
+function getOnce(url, maxBytes) {
   return new Promise((resolve, reject) => {
-    const request = https.get(url, { headers: { 'User-Agent': 'Orchard-Deployment-Check/1', 'Cache-Control': 'no-cache' } }, response => {
+    const request = https.get(url, { agent: false, headers: { 'User-Agent': 'Orchard-Deployment-Check/1', 'Cache-Control': 'no-cache', 'Connection': 'close', 'Accept-Encoding': 'identity' } }, response => {
       const chunks = []; let size = 0;
       if (response.statusCode !== 200) { response.resume(); reject(new Error(url.pathname + ': HTTP ' + response.statusCode)); return; }
       if (response.headers['content-encoding'] && response.headers['content-encoding'] !== 'identity') {
@@ -28,6 +28,17 @@ function get(url, maxBytes) {
     request.setTimeout(20000, () => request.destroy(new Error(url.pathname + ': idle timeout')));
     request.on('error', reject);
   });
+}
+async function get(url, maxBytes) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try { return await getOnce(url, maxBytes); }
+    catch (error) {
+      const transient = /idle timeout$/.test(error.message) || ['ECONNRESET', 'ETIMEDOUT', 'EPIPE'].includes(error.code);
+      if (!transient || attempt === 3) throw error;
+      console.log('Retrying interrupted HTTPS transfer: ' + url.pathname + ' (' + attempt + '/2)');
+      await new Promise(resolve => setTimeout(resolve, 250 * attempt));
+    }
+  }
 }
 async function verify(base, manifestPath) {
   const url = new URL(base);
@@ -63,6 +74,7 @@ async function verify(base, manifestPath) {
         const mime = String(response.headers['content-type'] || '').split(';', 1)[0].trim().toLowerCase();
         if (MIME[path.extname(file.path)] && !MIME[path.extname(file.path)].includes(mime)) throw new Error(file.path + ': incorrect MIME type ' + mime);
         checked++;
+        if (checked % 20 === 0) console.log('Verified ' + checked + '/' + expected.fileCount + ' runtime files.');
       } catch (error) { failures.push(error); }
     }
   }
