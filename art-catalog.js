@@ -34,8 +34,14 @@
     stages.push(Object.freeze({ ...base, id, name: ['青叶启程', '月露群岛', '赤焰山林', '霜晶高原', '星辉王庭'][chapter] + ' · ' + base.name,
       palette: Object.freeze({ ...base.palette, accent: accents[chapter] }), hue: [0, 20, -18, 65, 325][chapter] }));
   }
+  const heroFrames = Object.freeze(Object.fromEntries(['peach', 'grape', 'watermelon', 'banana', 'coconut', 'cherry', 'pear', 'blueberry', 'pineapple'].map((id, i) => {
+    // The generated sheet has transparent gutters at rows 409 and 818.
+    const row = Math.floor(i / 3), top = [0, 409, 818][row], bottom = [409, 818, 1254][row];
+    return [id, Object.freeze({ x: (i % 3) / 3, y: top / 1254, w: 1 / 3, h: (bottom - top) / 1254 })];
+  })));
   window.ORCHARD_ART = Object.freeze({
     stages: Object.freeze(stages), atlas: 'assets/guardian-atlas.png',
+    heroAtlas: 'assets/heroes/guardian-heroes-v2.png', heroFrames,
     heroImages: Object.freeze({ peach: 'assets/heroes/peach.svg', grape: 'assets/heroes/grape.svg', watermelon: 'assets/heroes/watermelon.svg', banana: 'assets/heroes/banana.svg', coconut: 'assets/heroes/coconut.svg', cherry: 'assets/heroes/cherry.svg', pear: 'assets/heroes/pear.svg', blueberry: 'assets/heroes/blueberry.svg', pineapple: 'assets/heroes/pineapple.svg' }),
     sprites: Object.freeze({ orange: 0, berry: 1, pumpkin: 2, lime: 3,
       beetle: 4, fly: 5, elite: 6, boss: 7, tree: 8, rock: 9,

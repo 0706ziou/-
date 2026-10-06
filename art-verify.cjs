@@ -44,6 +44,17 @@ for (const stage of art.stages) {
 }
 check(Object.keys(art.sprites).length === 16 && Object.values(art.sprites).every((frame, index) => frame === index), '16 sprite atlas frames ordered');
 check(Object.isFrozen(art.heroImages) && Object.keys(art.heroImages).length === 9, 'Nine dedicated hero images');
+const heroAtlas = fs.readFileSync(path.join(__dirname, art.heroAtlas));
+check(heroAtlas.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) && heroAtlas[25] === 6, 'Painted hero atlas is a real RGBA PNG');
+check(heroAtlas.readUInt32BE(16) === 1254 && heroAtlas.readUInt32BE(20) === 1254, 'Painted hero atlas matches its source coordinates');
+check(Object.isFrozen(art.heroFrames) && Object.keys(art.heroFrames).length === 9, 'Nine immutable painted hero frames');
+for (const [id, frame] of Object.entries(art.heroFrames)) {
+  check(Object.hasOwn(art.heroImages, id) && Object.isFrozen(frame) && frame.w > 0 && frame.h > 0 && frame.x >= 0 && frame.y >= 0 && frame.x + frame.w <= 1.000001 && frame.y + frame.h <= 1.000001, id + ' frame remains inside the atlas');
+}
+const buildingAtlas = fs.readFileSync(path.join(__dirname, 'assets/world/buildings-v2.png'));
+check(buildingAtlas.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) && buildingAtlas[25] === 6, 'Painted building atlas preserves PNG transparency');
+check(buildingAtlas.readUInt32BE(16) === 1254 && buildingAtlas.readUInt32BE(20) === 1254, 'Nine building sprites fit the square 3 by 3 atlas');
+check(fs.existsSync(path.join(__dirname, 'assets/world/buildings-v2-prompt.txt')), 'Building atlas generation prompt saved');
 for (const [id, asset] of Object.entries(art.heroImages)) {
   const svg = fs.readFileSync(path.join(__dirname, asset), 'utf8');
   check(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"') && svg.includes('viewBox="0 0 128 128"'), id + ' valid local SVG');

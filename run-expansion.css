@@ -630,3 +630,42 @@ body.run-hud-active .arena > .hud {
 @media (max-width:600px) and (min-height:501px) {
   body.run-hud-active:not(.training-active) .arena .boss-forecast { left:calc(30% + 18px); right:7px; transform:none; max-width:none; }
 }
+
+/* Keep the battlefield readable; numerical details are available on pause. */
+.relic-tracker { position:absolute; right:24px; top:263px; display:flex; align-items:center; gap:7px; max-width:220px; padding:6px 9px; background:#16291fe6; border:1px solid #b6cf7970; border-radius:10px; font-size:11px; pointer-events:none; color:#e7efbd; }
+.relic-tracker.hidden { display:none; }
+#relicTrackerArrow { display:inline-block; font-size:22px; line-height:1; color:#ffce83; }
+.training-more { margin-top:12px; text-align:left; }
+.training-more summary { cursor:pointer; padding:10px; color:#c9ed75; }
+.training-more .training-features { margin-top:10px; }
+.overlay:has(.training-summary) .menu-dialog { height:auto; min-height:0; max-height:calc(100dvh - 100px); }
+.menu-dialog .garden-trees { display:flex; justify-content:space-around; align-items:flex-end; width:100%; height:110px; top:12px; }
+.garden-tree { display:block; width:100px; height:108px; background:url('assets/guardian-atlas.png') no-repeat 0 66.6667% / 400% 400%; filter:drop-shadow(0 7px 3px #18372355); }
+.menu-dialog .garden-sun { width:36px; height:36px; top:12px; right:24px; border-radius:50%; background:radial-gradient(circle at 32% 30%,#fff3bd,#e6b54f 70%); box-shadow:0 0 24px #ecc85666; }
+.menu-dialog .garden-cloud { width:68px; height:23px; border-radius:30px; background:#f4ecd480; top:20px; left:18px; }
+.garden-cloud::before { content:''; position:absolute; width:34px; height:30px; border-radius:50%; background:#f4ecd4; left:12px; bottom:6px; opacity:.6; }
+body.run-hud-active .guardian-hud .stats,
+body.run-hud-active .guardian-hud .loadout { display:none; }
+body.run-hud-active .arena .guardian-hud { width:220px; max-width:38%; padding:8px 10px; }
+body.run-hud-active #combatRail .build-chip.empty { display:none; }
+body.run-hud-active #combatRail #storeHud { display:none; }
+.pause-store { margin-top:12px; padding:7px 16px; font-size:12px; }
+body.run-hud-active .relic-hud .relic-empty { display:none; }
+body.run-hud-active .arena .relic-hud { width:auto; max-width:32%; padding:6px 8px; }
+body.run-hud-active .relic-slots { display:flex; flex-wrap:nowrap; gap:4px; }
+body.run-hud-active .relic-slots .relic-slot { flex:0 0 32px; width:32px; height:32px; }
+body.run-hud-active .relic-slot b { display:none; }
+body.run-hud-active .arena .explore-controls { bottom:150px; }
+.pause-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:18px; padding:14px; border:1px solid #76945c66; border-radius:12px; background:#15291f; }
+.pause-stats div { display:flex; flex-direction:column; gap:5px; font-size:12px; color:#b5c99f; }
+.pause-stats strong { color:#fff2cd; font-size:16px; }
+.dialog .pause-stats p { grid-column:1/-1; margin:4px 0 0; font-size:11px; }
+@media(max-width:600px) {
+  .relic-tracker { top:210px; right:8px; max-width:160px; padding:5px; font-size:9px; }
+  body.run-hud-active .arena .guardian-hud { width:170px; max-width:42%; padding:7px; }
+  body.run-hud-active .arena .explore-controls { bottom:142px; max-width:42%; }
+  body.run-hud-active .arena .relic-hud { max-width:46%; }
+  body.run-hud-active .relic-slots { gap:3px; }
+  body.run-hud-active .relic-slots .relic-slot { flex-basis:20px; width:20px; height:24px; font-size:13px; }
+  .pause-stats { gap:7px; padding:10px; }
+}

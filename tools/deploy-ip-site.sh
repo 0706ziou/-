@@ -302,6 +302,8 @@ git -C "$task_source" sparse-checkout set --no-cone --stdin <<'SPARSE'
 /assets/environment-atlas-clean.png
 /assets/guardian-atlas.png
 /assets/heroes/*.svg
+/assets/heroes/*.png
+/assets/world/*.png
 /assets/stages/*.webp
 /assets/store/
 /assets/skills/*.svg

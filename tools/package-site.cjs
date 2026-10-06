@@ -107,7 +107,7 @@ function collectRelease(root = PROJECT_ROOT) {
         vm.runInContext(text, context, { timeout: 1000, filename: relative });
         const art = context.window.ORCHARD_ART;
         if (!art || !Array.isArray(art.stages) || !art.stages.length) throw new Error('Artwork catalog is unavailable.');
-        [art.atlas, ...Object.values(art.heroImages || {}), ...art.stages.map(stage => stage.image)]
+        [art.atlas, art.heroAtlas, ...Object.values(art.heroImages || {}), ...art.stages.map(stage => stage.image)]
           .forEach(reference => add(localReference(reference, relative)));
         // sourceImage is authoring metadata; the runtime uses stage.image (WebP).
       }

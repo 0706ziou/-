@@ -569,7 +569,7 @@ test('Actual beginner kills and pickups slow opening growth within the chapter b
     t.update(.001);assert.equal(t.stageXP.collected,collected);assert.equal(t.stageXP.issued,issued);assert.equal(t.gems.length,0);
   }
   assert(firstChoice>=3);assert.equal(t.kills,20);assert.equal(t.stageXP.collected,total);assert(selected>=1);assert.equal(t.player.level,1+selected);assert.equal(t.state,'playing');
-  assert.equal(element('level').textContent,'LV. '+t.player.level+' / 31');assert(t.stageXP.issued<=10000);
+  assert.equal(element('level').textContent,'LV. '+t.player.level+' / '+(t.activeStage.experience.choices+1));assert(t.stageXP.issued<=10000);
 });
 
 test('Stacked experience bonuses retain XP without interrupting the opening battle',({t})=>{
@@ -1137,7 +1137,8 @@ test('Rescued spirit training charges materials, adds combat benefits and stops 
   const id=rescues[0].id;t.start();const baseline={...t.player};t.startScreen();t.showOrchard();
   for(let level=0;level<5;level++){
     const seeds=t.profile.seeds,cores=t.profile.cores,cost=t.spriteCost(id);
-    assert.equal(cost.seeds,20+level*22);assert.equal(cost.cores,1+Math.floor(level/4));
+    assert.equal(cost.seeds,level===0?0:20+level*22);assert.equal(cost.cores,level===0?0:1+Math.floor(level/4));
+    assert.equal(Boolean(cost.free),level===0);
     assert(t.upgradeSprite(id));assert.equal(t.profile.spriteLevels[id],level+1);
     assert.equal(t.profile.seeds,seeds-cost.seeds);assert.equal(t.profile.cores,cores-cost.cores);
   }
@@ -1619,6 +1620,9 @@ test('Six new run upgrades obey rarity budgets, saturation limits and descriptio
 test('Critical damage rewards enter random upgrade choices only after the hero has critical chance',({t})=>{
   assert.equal(t.player.critChance,0);
   for(let roll=0;roll<60;roll++){t.upgrade();assert(!t.choices.some(u=>u.id==='critDamage'))}
+  // A first offer reserves a visible skill; check ordinary offers after it.
+  assert(t.builds.choose(t.player,'chain').applied);
+  t.player.level=2;
   t.player.critChance=.04;let found=false;
   for(let roll=0;roll<60;roll++){t.upgrade();found ||= t.choices.some(u=>u.id==='critDamage')}
   assert(found,'Once critical chance exists, the critical damage reward must become reachable');
@@ -1708,10 +1712,12 @@ test('Loaded art atlas draws the selected hero and all visible enemy classes fro
       enemy(x,y+100,{boss:true,type:2,maxHp:100,color:'#abc',windup:0})];
     drawCalls.length=0;t.draw();const calls=drawCalls.filter(call=>call.method==='drawImage');assert(calls.length>5);
     for(const key of [hero.id,'beetle','fly','elite','boss']){
+      if(t.art.heroFrames[key]){const f=t.art.heroFrames[key];assert(calls.some(c=>c.args[0].src===t.art.heroAtlas&&c.args[1]===f.x*1024&&c.args[2]===f.y*1024&&c.args[3]===f.w*1024&&c.args[4]===f.h*1024),'Expected painted '+key+' frame');continue}
       if(t.art.heroImages[key]){assert(calls.some(c=>c.args[0].src===t.art.heroImages[key]&&c.args.length===5),'Expected dedicated '+key+' image');continue}
       const index=t.art.sprites[key];assert(calls.some(c=>c.args[1]===index%4*256&&c.args[2]===Math.floor(index/4)*256),'Expected rendered '+key+' cell');
     }
-    for(const call of calls){if(Object.values(t.art.heroImages).includes(call.args[0].src)){assert.equal(call.args.length,5);assert(call.args[3]>0&&call.args[4]>0);continue}
+    for(const call of calls){if(call.args[0].src===t.art.heroAtlas){assert.equal(call.args.length,9);assert(call.args[1]>=0&&call.args[2]>=0&&call.args[1]+call.args[3]<=1024.000001&&call.args[2]+call.args[4]<=1024.000001);assert(call.args[7]>0&&call.args[8]>0);continue}
+      if(Object.values(t.art.heroImages).includes(call.args[0].src)){assert.equal(call.args.length,5);assert(call.args[3]>0&&call.args[4]>0);continue}
       assert([t.art.atlas,t.mapRenderer.environmentAtlas].includes(call.args[0].src));assert.equal(call.args[3],256);assert.equal(call.args[4],256);
       assert(call.args[1]>=0&&call.args[1]<=768);assert(call.args[2]>=0&&call.args[2]<=768);assert(call.args[7]>0&&call.args[8]>0)}
   }
@@ -1925,7 +1931,10 @@ test('Endless combat XP bypasses the settled chapter budget and funds a real six
   t.choices.splice(0,t.choices.length,{...t.builds.get(source),rarity:{mult:1,name:'普通',color:'#abc'}});t.choose(0);
   assert.equal(t.player.level,priorLevel+1);assert.equal(t.player.build.levels[source],priorRank+1);assert(t.player.build.powers[source]>previousPower);
   assert(t.player.build.attackChoices+t.player.build.attributeChoices>=t.activeStage.experience.choices+1);assert.equal(JSON.stringify(t.stageXP.snapshot()),ledger);
-  assert(element('buildSlots').innerHTML.includes('Lv.'+(priorRank+1)));assert(!element('buildSlots').innerHTML.includes('/20 次'));
+  assert(!element('buildSlots').innerHTML.includes('/20 次'));
+  const attackButton=element('buildSlots').querySelectorAll('[data-build-category="attack"]')[0];
+  assert(attackButton.onclick());assert.equal(t.state,'help');
+  assert(element('overlay').innerHTML.includes(t.builds.get(source).name+' · Lv.'+(priorRank+1)));
 });
 test('A fifth distinct skill is learnable in endless and new challenges restore the four-slot five-rank rules',({t})=>{
   clearStage(t);assert(t.startEndless());drainUpgradeChoices(t);const newAttack=t.builds.defs.find(def=>def.category==='attack'&&!t.player.build.attackSlots.includes(def.id)&&t.builds.available(t.player,def.id));assert(newAttack);
@@ -2002,11 +2011,12 @@ test('Hero roster integration: temporary guard and its cooldown freeze in pause 
   assert(Math.abs(t.elapsed-elapsed-.25)<1e-8);assert(Math.abs(t.player.heroClock-cooldown+.25)<1e-8);
   assert.equal(t.player.guardUntil,until);
 });
-for(const id of ['cherry','pear','blueberry','pineapple'])test('Hero roster integration: '+id+' uses its real SVG in both menu and Canvas drawing',()=>{
+for(const id of ['cherry','pear','blueberry','pineapple'])test('Hero roster integration: '+id+' uses its painted atlas in both menu and Canvas drawing',()=>{
   const game=createGame(new Map(),{loadedAtlas:true}),{t,element,drawCalls}=game;
-  assert(t.selectHero(id));t.showHeroes();assert(element('overlay').innerHTML.includes(t.art.heroImages[id]));
-  assert(fs.existsSync(__dirname+'/'+t.art.heroImages[id]));t.start();drawCalls.length=0;t.draw();
-  assert(drawCalls.some(call=>call.method==='drawImage'&&call.args[0].src===t.art.heroImages[id]));
+  assert(t.selectHero(id));t.showHeroes();assert(element('overlay').innerHTML.includes(t.art.heroAtlas));
+  assert(fs.existsSync(__dirname+'/'+t.art.heroAtlas));t.start();drawCalls.length=0;t.draw();
+  const frame=t.art.heroFrames[id];assert(frame);
+  assert(drawCalls.some(call=>call.method==='drawImage'&&call.args[0].src===t.art.heroAtlas&&call.args.length===9&&call.args[1]===frame.x*1024&&call.args[2]===frame.y*1024&&call.args[3]===frame.w*1024&&call.args[4]===frame.h*1024));
 },{start:false});
 test('Balanced recovery: mass kills respect the rolling healing budget and credit each enemy once',({t})=>{
   quietField(t);t.player.hp=20;t.player.killHeal=100;
@@ -2181,7 +2191,12 @@ function completeTrainingRun(t) {
   trainingToMap(t);assert(t.showRelicMap());assert.equal(t.state,'relicMap');assert(t.closeRelicMap());t.update(.001);
   assert.equal(t.state,'playing');assert.equal(t.training.step,8);assert.equal(t.enemies.filter(e=>e.elite).length,1);
   trainingUntil(t,()=>t.training.step===9);assert.equal(t.enemies.filter(e=>e.boss).length,1);
-  assert.equal(t.bossKills,0);trainingUntil(t,()=>t.state==='trainingDone');
+  assert.equal(t.bossKills,0);
+  const boss=t.enemies.find(e=>e.boss);
+  trainingUntil(t,()=>boss.windup>0,4);
+  t.keys.add(Math.abs(boss.dashX)>Math.abs(boss.dashY)?'w':'d');
+  trainingUntil(t,()=>t.training.bossDodges>0,3);t.keys.clear();
+  trainingUntil(t,()=>t.state==='trainingDone');
   assert.equal(t.training,null);assert.equal(t.state,'trainingDone');
 }
 function permanentTrainingSnapshot(profile) {

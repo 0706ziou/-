@@ -28,6 +28,8 @@
   setMap(1);
   const atlas = typeof Image === 'function' ? new Image() : null;
   if (atlas) atlas.src = art.atlas;
+  const heroAtlas = typeof Image === 'function' ? new Image() : null;
+  if (heroAtlas) heroAtlas.src = art.heroAtlas;
   const heroImages = {};
   for (const [id, path] of Object.entries(art.heroImages || {})) {
     if (typeof Image === 'function') { heroImages[id] = new Image(); heroImages[id].src = path; }
@@ -59,7 +61,7 @@
   let stageXP = experience.create(stages[0]);
   let selectedGearSlot = 'weapon', selectedSprite = 0, selectedGarden = 1;
   let endlessWave = 0, waveClock = 0, endlessCreditedSeeds = 0, endlessCreditedCores = 0;
-  let relicDrops = [], skillEffects = [], selectedRelic = relicDefs[0].id, mapReturnState = 'lobby';
+  let relicDrops = [], skillEffects = [], selectedRelic = relicDefs[0].id, trackedRelic = null, mapReturnState = 'lobby';
   let runRelicDefs = [], challengeStarted = false, noticeQueue = [], currentNotice = null, noticeClock = 0;
   let relicHudSignature = '', buildHudSignature = '';
   let heroTab = 'heroes', heroSkillView = 'active', inspectedHero = 'orange', heroEffects = [];
@@ -109,7 +111,7 @@
   }
   function freshProfile() {
     const base = { version: 1, unlockedStage: 1, clearedStages: [], seeds: 0, cores: 0, tutorialSeen: false, trainingComplete: false, trainingSkipped: false, featureGuideStep: 0, featureGuideRound: 1,
-      rescuedSprites: [], spriteLevels: {}, orchard: { level: 0 },
+      rescuedSprites: [], spriteLevels: {}, firstCultivationUsed: false, orchard: { level: 0 },
       inventory: { weapon_seed: { level: 0 }, armor_leaf: { level: 0 }, charm_sprout: { level: 0 } },
       equipped: { weapon: 'weapon_seed', armor: 'armor_leaf', charm: 'charm_sprout' } };
     growth.migrate({}, base); store.migrate({}, base); return base;
@@ -135,6 +137,7 @@
       const residents = [...(Array.isArray(raw.rescuedSprites) ? raw.rescuedSprites : []), ...result.clearedStages];
       result.rescuedSprites = [...new Set(residents.filter(n => Number.isInteger(n) && n >= 1 && n <= rescueDefs.length))].sort((a, b) => a - b);
       for (const id of result.rescuedSprites) result.spriteLevels[id] = integer(raw.spriteLevels?.[id], 0, 5);
+      result.firstCultivationUsed = raw.firstCultivationUsed === true || Object.values(result.spriteLevels).some(level => level > 0);
       for (const id of Object.keys(gearDefs)) {
         if (raw.inventory && Object.hasOwn(raw.inventory, id)) result.inventory[id] = { level: integer(raw.inventory[id]?.level, 0, 10) };
       }
@@ -347,7 +350,7 @@
     return [
       { tab: 'armory', id: 'navArmory', name: '装备工坊', tip: '选择武器、护甲或饰品卡片，查看属性。通关材料可以强化已拥有的装备。' },
       { tab: 'heroes', id: 'navHeroes', name: '英雄育成', tip: '点击英雄头像查看技能，选择出战英雄。训练与全队天赋会永久提升实力。' },
-      { tab: 'orchard', id: 'navOrchard', name: '我的果园', tip: '第一位精灵已经回家。点击精灵查看培养效果，也可以扩建果园获得全队加成。' },
+      { tab: 'orchard', id: 'navOrchard', name: '我的果园', tip: '点击第一位伙伴，免费培养一次，体验全队祝福。后续培养和扩建使用通关材料。' },
       { tab: 'world', id: 'navWorld', name: '共享世界', tip: '点击地图上的空地查看建家选项。家园建好后可以造兵、结盟；通关所得世界物资用于这里。' }
     ].slice(0, profile.featureGuideRound === 2 ? 3 : 4);
   }
@@ -405,6 +408,7 @@
     return pool.slice(0, 6);
   }
   function resetRelics(reroll = true) {
+    trackedRelic = null;
     if (reroll || runRelicDefs.length !== 6) runRelicDefs = randomRelics();
     const previous = relicDrops;
     relicDrops = runRelicDefs.map((d, index) => {
@@ -496,6 +500,8 @@
   }
   function skillHit(enemy, damage, color) {
     if (enemy.boss && elapsed < (enemy.arrivalGuardUntil || 0)) damage *= .1;
+    // Keep the practice boss alive until a real charge has been avoided.
+    if (training && enemy.boss && !training.bossDodges) damage = Math.min(damage, Math.max(0, enemy.hp - 1));
     const actual = Math.min(Math.max(0, enemy.hp), Math.max(0, damage));
     enemy.hp -= damage; enemy.flash = .12; burst(enemy.x, enemy.y, color, 4);
     if (actual > 0 && player.lifeSteal > 0 && player.hp < player.maxHp) {
@@ -636,6 +642,10 @@
   }
   function closeRelicMap() {
     if (state !== 'relicMap') return false;
+    if (['playing', 'paused'].includes(mapReturnState)) {
+      const target = relicDrops.find(drop => String(drop.id) === String(selectedRelic));
+      trackedRelic = target && !target.claimed ? target.id : null;
+    }
     if (mapReturnState === 'playing') { state = 'playing'; overlay.classList.add('hidden'); keys.clear(); pointer = null; updateHUD(); }
     else if (mapReturnState === 'paused') { state = 'playing'; pause(); }
     else if (mapReturnState === 'armory') showArmory();
@@ -698,6 +708,8 @@
     renderLobby();
   }
   function heroPortrait(hero) {
+    const frame = art.heroFrames?.[hero.id];
+    if (frame) return '<span class="hero-portrait" role="img" aria-label="' + hero.name + '立绘" style="background-image:url(\'' + art.heroAtlas + '\');background-size:' + 100 / frame.w + '% ' + 100 / frame.h + '%;background-position:' + frame.x / (1 - frame.w) * 100 + '% ' + frame.y / (1 - frame.h) * 100 + '%;--hero-color:' + hero.color + '"></span>';
     if (art.heroImages?.[hero.id]) return '<span class="hero-portrait" role="img" aria-label="' + hero.name + '立绘" style="background-image:url(\'' + art.heroImages[hero.id] + '\');background-size:contain;background-position:center;--hero-color:' + hero.color + '"></span>';
     const index = art.sprites[hero.id], column = index % 4, row = Math.floor(index / 4);
     return '<span class="hero-portrait" role="img" aria-label="' + hero.name + '立绘" style="background-image:url(\'' + art.atlas + '\');background-size:400% 400%;background-position:' + column * 100 / 3 + '% ' + row * 100 / 3 + '%;--hero-color:' + hero.color + '"></span>';
@@ -819,7 +831,11 @@
     return bonus;
   }
   function orchardCost() { const level = profile.orchard.level; return { seeds: 50 + level * 35, cores: 1 + Math.floor(level / 4) }; }
-  function spriteCost(id) { const level = profile.spriteLevels[id] || 0; return { seeds: 20 + level * 22, cores: 1 + Math.floor(level / 4) }; }
+  function spriteCost(id) {
+    const level = profile.spriteLevels[id] || 0;
+    if (id === 1 && level === 0 && profile.rescuedSprites.includes(id) && !profile.firstCultivationUsed) return { seeds: 0, cores: 0, free: true };
+    return { seeds: 20 + level * 22, cores: 1 + Math.floor(level / 4) };
+  }
   function canAfford(cost) { return profile.seeds >= cost.seeds && profile.cores >= cost.cores; }
   function upgradeOrchard() {
     if (!currentAccount || !featuresUnlocked() || profile.orchard.level >= 10 || isRunActive()) return false;
@@ -830,6 +846,7 @@
     if (!currentAccount || !featuresUnlocked() || !Number.isInteger(id) || !profile.rescuedSprites.includes(id) || profile.spriteLevels[id] >= 5 || isRunActive()) return false;
     const cost = spriteCost(id); if (!canAfford(cost)) return false;
     profile.seeds -= cost.seeds; profile.cores -= cost.cores; profile.spriteLevels[id] = (profile.spriteLevels[id] || 0) + 1;
+    if (cost.free) profile.firstCultivationUsed = true;
     saveProfile(); player = freshPlayer(); updateHUD(); return true;
   }
   function bonusText(type, amount) {
@@ -863,9 +880,9 @@
     const gardenName = garden.name;
     if (!rescued.some(s => s.id === selectedSprite)) selectedSprite = rescued[0]?.id || 0;
     const sprite = rescueDefs[selectedSprite - 1], spriteLevel = profile.spriteLevels[selectedSprite] || 0, trainingCost = spriteCost(selectedSprite);
-    const detail = sprite ? '<article class="gear-card sprite-detail"><div class="companion-detail-heading">' + spritePortrait(sprite, 'companion-detail-portrait') + '<strong>' + sprite.name + ' · +' + spriteLevel + ' / 5</strong></div><span class="sprite-personality">' + sprite.personality + '</span><span>当前祝福：' + bonusText(sprite.bonusType, sprite.bonusPerLevel * (1 + spriteLevel)) + '</span><small>每次培养：' + bonusText(sprite.bonusType, sprite.bonusPerLevel) + '</small><div class="gear-actions"><button class="secondary" id="growSelectedSprite" data-grow-sprite="' + selectedSprite + '" ' + (spriteLevel >= 5 || !canAfford(trainingCost) ? 'disabled' : '') + '>' + (spriteLevel >= 5 ? '已满级' : '培养 · ☀' + trainingCost.seeds + ' ◆' + trainingCost.cores) + '</button></div></article>' : '<article class="gear-card sprite-detail"><strong>等待第一位伙伴</strong><span>通关救出精灵后，它们会住进这里。点击园中的精灵，就能查看和培养。</span></article>';
+    const detail = sprite ? '<article class="gear-card sprite-detail"><div class="companion-detail-heading">' + spritePortrait(sprite, 'companion-detail-portrait') + '<strong>' + sprite.name + ' · +' + spriteLevel + ' / 5</strong></div><span class="sprite-personality">' + sprite.personality + '</span><span>当前祝福：' + bonusText(sprite.bonusType, sprite.bonusPerLevel * (1 + spriteLevel)) + '</span><small>每次培养：' + bonusText(sprite.bonusType, sprite.bonusPerLevel) + '</small><div class="gear-actions"><button class="secondary" id="growSelectedSprite" data-grow-sprite="' + selectedSprite + '" ' + (spriteLevel >= 5 || !canAfford(trainingCost) ? 'disabled' : '') + '>' + (spriteLevel >= 5 ? '已满级' : trainingCost.free ? '首次培养 · 免费' : '培养 · ☀' + trainingCost.seeds + ' ◆' + trainingCost.cores) + '</button></div></article>' : '<article class="gear-card sprite-detail"><strong>等待第一位伙伴</strong><span>通关救出精灵后，它们会住进这里。点击园中的精灵，就能查看和培养。</span></article>';
     const gardenPicker = '<nav class="garden-picker" aria-label="十座果园">' + gardenDefs.map(g => '<button class="secondary ' + (g.id === selectedGarden ? 'active' : '') + '" data-garden-id="' + g.id + '" aria-pressed="' + (g.id === selectedGarden) + '"><strong>' + g.name + '</strong><small>' + profile.rescuedSprites.filter(id => Math.ceil(id / 10) === g.id).length + ' / 10</small></button>').join('') + '</nav>';
-    showMenu(gardenName + ' · LV. ' + level, '我的果园 / 10 座果园 · 100 位精灵', gardenPicker + '<div class="orchard-layout"><div class="orchard-visual"><div class="orchard-scene garden-level-' + Math.floor(level / 3) + ' garden-region-' + selectedGarden + '"><div class="garden-sun">☀</div><div class="garden-cloud">☁</div><div class="garden-trees">🌳　🌳　' + (level >= 2 ? '🌸　🌳' : '🌱') + (level >= 5 ? '　🌻　🌳' : '') + '</div><div class="garden-path"></div><div class="garden-range">第 ' + garden.firstStage + '–' + garden.lastStage + ' 关 · 已入住 ' + rescued.length + ' / 10</div><div class="garden-residents">' +
+    showMenu(gardenName + ' · LV. ' + level, '我的果园 / 10 座果园 · 100 位精灵', gardenPicker + '<div class="orchard-layout"><div class="orchard-visual"><div class="orchard-scene garden-level-' + Math.floor(level / 3) + ' garden-region-' + selectedGarden + '"><div class="garden-sun" aria-hidden="true"></div><div class="garden-cloud" aria-hidden="true"></div><div class="garden-trees" aria-hidden="true"><span class="garden-tree"></span><span class="garden-tree"></span>' + (level >= 2 ? '<span class="garden-tree"></span>' : '') + (level >= 5 ? '<span class="garden-tree"></span>' : '') + '</div><div class="garden-path"></div><div class="garden-range">第 ' + garden.firstStage + '–' + garden.lastStage + ' 关 · 已入住 ' + rescued.length + ' / 10</div><div class="garden-residents">' +
       residents.map(sprite => { const owned = profile.rescuedSprites.includes(sprite.id); return owned ? '<button class="garden-resident ' + (sprite.id === selectedSprite ? 'selected' : '') + '" data-select-sprite="' + sprite.id + '" style="--delay:' + (sprite.id % 5) * -.35 + 's" title="' + sprite.name + '" aria-label="选择' + sprite.name + '">' + spritePortrait(sprite) + '<small>' + sprite.name + '</small></button>' : '<div class="garden-missing"><span>?</span><small>第 ' + sprite.id + ' 关救援</small></div>'; }).join('') + '</div></div>' +
       '<div class="garden-summary"><strong>全队永久加成</strong><span>' + Object.entries(bonus).map(([type, value]) => bonusText(type, value)).join(' · ') + '</span></div></div><div class="orchard-controls">' +
       '<div class="stage-detail"><strong>扩建全部果园 · ' + level + ' / 10</strong><span>10 座果园共享扩建等级。每级全队：伤害 +1%、生命 +4、拾取范围 +2。每关首通救援一位精灵，每座住10位。</span><div class="menu-actions"><button class="secondary" id="growOrchard" ' + (level >= 10 || !canAfford(cost) ? 'disabled' : '') + '>' + (level >= 10 ? '果园已满级' : '扩建 · ☀' + cost.seeds + ' ◆' + cost.cores) + '</button></div></div>' +
@@ -901,6 +918,15 @@
       picked.push(chosen); pool.splice(pool.indexOf(chosen), 1);
     }
     const recommendation = builds.recommended(player);
+    // The first choice introduces a visible automatic skill, even when a hero
+    // starts with extra projectiles or the player has chosen a recipe goal.
+    if (player.level === 1) {
+      const starters = pool.filter(def => ['chain', 'leafstorm', 'fireball'].includes(def.id));
+      if (starters.length) {
+        const starter = starters[Math.floor(Math.random() * starters.length)];
+        picked.push(starter); pool.splice(pool.indexOf(starter), 1);
+      }
+    }
     if (recommendation && pool.includes(recommendation)) { picked.push(recommendation); pool.splice(pool.indexOf(recommendation), 1); }
     if (!picked.some(d => d.category === 'attack')) take('attack');
     if (!picked.some(d => d.category === 'attribute')) take('attribute');
@@ -931,7 +957,10 @@
     updateHUD();
   }
   function trainingFeatures() {
-    return '<div class="training-features">' + trainingCatalog.features.map(item => '<article><span aria-hidden="true">' + item.icon + '</span><strong>' + escapeHTML(item.title) + '</strong><p>' + escapeHTML(item.description) + '</p></article>').join('') + '</div>';
+    const primary = ['stages', 'builds', 'relics'];
+    const cards = items => '<div class="training-features">' + items.map(item => '<article><span aria-hidden="true">' + item.icon + '</span><strong>' + escapeHTML(item.title) + '</strong><p>' + escapeHTML(item.description) + '</p></article>').join('') + '</div>';
+    return cards(trainingCatalog.features.filter(item => primary.includes(item.id))) +
+      '<details class="training-more"><summary>首次通关后还能做什么？</summary>' + cards(trainingCatalog.features.filter(item => !primary.includes(item.id))) + '</details>';
   }
   function needsFirstTraining() {
     return !!currentAccount && !profile.trainingComplete && !profile.trainingSkipped && !profile.tutorialSeen &&
@@ -957,7 +986,7 @@
     if (kind === 'boss') Object.assign(enemy, bossDefs[0], { ...point, boss: true, elite: false, type: 2, name: '练习虫王 · 青叶甲王',
       r: 37, hp: Math.max(160, player.damage * 10), speed: 45, damage: 5, chargeSpeed: 180, chargeInterval: 6,
       bossOrder: 0, bossArrivalAt: elapsed, introduced: true, pursuitAt: 0, aggro: true, xp: 0,
-      chargeClock: 3, windup: 0, dashTime: 0, dashX: 0, dashY: 0 });
+      chargeClock: 1, windup: 0, dashTime: 0, dashX: 0, dashY: 0 });
     enemy.maxHp = enemy.hp; enemies.push(enemy); return enemy;
   }
   function enterTrainingStep() {
@@ -985,12 +1014,12 @@
       { id: 'training-crate', kind: 'crate', shape: 'rect', x: center.x + 280, y: center.y - 180, w: 50, h: 50, variant: 0 });
     obstacles = mapLayout.obstacles; navigator = window.ORCHARD_NAV.create(mapLayout, world);
     activeStage = { ...stages[0], name: trainingCatalog.name, enemyCount: 4, normalCount: 2, fastCount: 0, eliteCount: 1, bossCount: 1, bossSchedule: [Infinity] };
-    runMode = 'training'; training = { step: 0, distance: 0, standTime: 0, xpCollected: 0, mapOpened: false, firstEntry: firstEntry === true, center, saved };
+    runMode = 'training'; training = { step: 0, distance: 0, standTime: 0, xpCollected: 0, mapOpened: false, bossDodges: 0, firstEntry: firstEntry === true, center, saved };
     player = freshPlayer(); enemies = []; bullets = []; gems = []; particles = []; heroEffects = []; skillEffects = [];
     keys.clear(); pointer = null; elapsed = 0; kills = 0; shotClock = 0; still = 0; shake = 0; choices = [];
     bossKills = 0; nonBossKills = 0; bossIndex = 0; bossArrivalUntil = 0;
     runRewarded = false; stageVictoryReady = false; endlessEntered = false; victoryRewardHTML = '';
-    runRelicDefs = [relicDefs.find(def => def.key === 'lightning')]; selectedRelic = runRelicDefs[0].id;
+    runRelicDefs = [relicDefs.find(def => def.key === 'lightning')]; selectedRelic = runRelicDefs[0].id; trackedRelic = null;
     relicDrops = [{ id: selectedRelic, key: 'lightning', slotId: 'training-relic', slotIndex: 0, x: center.x + 1000, y: center.y, claimed: false }];
     noticeQueue = []; currentNotice = null; noticeClock = 0; relicHudSignature = ''; buildHudSignature = '';
     state = 'playing'; overlay.classList.add('hidden'); arena.classList.remove('is-lobby');
@@ -1019,10 +1048,11 @@
     profile.trainingComplete = true; profile.tutorialSeen = true; saveProfile();
     exitTraining(); state = 'trainingDone';
     showPanel('你已经是一位果园守护者了！', '晨芽练习场 / 10 项任务完成', '<div class="training-summary"><p>你已经完成移动、蓄力、击杀、经验升级、技能、饰品与地图练习，并击败了精英和虫王。接下来挑战第一关；首次通关后解锁装备、英雄、果园和世界。</p>' + trainingFeatures() + '</div>',
-      '<button class="primary" id="trainingCampaign">挑战正式关卡</button><button class="secondary" id="trainingHeroes" ' + (!featuresUnlocked() ? 'disabled' : '') + '>选英雄</button><button class="secondary" id="trainingEquipment" ' + (!featuresUnlocked() ? 'disabled' : '') + '>看装备</button><button class="secondary" id="trainingOrchard" ' + (!featuresUnlocked() ? 'disabled' : '') + '>逛果园</button><button class="secondary" id="trainingBack">返回首页</button>',
+      '<button class="primary" id="trainingCampaign">挑战正式关卡</button>' + (featuresUnlocked() ? '<button class="secondary" id="trainingHeroes">选英雄</button><button class="secondary" id="trainingEquipment">看装备</button><button class="secondary" id="trainingOrchard">逛果园</button>' : '') + '<button class="secondary" id="trainingBack">返回首页</button>',
       '学习进度已保存 · 练习不消耗材料，也不计入正式关卡通关');
     arena.classList.add('is-lobby');
-    el('trainingCampaign').onclick = start; el('trainingHeroes').onclick = () => showHeroes(); el('trainingEquipment').onclick = showArmory; el('trainingOrchard').onclick = showOrchard; el('trainingBack').onclick = startScreen;
+    el('trainingCampaign').onclick = start; el('trainingBack').onclick = startScreen;
+    if (featuresUnlocked()) { el('trainingHeroes').onclick = () => showHeroes(); el('trainingEquipment').onclick = showArmory; el('trainingOrchard').onclick = showOrchard; }
     updateHUD(); return true;
   }
   function trainingTick(dt = 0, distance = 0) {
@@ -1034,7 +1064,7 @@
     if (id === 'stand') training.standTime = movementVector().moving ? 0 : training.standTime + dt;
     const complete = id === 'move' ? training.distance >= 140 : id === 'stand' ? training.standTime >= 1.2 && still >= combat.standDelay : id === 'combat' ? kills - training.lastKills >= 2 :
       id === 'xp' ? training.xpCollected >= experienceNeed(1) - 1e-6 : id === 'upgrade' ? player.level >= 2 : id === 'skill' ? player.heroCasts > training.lastCasts :
-      id === 'relic' ? relicDrops.some(drop => drop.claimed) : id === 'map' ? training.mapOpened : id === 'elite' ? nonBossKills > training.lastElites : id === 'boss' ? bossKills > training.lastBosses : false;
+      id === 'relic' ? relicDrops.some(drop => drop.claimed) : id === 'map' ? training.mapOpened : id === 'elite' ? nonBossKills > training.lastElites : id === 'boss' ? training.bossDodges > 0 && bossKills > training.lastBosses : false;
     if (complete) { training.step++; enterTrainingStep(); }
     updateCamera(); return complete;
   }
@@ -1228,17 +1258,26 @@
     g.gain.setValueAtTime(volume, audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(.001, audioCtx.currentTime + length);
     o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + length);
   }
+  function pauseStatsHTML() {
+    const stats = [['单籽伤害', statText(seedDamage())], ['射击频率', statText(player.rate) + ' / 秒'],
+      ['移动速度', statText(player.speed)], ['种子数量', player.shots], ['拾取范围', statText(player.pickup)], ['已驱赶', kills]];
+    return '<section class="pause-stats" aria-label="本局详细属性">' +
+      stats.map(([name, value]) => '<div><span>' + name + '</span><strong>' + value + '</strong></div>').join('') +
+      '<p>' + escapeHTML(el('loadout').textContent) + '</p></section>' +
+      (!training ? '<button class="secondary pause-store" id="pauseStore">钻石商城</button>' : '');
+  }
   function pause() {
     if (state === 'playing') {
       state = 'paused'; keys.clear(); pointer = null;
-      showPanel('喘口气，再出发。', '果园小憩 / 第 ' + activeStage.id + ' 关', '<p>战斗与虫群苏醒已暂停。</p>', '<button class="primary" id="resume">继续清剿</button><button class="secondary" id="leave">放弃本次挑战</button>', '放弃本次挑战不会获得通关奖励');
-      if (runMode === 'endless') showPanel('喘口气，再出发。', '无尽虫潮 / 第 ' + endlessWave + ' 波', '<p>无尽波次与战斗已暂停，已获得的材料已经保存。</p>', '<button class="primary" id="resume">继续无尽</button><button class="secondary" id="leave">结束无尽并结算</button>');
+      showPanel('喘口气，再出发。', '果园小憩 / 第 ' + activeStage.id + ' 关', '<p>战斗与虫群苏醒已暂停。</p>' + pauseStatsHTML(), '<button class="primary" id="resume">继续清剿</button><button class="secondary" id="leave">放弃本次挑战</button>', '放弃本次挑战不会获得通关奖励');
+      if (runMode === 'endless') showPanel('喘口气，再出发。', '无尽虫潮 / 第 ' + endlessWave + ' 波', '<p>无尽波次与战斗已暂停，已获得的材料已经保存。</p>' + pauseStatsHTML(), '<button class="primary" id="resume">继续无尽</button><button class="secondary" id="leave">结束无尽并结算</button>');
       el('resume').onclick = resume; el('leave').onclick = runMode === 'endless' ? () => finishEndless(true) : startScreen;
       if (training) {
-        showPanel('练习随时可以继续。', '晨芽练习场 / 暂停', '<p>当前任务进度和练习战斗已暂停。</p>', '<button class="primary" id="resume">继续练习</button><button class="secondary" id="leave">' + (training.firstEntry ? '跳过引导' : '退出练习') + '</button>', '退出后可从首页重新开始');
+        showPanel('练习随时可以继续。', '晨芽练习场 / 暂停', '<p>当前任务进度和练习战斗已暂停。</p>' + pauseStatsHTML(), '<button class="primary" id="resume">继续练习</button><button class="secondary" id="leave">' + (training.firstEntry ? '跳过引导' : '退出练习') + '</button>', '退出后可从首页重新开始');
         el('resume').onclick = resume; el('leave').onclick = skipTraining;
       }
       overlay.classList.add('pause-overlay');
+      if (!training) el('pauseStore').onclick = () => openItemStore(el('pauseStore'));
       overlay.setAttribute?.('role', 'dialog'); overlay.setAttribute?.('aria-modal', 'true'); overlay.setAttribute?.('aria-label', '游戏暂停');
       el('resume').focus?.();
       updateHUD();
@@ -1773,6 +1812,11 @@
       const speedScale = elapsed < (e.slowUntil || 0) ? 1 - e.slowAmount : 1;
       if (e.boss) {
         e.chargeClock -= dt;
+        if (training && e.trainingCharge) {
+          const attempt = e.trainingCharge;
+          attempt.moved ||= Math.hypot(player.x - attempt.x, player.y - attempt.y) >= 40;
+          if (d < e.r + player.r) attempt.hit = true;
+        }
         if (e.windup > 0) {
           e.windup = Math.max(0, e.windup - dt);
           if (e.windup === 0) e.dashTime = .7;
@@ -1780,8 +1824,20 @@
           e.dashTime = Math.max(0, e.dashTime - dt);
           const movement = world.move(e, e.dashX * e.chargeSpeed * speedScale * dt, e.dashY * e.chargeSpeed * speedScale * dt, obstacles, WORLD_W, WORLD_H);
           if (movement.blocked) e.dashTime = 0;
+          if (training && e.trainingCharge) {
+            const attempt = e.trainingCharge;
+            if (Math.hypot(player.x - e.x, player.y - e.y) < e.r + player.r) attempt.hit = true;
+            if (e.dashTime === 0) {
+              if (attempt.moved && !attempt.hit && !movement.blocked) {
+                training.bossDodges++;
+                queueNotice('躲闪成功！', '已避开虫王冲锋，现在站定输出击败它。', '↔', '#c9ed75', 'training');
+              }
+              delete e.trainingCharge;
+            }
+          }
         } else if (e.chargeClock <= 0) {
           e.windup = .9; e.dashX = dx / d; e.dashY = dy / d; e.chargeClock = e.chargeInterval;
+          if (training) e.trainingCharge = { x: player.x, y: player.y, moved: false, hit: d < e.r + player.r };
         } else navigator.moveEnemy(e, player.x, player.y, e.speed * speedScale, dt);
         e.x = Math.max(e.r + 22, Math.min(WORLD_W - e.r - 22, e.x)); e.y = Math.max(e.r + 22, Math.min(WORLD_H - e.r - 22, e.y));
       } else navigator.moveEnemy(e, player.x, player.y, e.speed * speedScale, dt);
@@ -1885,6 +1941,7 @@
       el('trainingTitle').textContent = step.title; el('trainingHint').textContent = step.hint;
       const target = { upgrade: '选择一次升级', skill: '施放一次英雄技能', relic: '走近发光饰品', map: '打开投放图并返回', elite: '击败这只精英虫', boss: '击败训练虫王' };
       el('trainingTarget').textContent = step.id === 'move' ? '已移动 ' + Math.min(140, Math.floor(training.distance)) + ' / 140' : step.id === 'stand' ? '站定 ' + Math.min(1.2, training.standTime).toFixed(1) + ' / 1.2 秒' : step.id === 'xp' ? '已拾取 ' + Math.round(training.xpCollected) + ' / 180 经验' : step.id === 'combat' ? '已击杀 ' + (kills - training.lastKills) + ' / 2' : '目标：' + target[step.id];
+      if (step.id === 'boss') el('trainingTarget').textContent = training.bossDodges ? '✓ 已躲过冲锋 · 击败虫王' : '躲过 1 次冲锋 · 预警时侧向移动';
     }
     el('guardianHud').classList.toggle('hidden', !activeHUD); el('combatRail').classList.toggle('hidden', !activeHUD);
     el('combatGuide').disabled = !hudButtonsReady;
@@ -1902,7 +1959,7 @@
     el('populationLabel').textContent = training ? '练习进度' : runMode === 'endless' && inRun ? '无尽第 ' + endlessWave + ' 波' : '剩余害虫';
     el('pursuing').textContent = inRun ? enemies.filter(e => e.aggro && e.hp > 0).length : s.initialPursuers;
     el('enemyTypes').textContent = runMode === 'endless' && inRun ? '无尽虫潮 · 连续增援' : '普通 ' + (inRun ? enemies.filter(e => !e.boss && !e.elite).length : s.normalCount) + ' · 精英 ' + (inRun ? enemies.filter(e => e.elite).length : s.eliteCount) + ' · Boss ' + (inRun ? bossKills : 0) + ' / ' + s.bossCount;
-    el('level').textContent = 'LV. ' + player.level + (runMode === 'stage' && inRun ? ' / ' + experience.levelCap : '');
+    el('level').textContent = 'LV. ' + player.level + (runMode === 'stage' && inRun ? ' / ' + (s.experience.choices + 1) : '');
     el('xpFill').style.width = Math.min(100, player.xp / player.need * 100) + '%'; el('xpText').textContent = Number(player.xp.toFixed(1)) + ' / ' + player.need;
     if (runMode === 'stage' && inRun && state !== 'upgrade' && player.xp >= player.need && elapsed < nextStageUpgradeAt) {
       el('xpText').textContent += ' · 待选 ' + Math.ceil(nextStageUpgradeAt - elapsed) + 's';
@@ -1947,7 +2004,17 @@
     el('dashSkill').disabled = state !== 'playing' || (player.skillTimers.dash || 0) > 0;
     el('dashSkill').textContent = (player.skillTimers.dash || 0) > 0 ? '闪步 · ' + player.skillTimers.dash.toFixed(1) + 's' : '闪步 · Space';
     const claimed = relicDrops.filter(d => d.claimed).length;
-    el('relicStatus').textContent = training ? '训练饰品 ' + claimed + ' / 1 · 正式每局随机 6 件' : '本局饰品 ' + claimed + ' / 6 · 50 件随机投放';
+    el('relicStatus').textContent = training ? '训练饰品 ' + claimed + ' / 1' : '本局饰品 ' + claimed + ' / 6 · M 查看';
+    const targetDrop = relicDrops.find(drop => String(drop.id) === String(trackedRelic) && !drop.claimed);
+    const showTracker = !!targetDrop && canExplore;
+    el('relicTracker').classList.toggle('hidden', !showTracker);
+    if (showTracker) {
+      const def = runRelicDefs.find(item => String(item.id) === String(targetDrop.id));
+      const dx = targetDrop.x - player.x, dy = targetDrop.y - player.y, angle = Math.atan2(dy, dx);
+      const direction = ['东', '东南', '南', '西南', '西', '西北', '北', '东北'][(Math.round(angle / (Math.PI / 4)) + 8) % 8];
+      el('relicTrackerArrow').style.transform = 'rotate(' + (angle * 180 / Math.PI + 90) + 'deg)';
+      el('relicTrackerText').textContent = def.name + ' · ' + direction + ' ' + Math.round(Math.hypot(dx, dy)) + ' 距离';
+    }
     const ownedDefs = runRelicDefs.filter(def => player.skills[def.key]);
     const relicSignature = (training ? 'training:' : '') + (ownedDefs.map(def => def.id).join(',') || 'empty');
     if (relicSignature !== relicHudSignature) {
@@ -1978,6 +2045,12 @@
   }
   function ellipse(x, y, rx, ry, color) { ctx.fillStyle = color; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); ctx.fill(); }
   function drawSprite(key, x, y, width, height = width, angle = 0) {
+    const frame = art.heroFrames?.[key];
+    if (frame && heroAtlas?.complete && heroAtlas.naturalWidth) {
+      ctx.save(); ctx.translate(x, y); if (angle) ctx.rotate(angle);
+      ctx.drawImage(heroAtlas, frame.x * heroAtlas.naturalWidth, frame.y * heroAtlas.naturalHeight, frame.w * heroAtlas.naturalWidth, frame.h * heroAtlas.naturalHeight, -width / 2, -height / 2, width, height);
+      ctx.restore(); return true;
+    }
     const portrait = heroImages[key];
     if (portrait?.complete && portrait.naturalWidth) {
       ctx.save(); ctx.translate(x, y); if (angle) ctx.rotate(angle);
@@ -1998,7 +2071,7 @@
   function onScreen(o, margin = 40) { return o.x > camera.x - margin && o.x < camera.x + W + margin && o.y > camera.y - margin && o.y < camera.y + H + margin; }
   function minimap() {
     if (training) return;
-    const x = W - 177, y = 95, w = 150, h = 106, sx = w / WORLD_W, sy = h / WORLD_H;
+    const x = W - 177, y = H > W ? 160 : 95, w = 150, h = 106, sx = w / WORLD_W, sy = h / WORLD_H;
     ctx.fillStyle = '#12261ee8'; ctx.fillRect(x - 9, y - 24, w + 18, h + 61); ctx.strokeStyle = '#88a75888'; ctx.lineWidth = 1; ctx.strokeRect(x, y, w, h);
     ctx.fillStyle = '#d8e7b5'; ctx.font = '11px "Microsoft YaHei",sans-serif'; ctx.fillText(mapLayout.id + ' · ' + mapLayout.name, x, y - 9);
     mapRenderer.mini(ctx, mapLayout, x, y, w, h);
@@ -2006,6 +2079,9 @@
     for (let i = 0; i < relicDrops.length; i++) {
       const drop = relicDrops[i], px = x + drop.x * sx, py = y + drop.y * sy;
       ellipse(px, py, 5, 5, drop.claimed ? '#466753' : runRelicDefs[i].color);
+      if (!drop.claimed && String(drop.id) === String(trackedRelic)) {
+        ctx.strokeStyle = '#fff2cd'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI * 2); ctx.stroke();
+      }
       ctx.fillStyle = drop.claimed ? '#adcbb0' : '#1a2b20'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(drop.claimed ? '✓' : String(i + 1), px, py + 3); ctx.textAlign = 'start';
     }
     ctx.strokeStyle = '#d9e5aa55'; ctx.strokeRect(x + camera.x * sx, y + camera.y * sy, W * sx, H * sy); ellipse(x + player.x * sx, y + player.y * sy, 3, 3, '#ffbd69');
