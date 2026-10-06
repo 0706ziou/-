@@ -23,13 +23,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-COMMIT = "e38a11399757031912bafb1c484c37a3872af679"
-TREE = "14c6752bad45ff9422857f57a5ec86b42353af9d"
-RUNTIME_FINGERPRINT = "23d01d045eafaa0f452373ae64f6d9d1676863b1861d49155bb395421b314fbb"
-RUNTIME_FILES = 138
-RUNTIME_BYTES = 23766739
-REVIEWED_OBJECTS = 14
+COMMIT = "c2195dd697f036c867f19a9a0c1628a05cd3edbf"
+TREE = "8c06f6ff88eac4918235b32917c6c8d98553dcef"
+RUNTIME_FINGERPRINT = "b7513b1b206c1d09d096734ca94a481ec7f01345ae5f1b90820ca4c91842af4a"
+RUNTIME_FILES = 140
+RUNTIME_BYTES = 28403024
+REVIEWED_OBJECTS = 15
 TRUSTED_CACHE = {
+    "23d01d045eafaa0f452373ae64f6d9d1676863b1861d49155bb395421b314fbb",  # previous reviewed growth-menu release
     "2dfd8d6017b9561191fc755282c697da161a484550a61585d8d7614d38d079bb",  # previous reviewed raw release
     "5b6e01e552d14e87b8a0d3baf43f668c491b123bddeb763123d3d9de6cbbfdce",  # c149 raw runtime
     "dc296d324445c1a42c4bc1977ac4e980561187e639091e2260f7cff62bdab516",
@@ -43,7 +44,7 @@ TRUSTED_CACHE = {
     "7fa18ad8124df2a49971125d256dcb702807042d666f6d73d8af8dd8cb4a66a9",
 }
 SCRIPT_HASHES = {
-    "tools/deploy-ip-site.sh": "56b4a09084bc5a675e045b1edd015e9a4fb4f208180f9c86809cab3f0e0b5c00",
+    "tools/deploy-ip-site.sh": "53d3bef4c7acf6b5b18081de396dff9a75ed0d8e40a1dfb0bad6477436ab192e",
     "tools/deploy-world-server.sh": "b9876bfe10c0a503d5568207cbf6d821902d13d1c16e16135bffb21403baf305",
 }
 EXTRA_FILES = {".gitattributes", "tools/package-site.cjs", "tools/package-site-verify.cjs",
