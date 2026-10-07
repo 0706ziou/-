@@ -46,7 +46,7 @@ check('Map tracking shows a bearing and distance, clears on collection and reset
   assert(t.showRelicMap());
   const target = t.relicDrops[0];
   const marker = g.element('overlay').querySelectorAll('[data-relic-id]').find(button => button.dataset.relicId === String(target.id));
-  marker.onclick(); const elapsed = t.elapsed; assert(t.closeRelicMap());
+  marker.onclick(); const elapsed = t.elapsed; click(g, 'trackSelectedRelic');
   assert.equal(t.elapsed, elapsed); assert(!g.element('relicTracker').classList.contains('hidden'));
   assert(g.element('relicTrackerText').textContent.includes('距离'));
   const label = g.element('relicTrackerText').textContent;

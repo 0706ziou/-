@@ -1,41 +1,93 @@
-const assert=require('node:assert/strict');
-const {createGame,clearStage,click,quietField}=require('../verify.cjs');
-const user=Object.freeze({id:'flowcheck',account:'flowcheck',nickname:'新手验收'});
-const storage=new Map();let worldOptions;
-const frontier={open(options){worldOptions=options;},close(){},isAuthenticated(){return false;},hasGameLogin(){return false;}};
-const make=()=>{const g=createGame(storage,{auth:true,tutorial:true,frontierClient:frontier});g.t.acceptAccount(user);return g;};
-let g=make(),t=g.t;
-assert.equal(t.runMode,'training');t.skipTraining();
-for(const fn of [()=>t.showArmory(),()=>t.showHeroes(),()=>t.showOrchard(),()=>t.showWorld(),()=>t.selectHero('cherry'),()=>t.upgradeGear('weapon_seed'),()=>t.researchTalent('vitality'),()=>t.upgradeOrchard()])assert.equal(fn(),false);
-for(const id of ['navArmory','navHeroes','navOrchard','navWorld'])assert.equal(g.element(id).disabled,true);
-assert(g.element('overlay').innerHTML.includes('首次通关后解锁'));
-console.log('PASS fresh account locks all four features and mutations after training');
-t.start();t.finish(false);for(const id of ['resultWorld','resultOrchard','resultArmory'])assert.equal(g.element(id).disabled,true);
-t.startScreen();t.start();clearStage(t);assert(t.profile.clearedStages.includes(1));assert.equal(t.state,'ended');
-assert(g.element('overlay').innerHTML.includes('新功能已解锁'));
-click(g,'backLobby');for(const id of ['navArmory','navHeroes','navOrchard','navWorld'])assert.equal(g.element(id).disabled,false);
-assert(g.element('navArmory').classList.contains('feature-guide-target'));
-assert(!g.element('overlay').innerHTML.includes('id="startTraining"'));
-click(g,'navOrchard');assert(!g.element('overlay').innerHTML.includes('id="nextFeatureGuide"'));assert.equal(t.profile.featureGuideStep,0);
-t.startScreen();click(g,'navArmory');assert(g.element('overlay').innerHTML.includes('选择武器'));click(g,'nextFeatureGuide');assert.equal(t.profile.featureGuideStep,1);
-g=make();t=g.t;assert.equal(t.profile.featureGuideStep,1);assert(g.element('navHeroes').classList.contains('feature-guide-target'));
-for(const id of ['navHeroes','navOrchard']){click(g,id);click(g,'nextFeatureGuide');}
-click(g,'navWorld');assert(worldOptions.guideHTML.includes('空地'));worldOptions.onGuideDone();assert.equal(t.profile.featureGuideStep,4);
-assert(!g.element('overlay').innerHTML.includes('class="feature-guide"'));
-console.log('PASS first clear unlocks four features, ordered click guide, refresh resumes and completion persists');
-t.selectStage(2);t.start();clearStage(t);click(g,'backLobby');assert.equal(t.profile.featureGuideRound,2);assert.equal(t.profile.featureGuideStep,0);assert(g.element('overlay').innerHTML.includes('第二关成长练习'));
-for(const id of ['navArmory','navHeroes','navOrchard']){click(g,id);click(g,'nextFeatureGuide');}
-assert.equal(t.profile.featureGuideStep,3);assert(!g.element('overlay').innerHTML.includes('class="feature-guide"'));
-t.selectStage(2);t.start();clearStage(t);click(g,'backLobby');assert.equal(t.profile.featureGuideStep,3);
-g=make();assert.equal(g.t.profile.featureGuideRound,2);assert.equal(g.t.profile.featureGuideStep,3);assert(!g.element('overlay').innerHTML.includes('class="feature-guide"'));
-console.log('PASS second clear repeats three features once, repeat victories and reload do not restart it');
-const newUser=Object.freeze({id:'otherflow',account:'otherflow',nickname:'另一新芽'});g.t.startScreen();assert(g.t.logoutAccount());g.t.acceptAccount(newUser);assert.equal(g.t.profile.featureGuideStep,0);assert.equal(g.t.profile.featureGuideRound,1);assert.equal(g.t.runMode,'training');g.t.skipTraining();assert.equal(g.t.showArmory(),false);
-const legacyStorage=new Map([['orchard-save-v1',JSON.stringify({version:1,unlockedStage:3,clearedStages:[1,2],tutorialSeen:true,seeds:77,cores:8})]]);
-const legacy=createGame(legacyStorage,{tutorial:true});assert.equal(legacy.t.profile.featureGuideStep,4);assert.equal(legacy.t.profile.seeds,77);assert(legacy.t.showHeroes());assert(!legacy.element('overlay').innerHTML.includes('id="nextFeatureGuide"'));
-console.log('PASS guide state stays account-scoped and old progressed saves remain unlocked without forced replays');
-for(let id=1;id<=4;id++){
- const h=createGame();h.t.selectStage(id);h.t.profile.unlockedStage=4;h.t.selectStage(id);h.t.start();const s=h.t.activeStage;
- if(id<=3){assert.equal(s.normalCount,48+id*24);assert.equal(s.eliteCount,id);assert.equal(s.bossCount,1);const boss=h.t.enemies.find(e=>e.boss);assert.equal(boss.hp,120+id*60);assert(boss.damage<=5);assert(boss.chargeSpeed<h.t.player.speed);assert.equal(s.xpRewards.reduce((a,b)=>a+b,0),10000);quietField(h.t);h.t.player.hp=40;h.t.player.sinceHit=3;h.t.update(.2);assert(h.t.player.hp>40);}
- else{assert.equal(s.normalCount,398);assert.equal(s.beginner,undefined);quietField(h.t);h.t.player.hp=40;h.t.player.sinceHit=3;h.t.update(.2);assert.equal(h.t.player.hp,40);}
-}
-console.log('PASS three gentle stages retain exact XP, slow bosses and recovery; stage four tuning remains unchanged');
+'use strict';
+const assert = require('node:assert/strict');
+const { createGame, clearStage, click, quietField } = require('../verify.cjs');
+let checks = 0;
+const check = (name, test) => { test(); checks++; console.log('PASS ' + name); };
+check('Fresh accounts keep feature gates; the first clear offers actual cultivation, strengthening and the next stage', () => {
+  const g = createGame(new Map(), { tutorial: true }), t = g.t;
+  t.skipTraining();
+  assert.equal(t.showArmory(), false); assert.equal(t.upgradeSprite(1), false);
+  t.start(); clearStage(t);
+  assert.equal(g.element('resultGrowth').textContent, '免费培养伙伴');
+  assert(!g.element('startEndless').classList.contains('primary'));
+  click(g, 'resultGrowth'); assert.equal(t.state, 'orchard');
+  const wallet = [t.profile.seeds, t.profile.cores];
+  click(g, 'growthNext'); assert.equal(t.profile.spriteLevels[1], 1);
+  assert.deepEqual([t.profile.seeds, t.profile.cores], wallet);
+  assert(g.element('growthNext').textContent.includes('强化'));
+  click(g, 'growthNext'); assert.equal(t.state, 'armory');
+  assert(g.element('overlay').innerHTML.includes('22 → 23.32'));
+  assert(g.element('overlay').innerHTML.includes('3 → 3.06'));
+  assert(g.element('overlay').innerHTML.includes('66 → 71.36'));
+  click(g, 'growthNext'); assert.equal(t.profile.inventory.weapon_seed.level, 0, 'The guide first reveals the actual effects and price');
+  const enhance=g.element('overlay').querySelectorAll('[data-enhance]').find(button=>button.dataset.enhance==='weapon_seed');
+  assert(enhance); enhance.onclick(); assert.equal(t.profile.inventory.weapon_seed.level, 1);
+  assert.equal(t.profile.seeds, wallet[0] - 35);
+  assert(g.element('growthNext').textContent.includes('第二关'));
+  const reloaded = createGame(g.storage, { tutorial: true });
+  assert(reloaded.element('growthNext').textContent.includes('第二关'));
+  click(reloaded, 'growthNext'); assert.equal(reloaded.t.activeStage.id, 2);
+  assert.equal(reloaded.t.player.maxHp, 114);
+  clearStage(reloaded.t); reloaded.t.startScreen();
+  assert(!reloaded.element('overlay').innerHTML.includes('id="growthNext"'));
+});
+check('Spending materials elsewhere never traps the soft growth route, and old earned progress remains intact', () => {
+  const g = createGame(), t = g.t; t.start(); clearStage(t); t.startScreen();
+  t.upgradeSprite(1); t.profile.seeds = 0; t.profile.cores = 0; t.startScreen();
+  assert(g.element('growthNext').textContent.includes('第二关'));
+  assert(!g.element('overlay').innerHTML.includes('class="done">✓ 强化武器'));
+  const prior = new Map([['orchard-save-v1', JSON.stringify({ version: 1, unlockedStage: 3, clearedStages: [1,2], seeds: 77, cores: 8, spriteLevels: {1:2}, tutorialSeen: true })]]);
+  const old = createGame(prior); assert.equal(old.t.profile.seeds,77); assert.equal(old.t.profile.spriteLevels[1],2);
+  assert(!old.element('overlay').innerHTML.includes('growth-route'));
+});
+check('An ordinary opening reaches the first XP choice within thirty battle seconds using only earned drops', () => {
+  for (const id of [1,2]) {
+    const g = createGame(), t = g.t;
+    t.profile.unlockedStage = id; t.selectStage(id); t.start();
+    for (let frames=0; frames<750 && t.state !== 'upgrade'; frames++) {
+      if(t.state === 'roulette') { click(g,'spinReward'); t.rouletteTick(2); click(g,'spinReward'); }
+      else t.update(.04);
+    }
+    assert.equal(t.state,'upgrade', 'Opening stage ' + id + ' must reach a real XP choice');
+    assert(t.elapsed<=30); assert(t.stageXP.collected >= t.experienceNeed(1));
+    assert.equal(t.player.level,1); assert(t.stageXP.collected<=t.stageXP.issued);
+    assert(t.stageXP.issued<=t.activeStage.experience.budget);
+    assert(t.choices.some(card=>['chain','leafstorm','fireball'].includes(card.id)));
+    const issued=t.stageXP.issued, collected=t.stageXP.collected, elapsed=t.elapsed;
+    for(let i=0;i<10;i++)t.frame(1000+i*40);
+    assert.equal(t.stageXP.issued,issued); assert.equal(t.stageXP.collected,collected); assert.equal(t.elapsed,elapsed);
+    t.choose(0);
+  }
+});
+check('The opening assist leaves distant XP and later stages under the normal pickup rules', () => {
+  for(const id of [1,3]) {
+    const g=createGame(),t=g.t; t.profile.unlockedStage=id; t.selectStage(id); t.start();
+    const victim=t.enemies.find(e=>!e.boss&&!e.elite); quietField(t);
+    victim.x=t.player.x+300; victim.y=t.player.y; victim.hp=0; t.enemies.push(victim); t.update(.001);
+    const gem=t.gems[0], x=gem.x; t.update(.1);
+    assert.equal(gem.x<x,id===1);
+    const far=t.player.x+1800; t.dropExperience(far,t.player.y,1); const farGem=t.gems.find(gem=>gem.x===far); t.update(.1);
+    assert.equal(farGem.x,far);
+  }
+});
+check('Nearest map selection is useful, viewing does not start tracking, and explicit tracking cancels without consuming battle time', () => {
+  const g=createGame(),t=g.t; t.start(); quietField(t);
+  const nearest=t.relicDrops.reduce((a,b)=>Math.hypot(a.x-t.player.x,a.y-t.player.y)<Math.hypot(b.x-t.player.x,b.y-t.player.y)?a:b);
+  t.showRelicMap(); assert.equal(t.selectedRelic,nearest.id); const elapsed=t.elapsed;
+  t.closeRelicMap(); assert(g.element('relicTracker').classList.contains('hidden'));
+  t.showRelicMap(); click(g,'trackSelectedRelic'); assert(!g.element('relicTracker').classList.contains('hidden'));
+  t.showRelicMap(); assert.equal(g.element('trackSelectedRelic').textContent,'取消追踪');
+  click(g,'trackSelectedRelic'); assert(g.element('relicTracker').classList.contains('hidden')); assert.equal(t.elapsed,elapsed);
+  t.showRelicMap(); click(g,'trackSelectedRelic'); t.player.x=nearest.x; t.player.y=nearest.y; t.update(.001);
+  assert(nearest.claimed); assert(g.element('relicTracker').classList.contains('hidden'));
+  t.showRelicMap(nearest.id); assert.equal(g.element('trackSelectedRelic').disabled,true);
+});
+check('World harvest guidance persists per game account and a stale callback cannot update another account', () => {
+  let options; const client={open(value){options=value;},close(){},isAuthenticated(){return false;}};
+  const g=createGame(new Map(),{frontierClient:client}),t=g.t;
+  t.profile.clearedStages=[1,2]; t.showWorld(); const harvest=options.onHarvest; harvest();
+  assert.equal(t.profile.worldHarvestSeen,true); assert.equal(t.loadProfile().worldHarvestSeen,true);
+  t.acceptAccount({id:'next',nickname:'另一个测试账号'}); t.profile.worldHarvestSeen=false; harvest();
+  assert.equal(t.profile.worldHarvestSeen,false);
+});
+console.log(checks+' first-minutes flow checks passed.');

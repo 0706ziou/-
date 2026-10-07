@@ -669,3 +669,7 @@ body.run-hud-active .arena .explore-controls { bottom:150px; }
   body.run-hud-active .relic-slots .relic-slot { flex-basis:20px; width:20px; height:24px; font-size:13px; }
   .pause-stats { gap:7px; padding:10px; }
 }
+
+.xp-guide { position: absolute; bottom: 44px; left: 22px; right: 22px; padding: 6px 9px; border: 1px solid #8cced66b; border-radius: 10px; background: #16312ee8; color: #d5f1ef; font-size: 11px; line-height: 1.5; text-align: center; pointer-events: none; }
+.xp-guide.hidden { display: none; }.arena:has(.xp-guide:not(.hidden)) .stance { visibility: hidden; }
+@media(max-width:650px){.xp-guide{bottom:41px;left:8px;right:8px;font-size:9px;padding:5px 7px}}

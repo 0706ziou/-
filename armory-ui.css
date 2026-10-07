@@ -37,3 +37,12 @@
  .armory-overlay .menu-dialog .equipment-card .gear-actions{flex-wrap:wrap;padding:9px 8px;gap:5px}.armory-overlay .menu-dialog .equipment-card .gear-actions .secondary{min-height:33px;font-size:9px}.armory-overlay .equipment-card .enhance-gear{flex-basis:100%!important}.equipment-unlock{margin:0 8px 9px;font-size:9px;padding:9px 4px}
 }
 @media(max-height:500px) and (min-width:651px){.armory-loadout{display:none}.equipment-art{height:112px}.armory-overlay .menu-dialog .equipment-card{min-height:285px}.equipment-picture{padding-top:23px}.equipment-copy>p{min-height:20px}}
+
+.equipment-upgrade-preview,.equipment-comparison { margin: 8px 12px; padding: 9px; border-radius: 9px; background: #162c2280; border: 1px solid #71935755; font-size: 10px; }
+.equipment-upgrade-preview>strong { display: block; margin-bottom: 6px; color: #d7e9a1; font-size: 11px; }
+.equipment-upgrade-preview>span,.equipment-comparison>div>span { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 3px 8px; margin: 4px 0; color: #b6c79b; }
+.equipment-upgrade-preview b,.equipment-comparison b { color: #f1eac8; font-weight: 500; }
+.equipment-upgrade-preview>small { display: block; margin-top: 7px; font-size: 9px; line-height: 1.6; color: #a7ba90; }
+.equipment-comparison summary { cursor: pointer; line-height: 1.6; color: #c7dca5; }
+.equipment-comparison>div { margin-top: 7px; }.equipment-comparison small { color: #c5dc9f; }
+@media(max-width:650px){.equipment-upgrade-preview,.equipment-comparison{margin:7px 8px;padding:7px;font-size:9px}.equipment-upgrade-preview>strong{font-size:10px}}

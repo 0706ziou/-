@@ -23,6 +23,7 @@
   const TABS = [['map', '🗺', '世界地图'], ['home', '🏡', '主城'], ['army', '⚔', '小队军营'], ['guild', '⚑', '公会']];
   let host = null, exitCallback = null, authenticatedCallback = null, worldState = null, expectedName = '', authenticatedName = '';
   let featureGuide = '', guideCallback = null;
+  let guideHarvestSeen = false, harvestCallback = null;
   let activeTab = 'map', selectedTile = null, selectedTarget = null, editingSquadId = null, attackSquadId = '';
   let connected = false, connecting = false, busy = false, message = null, retryRequest = null;
   let refreshTimer = null, countdownTimer = null, generation = 0, refreshing = null, serverOffset = 0;
@@ -46,10 +47,22 @@
   };
   const materialIcon = key => MATERIALS[key]?.image ? `<img class="world-material-icon" src="${MATERIALS[key].image}" alt="" width="28" height="28">` : MATERIALS[key]?.icon || '';
   const costText = costs => Object.entries(costs || {}).filter(([key, value]) => MATERIALS[key] && numeric(value) > 0).map(([key, value]) => `<span class="world-cost-material">${materialIcon(key)} ${MATERIALS[key].name} ${number(value)}</span>`).join(' · ') || '无需物资';
+  const materialText = costs => Object.entries(costs || {}).filter(([key, value]) => MATERIALS[key] && numeric(value) > 0).map(([key, value]) => `${MATERIALS[key].icon} ${MATERIALS[key].name} ${number(value)}`).join(' · ') || '无需物资';
   const affordable = costs => !!self() && Object.entries(costs || {}).every(([key, amount]) => !MATERIALS[key] || numeric(self().resources?.[key]) >= numeric(amount));
   const guildById = id => (worldState?.guilds || []).find(guild => guild.id === id);
   const playerById = id => (worldState?.players || []).find(player => player.id === id);
   const tileByXY = (x, y) => (worldState?.map?.cells || []).find(cell => cell.x === x && cell.y === y);
+  function emptyHomeTile() {
+    const map = worldState?.map; if (!map) return null;
+    const width = numeric(map.width) || 16, height = numeric(map.height) || 16;
+    const occupied = new Set((map.cells || []).map(cell => `${cell.x},${cell.y}`));
+    let best = null, distance = Infinity;
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      const d = (x - (width - 1) / 2) ** 2 + (y - (height - 1) / 2) ** 2;
+      if (!occupied.has(`${x},${y}`) && d < distance) { best = { x, y }; distance = d; }
+    }
+    return best;
+  }
   const guildColor = id => {
     let hash = 0;
     for (const char of String(id || '')) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
@@ -93,6 +106,7 @@
       accountGeneration++; gameCredential = null; linkRequired = false; entering = null;
       selectedTile = null; selectedTarget = null; message = null; retryRequest = null;
       editingSquadId = null; attackSquadId = ''; worldState = null;
+      guideHarvestSeen = false;
       busy = false; connecting = false; refreshing = null;
     }
   }
@@ -105,7 +119,7 @@
     if (authenticatedName) linkRequired = false;
     if (Number.isFinite(nextState.serverTime ?? nextState.now)) serverOffset = (nextState.serverTime ?? nextState.now) - Date.now();
     connected = true;
-    if (!selectedTile) selectedTile = self()?.home ? { x: self().home.x, y: self().home.y } : { x: 7, y: 7 };
+    if (!selectedTile) selectedTile = self()?.home ? { x: self().home.x, y: self().home.y } : emptyHomeTile() || { x: 7, y: 7 };
   }
 
   function isAuthenticated(name = expectedName) {
@@ -274,6 +288,33 @@
     if (linkRequired) return `<section class="world-card world-auth-card"><div class="world-auth-copy"><span class="world-card-kicker">一次性连接旧家园</span><h3>把旧世界存档接到游戏账号</h3><p><strong>${escapeHtml(expectedName)}</strong> 已有旧世界家园。输入曾设置的世界密码确认归属，原有建筑、军队和物资都会保留。</p><p class="world-muted">连接完成后，登录游戏就能直接进入世界，不再重复填写世界密码。</p></div><form id="worldLinkForm" class="world-auth-form"><label>原世界密码<input id="worldLegacyPassword" type="password" required minlength="6" maxlength="64" autocomplete="current-password" placeholder="仅本次确认旧家园归属" ${busy ? 'disabled' : ''}></label><button class="world-button world-button-primary" type="submit" ${busy || !gameCredential ? 'disabled' : ''}>${busy ? '正在连接…' : '连接并保留旧家园'}</button></form></section>`;
     return `<section class="world-card world-auth-card world-auto-connect"><div class="world-auth-copy"><span class="world-card-kicker">当前守护者 · ${escapeHtml(expectedName || '尚未登录')}</span><h3>${connecting ? '正在接入你的世界' : '使用游戏账号直接进入世界'}</h3><p>世界与游戏共用名字和密码，家园进度保存在服务器。${gameCredential ? '连接成功后即可建设主城。' : '请回游戏首页登录一次，即可自动连接。'}</p></div><button class="world-button" data-world-action="${gameCredential ? 'refresh' : 'exit'}" ${connecting ? 'disabled' : ''}>${connecting ? '连接中…' : gameCredential ? '重新连接' : '返回游戏'}</button></section>`;
   }
+  function nextWorldStep() {
+    const me = self(); if (!me) return null;
+    if (!me.home) return { index: 0, title: '选一块空地，建立家园', text: selectedTile && !tileByXY(selectedTile.x, selectedTile.y) ? '已为你选中可建空地，也可以在地图上换一个位置。' : '点击下方按钮选择可建空地，或在地图上自行选择。', action: '选择建家地块', costs: rule().costs?.settle, disabled: !emptyHomeTile() };
+    if (!buildingLevel(me.home, 'farm')) return { index: 1, title: '建设第一块农田', text: '农田每分钟产出粮草。建好后等待第一批产出，再把它收进仓库。', action: '建设农田', costs: rule().costs?.buildings?.farm?.[1] };
+    const total = Object.values(me.troops || {}).reduce((sum, count) => sum + numeric(count), 0), barracks = buildingLevel(me.home, 'barracks');
+    if (!guideHarvestSeen && !barracks && !total && !(me.squads || []).length) {
+      const item = me.home.production?.farm;
+      return { index: 2, title: '收取第一批粮草', text: '生产物资暂存在建筑中，点击收取后才能用于训练。', action: numeric(item?.stored) ? '收取农田粮草' : '等待农田生产', disabled: !numeric(item?.stored), until: item?.nextTickAt };
+    }
+    if (!barracks) return { index: 3, title: '建设兵营', text: '粮草可以供应军队。先造兵营，就能训练第一批守护军。', action: '建设兵营', costs: rule().costs?.buildings?.barracks?.[1] };
+    if (!total) {
+      if ((me.queues || []).length) return { index: 4, title: '等待第一批士兵入伍', text: '士兵正在训练，计时结束后自动同步入伍。', action: '查看训练进度' };
+      const count = Math.min(10, numeric(rule().maxTrainCount) || 100);
+      return { index: 4, title: '训练第一批步兵', text: `训练 ${count} 名步兵，完成后就能编成自己的小队。`, action: `训练 ${count} 名步兵`, costs: Object.fromEntries(Object.entries(rule().training?.infantry?.cost || {}).map(([key, value]) => [key, numeric(value) * count])), count };
+    }
+    if (!(me.squads || []).length) return { index: 5, title: '编成第一支小队', text: '士兵已到齐。选择人数并保存小队，编队不会额外消耗士兵或物资。', action: '前往编成小队' };
+    return { index: 6 };
+  }
+  function worldGuideHTML() {
+    const step = nextWorldStep(); if (!step) return '';
+    const labels = ['选地建家', '建农田', '收取粮草', '建兵营', '训练士兵', '编成小队'];
+    const me = self(), hasSquad = (me.squads || []).length > 0;
+    const done = [!!me.home, buildingLevel(me.home, 'farm') > 0, guideHarvestSeen, buildingLevel(me.home, 'barracks') > 0, hasSquad || Object.values(me.troops || {}).some(value => numeric(value) > 0), hasSquad];
+    if (step.index === labels.length) return '<details class="world-guide-complete"><summary>✓ 家园起步已完成 · 生产和小队已就绪</summary><p>继续建设生产建筑与城墙，或返回关卡远征，获得更多世界物资。</p></details>';
+    const short = step.costs && !affordable(step.costs);
+    return `<section class="world-card world-start-guide" aria-label="世界起步任务"><div><small class="world-card-kicker">推荐下一步 · ${step.index + 1} / ${labels.length}</small><h3>${step.title}</h3><p>${step.text}</p><ol>${labels.map((label, index) => `<li class="${done[index] ? 'done' : index === step.index ? 'current' : ''}">${done[index] ? '✓' : index + 1} ${label}</li>`).join('')}</ol>${step.costs ? `<small>所需：${costText(step.costs)}</small>` : ''}${step.until && step.disabled ? `<small>下一批 ${countdown(step.until, '待同步')}</small>` : ''}${short ? '<p class="world-muted">物资不足，返回关卡通关可以补充。</p>' : ''}${step.index === 0 && step.disabled ? '<p class="world-muted">地图目前没有可建空地。</p>' : ''}</div><button class="world-button world-button-primary" data-world-action="${short ? 'exit' : 'guide-next'}" ${!enabled() || step.disabled ? 'disabled' : ''}>${short ? '返回关卡补充物资' : step.action}</button></section>`;
+  }
 
   function mapView() {
     if (!worldState?.map) return `<section class="world-card world-offline-card"><span class="world-empty-art" aria-hidden="true">${buildingArt('lumbermill')}</span><h3>等待连接果园世界</h3><p>多人家园、军队和公会由世界服务器统一保存。连接成功后会显示真实玩家的城池。</p><button class="world-button world-button-primary" data-world-action="refresh" ${connecting ? 'disabled' : ''}>${connecting ? '连接中…' : '重新连接世界服务'}</button></section>`;
@@ -334,10 +375,10 @@
     if (!me) return signInEmpty('连接世界，招募你的守护军');
     if (!me.home) return `<section class="world-card world-simple-empty"><span class="world-empty-art">⚔</span><h3>先有家园，才有军营</h3><p>在地图上建家后，就能修建兵营，训练三种士兵。</p><button class="world-button world-button-primary" data-world-action="tab" data-tab="map">前往建家</button></section>`;
     const total = Object.values(me.troops || {}).reduce((sum, value) => sum + numeric(value), 0);
-    return `${squadsView()}<div class="world-section-heading world-army-heading"><div><span class="world-card-kicker">兵营 Lv. ${number(buildingLevel(me.home, 'barracks'))}</span><h3>守护军 · ${number(total)} 人</h3></div><span class="world-counter">训练队列 ${number(me.queues?.length)} / ${number(rule().maxQueues || 3)}</span></div><div class="world-training-grid">${Object.entries(UNITS).map(([key, unit]) => {
+    return `${total ? squadsView() : ''}<div class="world-section-heading world-army-heading"><div><span class="world-card-kicker">兵营 Lv. ${number(buildingLevel(me.home, 'barracks'))}</span><h3>守护军 · ${number(total)} 人</h3></div><span class="world-counter">训练队列 ${number(me.queues?.length)} / ${number(rule().maxQueues || 3)}</span></div><div class="world-training-grid">${Object.entries(UNITS).map(([key, unit]) => {
       const training = rule().training?.[key] || {}, available = buildingLevel(me.home, 'barracks') > 0;
       return `<section class="world-card world-unit-card"><div class="world-unit-heading"><span aria-hidden="true">${unit.icon}</span><div><h3>${unit.name}</h3><strong>${number(me.troops?.[key])} <small>已集结</small></strong></div></div><p class="world-muted">每人战力 ${number(training.power)} · 训练 ${number(training.seconds)} 秒</p><small>每人：${costText(training.cost)}</small><label class="world-train-control">训练人数<input id="worldTrain-${key}" data-world-preserve type="number" min="1" max="${numeric(rule().maxTrainCount) || 100}" value="10" inputmode="numeric"></label><button class="world-button world-button-primary" data-world-action="train" data-unit="${key}" ${!enabled() || !available || (me.queues?.length || 0) >= numeric(rule().maxQueues || 3) ? 'disabled' : ''}>${available ? '加入训练队列' : '先建造兵营'}</button></section>`;
-    }).join('')}</div><section class="world-card"><div class="world-section-heading"><h3>训练队列</h3><small class="world-muted">计时结束后，刷新即自动入伍</small></div>${(me.queues || []).length ? `<div class="world-queue-list">${me.queues.map(queue => `<div class="world-queue"><span>${UNITS[queue.unit]?.icon || '⚔'} ${UNITS[queue.unit]?.name || '士兵'} × ${number(queue.count)}</span><b>${countdown(queue.readyAt, '待入伍 · 点击刷新')}</b></div>`).join('')}</div>` : '<p class="world-muted">暂无训练中的士兵。</p>'}</section>${attackPanel()}${reportsPanel()}`;
+    }).join('')}</div><section class="world-card world-training-queue"><div class="world-section-heading"><h3>训练队列</h3><small class="world-muted">计时结束后自动同步入伍，也可点击刷新</small></div>${(me.queues || []).length ? `<div class="world-queue-list">${me.queues.map(queue => `<div class="world-queue"><span>${UNITS[queue.unit]?.icon || '⚔'} ${UNITS[queue.unit]?.name || '士兵'} × ${number(queue.count)}</span><b>${countdown(queue.readyAt, '待入伍 · 点击刷新')}</b></div>`).join('')}</div>` : '<p class="world-muted">暂无训练中的士兵。</p>'}</section>${!total ? '<section class="world-card"><h3>训练完成后，再编成小队</h3><p>第一批士兵到齐时，这里会显示小队编成表单。</p></section>' : ''}${attackPanel()}${reportsPanel()}`;
   }
 
   function squadsView() {
@@ -385,7 +426,7 @@
     if (!host) return;
     const values = resetForms ? {} : saveForm(), scroll = host.querySelector('.world-body')?.scrollTop || 0;
     const views = { map: mapView, home: homeView, army: armyView, guild: guildView };
-    host.innerHTML = `<div class="world-dialog" aria-busy="${busy || connecting}">${header()}${resourceBar()}${notice()}<main class="world-body">${featureGuide}${authCard()}${(views[activeTab] || mapView)()}</main><footer class="world-footer"><nav class="world-nav" aria-label="世界页面">${TABS.map(([key, icon, name]) => `<button class="world-nav-button ${activeTab === key ? 'world-is-active' : ''}" data-world-action="tab" data-tab="${key}" aria-current="${activeTab === key ? 'page' : 'false'}"><span aria-hidden="true">${icon}</span>${name}</button>`).join('')}<button class="world-nav-button world-exit" data-world-action="exit">↩ 返回关卡</button></nav><small>${busy ? '服务器正在处理，请稍候…' : '家园与军队存于服务器 · 自动同步每 15 秒 · 战斗结果由服务器结算'}</small></footer></div>`;
+    host.innerHTML = `<div class="world-dialog" aria-busy="${busy || connecting}">${header()}${resourceBar()}${notice()}<main class="world-body">${featureGuide}${authCard()}${worldGuideHTML()}${(views[activeTab] || mapView)()}</main><footer class="world-footer"><nav class="world-nav" aria-label="世界页面">${TABS.map(([key, icon, name]) => `<button class="world-nav-button ${activeTab === key ? 'world-is-active' : ''}" data-world-action="tab" data-tab="${key}" aria-current="${activeTab === key ? 'page' : 'false'}"><span aria-hidden="true">${icon}</span>${name}</button>`).join('')}<button class="world-nav-button world-exit" data-world-action="exit">↩ 返回关卡</button></nav><small>${busy ? '正在保存，请稍候…' : '家园与军队自动保存 · 训练和生产进度自动更新'}</small></footer></div>`;
     restoreForm(values);
     const body = host.querySelector('.world-body');
     if (body) body.scrollTop = scroll;
@@ -395,14 +436,15 @@
   async function mutate(payload, successText) {
     if (busy || !connected || !self()) return;
     const forName = expectedName, token = generation;
-    busy = true; message = null; render(); let resetForms = false;
+    busy = true; message = null; render(); let resetForms = false, resetScroll = false;
     const requestBody = { ...payload, accountName: forName, requestId: payload.requestId || uid() };
     try {
       const result = await request('action', requestBody);
       if (token !== generation) return;
       adoptState(result.state, forName); retryRequest = null;
+      if (['harvest', 'harvest-all'].includes(payload.type) && numeric(result.harvested?.grain) > 0) { guideHarvestSeen = true; try { harvestCallback?.(); } catch {} }
       message = { text: typeof successText === 'function' ? successText(result) : successText || '世界已同步。', kind: 'success' };
-      if (payload.type === 'settle') { activeTab = 'home'; selectedTile = { x: payload.x, y: payload.y }; }
+      if (payload.type === 'settle') { activeTab = 'home'; selectedTile = { x: payload.x, y: payload.y }; resetScroll = true; }
       if (payload.type === 'attack') selectedTarget = null;
       if (['squad-save', 'squad-delete'].includes(payload.type)) { editingSquadId = null; resetForms = true; }
     } catch (error) {
@@ -410,7 +452,7 @@
       if (['UNAUTHORIZED', 'AUTH_REQUIRED', 'login_required', 'account_mismatch'].includes(error.code)) authenticatedName = '';
       message = { text: error.message, kind: 'error' };
       retryRequest = error.retryable ? { payload: requestBody, successText, name: forName } : null;
-    } finally { if (token === generation) { busy = false; render({ resetForms }); } }
+    } finally { if (token === generation) { busy = false; render({ resetForms }); if (resetScroll) host.querySelector('.world-body')?.scrollTo?.(0, 0); } }
   }
 
   async function linkLegacy(form) {
@@ -461,9 +503,30 @@
       return;
     }
     if (!enabled()) return;
-    if (action === 'settle') { mutate({ type: 'settle', x: selectedTile.x, y: selectedTile.y }, '家园建成！接下来建设农田、仓库、城墙和兵营。'); return; }
+    if (action === 'guide-next') {
+      const step = nextWorldStep(); if (!step || step.disabled || step.costs && !affordable(step.costs)) return;
+      if (step.index === 0) { selectedTile = emptyHomeTile(); activeTab = 'map'; render(); host.querySelector('.world-tile-panel')?.scrollIntoView?.({ block: 'nearest' }); }
+      else if (step.index === 1 || step.index === 3) { activeTab = 'home'; mutate({ type: 'build', building: step.index === 1 ? 'farm' : 'barracks' }, step.index === 1 ? '农田建好啦！等待第一批粮草后点击收取。' : '兵营建好啦！接下来训练第一批步兵。'); }
+      else if (step.index === 2) { activeTab = 'home'; mutate({ type: 'harvest', building: 'farm' }, result => `物资已入库：${materialText(result.harvested)}。`); }
+      else if (step.index === 4 && step.count) { activeTab = 'army'; mutate({ type: 'train', unit: 'infantry', count: step.count }, `${step.count} 名步兵已加入训练队列。`); }
+      else {
+        activeTab = 'army'; render();
+        if (step.index === 5) {
+          const form = host.querySelector('#worldSquadForm'), name = form?.querySelector('#worldSquadName');
+          const fields = Object.keys(UNITS).map(key => [key, form?.querySelector(`#worldSquad-${key}`)]);
+          if (form && fields.every(([, field]) => field && !numeric(field.value))) {
+            const unit = fields.find(([key]) => numeric(self().troops?.[key]) > 0);
+            if (unit) unit[1].value = Math.min(10, numeric(self().troops[unit[0]]));
+            if (name && !name.value) name.value = '青叶小队';
+          }
+        }
+        host.querySelector(step.index === 5 ? '#worldSquadForm' : '.world-training-queue')?.scrollIntoView?.({ block: 'nearest' });
+      }
+      return;
+    }
+    if (action === 'settle') { mutate({ type: 'settle', x: selectedTile.x, y: selectedTile.y }, '家园建成！先建设一块农田，开始积攒粮草。'); return; }
     if (action === 'build') { mutate({ type: 'build', building: button.dataset.building }, `${BUILDINGS[button.dataset.building].name}建设完成。`); return; }
-    if (action === 'harvest' || action === 'harvest-all') { mutate({ type: action, ...(action === 'harvest' ? { building: button.dataset.building } : {}) }, result => Object.values(result.harvested || {}).some(value => numeric(value) > 0) ? `物资已入库：${costText(result.harvested)}。` : '本次没有物资入库；请检查生产进度和仓库剩余容量。暂存物资会保留。'); return; }
+    if (action === 'harvest' || action === 'harvest-all') { mutate({ type: action, ...(action === 'harvest' ? { building: button.dataset.building } : {}) }, result => Object.values(result.harvested || {}).some(value => numeric(value) > 0) ? `物资已入库：${materialText(result.harvested)}。` : '本次没有物资入库；请检查生产进度和仓库剩余容量。暂存物资会保留。'); return; }
     if (action === 'squad-delete') { mutate({ type: 'squad-delete', squadId: button.dataset.squadId }, '已解散小队，士兵仍留在军营。'); return; }
     if (action === 'train') {
       const unit = button.dataset.unit, count = Number(host.querySelector(`#worldTrain-${unit}`).value);
@@ -514,12 +577,13 @@
     if (event.target.id === 'worldAttackSquad') { attackSquadId = event.target.value; render(); }
   }
 
-  function open({ overlay, name, onExit, onAuthenticated, guideHTML = '', onGuideDone, initialTab = 'map' } = {}) {
+  function open({ overlay, name, onExit, onAuthenticated, guideHTML = '', onGuideDone, initialTab = 'map', harvestSeen = false, onHarvest } = {}) {
     close();
     if (!overlay) throw new Error('果园世界需要提供 overlay 容器。');
     setPlayerName(name);
     host = overlay; exitCallback = onExit; authenticatedCallback = onAuthenticated; activeTab = TABS.some(([key]) => key === initialTab) ? initialTab : 'map'; busy = false;
     featureGuide = typeof onGuideDone === 'function' ? guideHTML : ''; guideCallback = onGuideDone;
+    guideHarvestSeen = harvestSeen === true; harvestCallback = onHarvest;
     host.classList.remove('hidden', 'upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay');
     host.classList.add('frontier-overlay');
     host.setAttribute('role', 'dialog'); host.setAttribute('aria-modal', 'true'); host.setAttribute('aria-label', '果园世界');
@@ -540,6 +604,7 @@
     }
     host = null; exitCallback = authenticatedCallback = null; busy = false; connecting = false; refreshing = null;
     featureGuide = ''; guideCallback = null;
+    harvestCallback = null;
   }
 
   globalThis.addEventListener?.('orchard-player-data-reset', () => {

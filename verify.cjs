@@ -1041,7 +1041,9 @@ test('Boss arrival preserves held input, projectiles and clocks, and only activa
 test('Bosses activate immediately and rescue animations complete automatically through animation frames',({t})=>{
   t.frame(1000);for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);
   let now=1000;
-  for(let i=0;i<150&&t.state==='playing';i++){now+=40;t.frame(now)}
+  // Earned opening XP may now reach the player during this wait. Resolve the
+  // real choices so this test continues to isolate boss/rescue animation clocks.
+  for(let i=0;i<150;i++){now+=40;t.frame(now);drainUpgradeChoices(t)}
   assert.equal(t.state,'playing');const boss=t.enemies.find(e=>e.boss);assert(boss.aggro);boss.hp=0;t.update(.001);
   assert.equal(t.state,'rescue');drainUpgradeChoices(t);assert.equal(t.state,'rescue');const elapsed=t.elapsed,hp=t.player.hp;
   for(let i=0;i<20;i++){now+=40;t.frame(now)}

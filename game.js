@@ -111,7 +111,7 @@
   }
   function freshProfile() {
     const base = { version: 1, unlockedStage: 1, clearedStages: [], seeds: 0, cores: 0, tutorialSeen: false, trainingComplete: false, trainingSkipped: false, featureGuideStep: 0, featureGuideRound: 1,
-      rescuedSprites: [], spriteLevels: {}, firstCultivationUsed: false, orchard: { level: 0 },
+      rescuedSprites: [], spriteLevels: {}, firstCultivationUsed: false, worldHarvestSeen: false, orchard: { level: 0 },
       inventory: { weapon_seed: { level: 0 }, armor_leaf: { level: 0 }, charm_sprout: { level: 0 } },
       equipped: { weapon: 'weapon_seed', armor: 'armor_leaf', charm: 'charm_sprout' } };
     growth.migrate({}, base); store.migrate({}, base); return base;
@@ -138,6 +138,7 @@
       result.rescuedSprites = [...new Set(residents.filter(n => Number.isInteger(n) && n >= 1 && n <= rescueDefs.length))].sort((a, b) => a - b);
       for (const id of result.rescuedSprites) result.spriteLevels[id] = integer(raw.spriteLevels?.[id], 0, 5);
       result.firstCultivationUsed = raw.firstCultivationUsed === true || Object.values(result.spriteLevels).some(level => level > 0);
+      result.worldHarvestSeen = raw.worldHarvestSeen === true;
       for (const id of Object.keys(gearDefs)) {
         if (raw.inventory && Object.hasOwn(raw.inventory, id)) result.inventory[id] = { level: integer(raw.inventory[id]?.level, 0, 10) };
       }
@@ -302,7 +303,7 @@
     if (permanentMenuRefresh && menu && patchPermanentMenu(markup)) { overlay.classList.remove('hidden'); return; }
     window.ORCHARD_FRONTIER?.close();
     window.ORCHARD_LEADERBOARD?.close();
-    overlay.classList.remove('upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay', 'armory-overlay', 'pause-overlay', 'roulette-overlay', 'store-overlay');
+    overlay.classList.remove('upgrade-overlay', 'relic-map-overlay', 'lobby-overlay', 'help-overlay', 'armory-overlay', 'pause-overlay', 'roulette-overlay', 'store-overlay', 'result-overlay');
     arena.classList.remove('is-lobby');
     for (const attribute of ['role', 'aria-modal', 'aria-label', 'data-menu-kind']) overlay.removeAttribute?.(attribute);
     overlay.innerHTML = markup;
@@ -329,7 +330,8 @@
       el('worldBackLobby').onclick = startScreen;
       bindFeatureGuide('world');
     } else {
-      window.ORCHARD_FRONTIER.open({ overlay, name: currentAccount.nickname, initialTab: typeof initialTab === 'string' ? initialTab : 'map', onExit: startScreen, onAuthenticated: () => frontierRewards?.retry(), guideHTML: featureGuideHTML('world'), onGuideDone: () => advanceFeatureGuide('world') });
+      const owner = currentAccount.id;
+      window.ORCHARD_FRONTIER.open({ overlay, name: currentAccount.nickname, initialTab: typeof initialTab === 'string' ? initialTab : 'map', onExit: startScreen, onAuthenticated: () => frontierRewards?.retry(), guideHTML: featureGuideHTML('world'), onGuideDone: () => advanceFeatureGuide('world'), harvestSeen: profile.worldHarvestSeen, onHarvest: () => { if (currentAccount?.id === owner) { profile.worldHarvestSeen = true; saveProfile(); } } });
     }
     updateHUD(); return true;
   }
@@ -346,6 +348,39 @@
     updateHUD(); return true;
   }
   function featuresUnlocked() { return profile.clearedStages.length > 0; }
+  function firstGrowthStep() {
+    if (!profile.clearedStages.includes(1) || profile.clearedStages.includes(2)) return null;
+    if (!profile.firstCultivationUsed) return { index: 0, tab: 'orchard', name: '免费培养伙伴', tip: '苹果铃铃的第一次培养免费，全队生命祝福永久提升。' };
+    if (!Object.entries(profile.inventory).some(([id, item]) => gearDefs[id]?.slot === 'weapon' && item.level > 0)) {
+      const cost = gearCost(profile.equipped.weapon);
+      if (canAfford(cost)) return { index: 1, tab: 'armory', name: '强化一件武器', tip: '先查看强化前后的属性，再用首通材料提升武器。' };
+      return { index: 2, tab: 'stages', name: '挑战第二关', tip: '强化材料不足，先挑战第二关补充阳光籽和果核，之后再回来强化。' };
+    }
+    return { index: 2, tab: 'stages', name: '挑战第二关', tip: '伙伴祝福和装备强化已生效，带着成长出发。' };
+  }
+  function growthRouteHTML(tab, withAction = true) {
+    const step = firstGrowthStep();
+    if (!step || !['lobby', 'result', 'orchard', 'armory'].includes(tab)) return '';
+    const done = [profile.firstCultivationUsed, Object.entries(profile.inventory).some(([id, item]) => gearDefs[id]?.slot === 'weapon' && item.level > 0), profile.clearedStages.includes(2)];
+    return '<aside class="growth-route" aria-label="首通成长路线"><div><strong>新功能已解锁 · 推荐下一步：' + step.name + '</strong><p>' + step.tip + '</p><ol>' + ['免费培养', '强化武器', '挑战第二关'].map((label, index) => '<li class="' + (done[index] ? 'done' : index === step.index ? 'current' : '') + '">' + (done[index] ? '✓ ' : (index + 1) + ' ') + label + '</li>').join('') + '</ol></div>' + (withAction ? '<button class="primary" id="growthNext">' + (tab === 'armory' && step.tab === 'armory' ? '查看强化效果与费用' : tab === step.tab ? step.name : '前往' + step.name) + '</button>' : '') + '</aside>';
+  }
+  function followGrowthRoute(tab) {
+    const step = firstGrowthStep(); if (!step || isRunActive()) return false;
+    if (step.tab === 'orchard') {
+      selectedSprite = 1; selectedGarden = 1;
+      if (tab === 'orchard') return updatePermanentMenu(() => upgradeSprite(1), () => showOrchard(), el('growthNext'));
+      return showOrchard(1);
+    }
+    if (step.tab === 'armory') {
+      if (tab === 'armory') {
+        if (selectedGearSlot !== 'weapon') showArmory('weapon');
+        const button = Array.from(overlay.querySelectorAll('[data-enhance]')).find(item => item.dataset.enhance === profile.equipped.weapon);
+        button?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }); button?.focus?.({ preventScroll: true }); return !!button;
+      }
+      return showArmory('weapon');
+    }
+    selectStage(2); start(); return true;
+  }
   function featureGuideSteps() {
     return [
       { tab: 'armory', id: 'navArmory', name: '装备工坊', tip: '选择武器、护甲或饰品卡片，查看属性。通关材料可以强化已拥有的装备。' },
@@ -355,6 +390,7 @@
     ].slice(0, profile.featureGuideRound === 2 ? 3 : 4);
   }
   function featureGuideHTML(tab) {
+    if (firstGrowthStep()) return growthRouteHTML(tab);
     if (!featuresUnlocked() || profile.featureGuideStep >= featureGuideSteps().length) return '';
     const step = featureGuideSteps()[profile.featureGuideStep];
     if (tab !== 'lobby' && tab !== step.tab) return '';
@@ -367,6 +403,10 @@
     profile.featureGuideStep++; saveProfile(); window.ORCHARD_FRONTIER?.close(); startScreen(); return true;
   }
   function bindFeatureGuide(tab) {
+    if (firstGrowthStep()) {
+      if (el('growthNext')) el('growthNext').onclick = () => followGrowthRoute(tab);
+      return;
+    }
     if (!featuresUnlocked() || profile.featureGuideRound === 2 || profile.featureGuideStep >= featureGuideSteps().length) return;
     const step = featureGuideSteps()[profile.featureGuideStep];
     if (tab === 'lobby') {
@@ -617,11 +657,16 @@
     player.heroClock = spec.cooldown; player.heroCasts++; sound(740, .18, .03);
     burst(player.x, player.y, spec.color, 16); updateHUD(); return true;
   }
-  function showRelicMap() {
+  function nearestRelic() {
+    const origin = isRunActive() ? player : mapLayout.spawn;
+    return relicDrops.filter(drop => !drop.claimed).sort((a, b) => Math.hypot(a.x - origin.x, a.y - origin.y) - Math.hypot(b.x - origin.x, b.y - origin.y))[0];
+  }
+  function showRelicMap(preferredId = null) {
     if (!currentAccount) return false;
     if (state !== 'relicMap') {
       if (!['lobby', 'heroes', 'armory', 'orchard', 'playing', 'paused'].includes(state)) return false;
       mapReturnState = state; state = 'relicMap'; keys.clear(); pointer = null; still = 0;
+      selectedRelic = (relicDrops.find(drop => String(drop.id) === String(preferredId)) || relicDrops.find(drop => String(drop.id) === String(trackedRelic) && !drop.claimed) || nearestRelic() || relicDrops[0]).id;
     }
     const battle = ['playing', 'paused'].includes(mapReturnState), def = runRelicDefs.find(d => String(d.id) === String(selectedRelic)) || runRelicDefs[0];
     if (training && trainingCatalog.steps[training.step].id === 'map' && battle) training.mapOpened = true;
@@ -632,20 +677,18 @@
       '<span class="relic-start" style="left:' + mapLayout.spawn.x / WORLD_W * 100 + '%;top:' + mapLayout.spawn.y / WORLD_H * 100 + '%">🌱 起点</span>' +
       points.map((point, index) => { const d = relicDefs.find(item => item.id === point.id); return '<button class="relic-marker ' + (point.id === selectedRelic ? 'selected ' : '') + (point.claimed ? 'claimed' : '') + '" data-relic-id="' + point.id + '" style="left:' + point.x / WORLD_W * 100 + '%;top:' + point.y / WORLD_H * 100 + '%;--relic-color:' + d.color + '" aria-label="' + d.name + (point.claimed ? '已领取' : '投放点') + '"><span>' + (index + 1) + '</span><b>' + d.icon + '</b></button>'; }).join('') +
       (battle ? '<span class="relic-player" style="left:' + player.x / WORLD_W * 100 + '%;top:' + player.y / WORLD_H * 100 + '%">●</span>' : '') + '</div><div class="relic-details"><div class="relic-selector">' +
-      points.map((point, index) => '<button class="secondary ' + (point.id === selectedRelic ? 'selected ' : '') + (point.claimed ? 'claimed' : '') + '" data-relic-id="' + point.id + '">' + (index + 1) + ' ' + relicDefs.find(d => d.id === point.id).icon + (point.claimed ? ' ✓' : '') + '</button>').join('') + '</div><article class="relic-detail"><strong>' + def.icon + ' ' + def.name + '</strong><span class="relic-skill">获得技能：' + def.skillName + '</span><p class="relic-description">' + def.description + '</p><p class="relic-summary">' + def.summary + '</p><small>' + (def.family === 'stats' ? '本局持续属性增益' : '冷却 ' + def.cooldown + ' 秒') + (def.key === 'dash' ? ' · Space / 闪步按钮' : def.family === 'stats' ? '' : ' · 自动触发') + '</small><span class="relic-status">' + (selected.claimed ? '✓ 本局已领取' : '靠近 56 像素自动领取') + '</span><small>坐标 ' + Math.round(selected.x) + ' / ' + Math.round(selected.y) + (battle ? ' · 距你 ' + distance : '') + '</small></article><div class="relic-route">第 ' + mapLayout.id + ' 关 · ' + mapLayout.name + '<br>' + WORLD_W + ' × ' + WORLD_H + ' · 浅棕：道路 / 桥 · 青蓝：水域 · 深蓝：裂谷<br>沿道路绕过障碍，水域和裂谷需要从桥上通过。50 件饰品每局随机 6 件，每件可领一次，无尽保留。</div></div></div>';
-    if (battle) showPanel('特殊饰品投放图', '第 ' + activeStage.id + ' 关 / 探索领技能', body, '<button class="primary" id="closeRelicMap">返回战场 · M / Esc</button>', '查看地图期间战斗、增援与技能冷却暂停');
+      points.map((point, index) => '<button class="secondary ' + (point.id === selectedRelic ? 'selected ' : '') + (point.claimed ? 'claimed' : '') + '" data-relic-id="' + point.id + '">' + (index + 1) + ' ' + relicDefs.find(d => d.id === point.id).icon + (point.claimed ? ' ✓' : '') + '</button>').join('') + '</div><button class="secondary relic-nearest" id="nearestRelic" ' + (!nearestRelic() ? 'disabled' : '') + '>推荐最近的未领取饰品</button><article class="relic-detail"><strong>' + def.icon + ' ' + def.name + '</strong><span class="relic-skill">获得技能：' + def.skillName + '</span><p class="relic-description">' + def.description + '</p><p class="relic-summary">' + def.summary + '</p><small>' + (def.family === 'stats' ? '本局持续属性增益' : '冷却 ' + def.cooldown + ' 秒') + (def.key === 'dash' ? ' · Space / 闪步按钮' : def.family === 'stats' ? '' : ' · 自动触发') + '</small><span class="relic-status">' + (selected.claimed ? '✓ 本局已领取' : String(trackedRelic) === String(selected.id) ? '➤ 正在追踪此饰品' : '靠近亮光即可领取') + (battle ? ' · 距离 ' + distance : '') + '</span><details><summary>查看投放坐标</summary><small>' + Math.round(selected.x) + ' / ' + Math.round(selected.y) + '</small></details></article><div class="relic-route">第 ' + mapLayout.id + ' 关 · ' + mapLayout.name + '<br>沿道路绕过障碍，水域和裂谷需要从桥上通过。每局随机 6 件饰品，每件可领一次，无尽保留。</div></div></div>';
+    if (battle) showPanel('特殊饰品投放图', '第 ' + activeStage.id + ' 关 / 探索领技能', body, '<button class="primary" id="trackSelectedRelic" ' + (selected.claimed ? 'disabled' : '') + '>' + (String(trackedRelic) === String(selected.id) ? '取消追踪' : '追踪此饰品并返回') + '</button><button class="secondary" id="closeRelicMap">返回战场 · M / Esc</button>', '查看地图期间战斗、增援与技能冷却暂停');
     else showMenu('特殊饰品投放图', '第 ' + selectedStage + ' 关 / ' + mapLayout.name, body, '<button class="primary" id="start">挑战第 ' + selectedStage + ' 关</button><button class="secondary" id="closeRelicMap">返回</button>', 'map', '当前关卡真实地形 · 点选投放点查看技能效果');
     overlay.classList.add('relic-map-overlay');
     overlay.querySelectorAll('[data-relic-id]').forEach(button => { button.onclick = () => { selectedRelic = relicDefs.find(d => String(d.id) === button.dataset.relicId).id; showRelicMap(); }; });
+    el('nearestRelic').onclick = () => { const target = nearestRelic(); if (target) { selectedRelic = target.id; showRelicMap(); } };
+    if (battle) el('trackSelectedRelic').onclick = () => { if (selected.claimed || state !== 'relicMap') return; trackedRelic = String(trackedRelic) === String(selected.id) ? null : selected.id; closeRelicMap(); };
     el('closeRelicMap').onclick = closeRelicMap; if (!battle) el('start').onclick = start;
     updateHUD(); return true;
   }
   function closeRelicMap() {
     if (state !== 'relicMap') return false;
-    if (['playing', 'paused'].includes(mapReturnState)) {
-      const target = relicDrops.find(drop => String(drop.id) === String(selectedRelic));
-      trackedRelic = target && !target.claimed ? target.id : null;
-    }
     if (mapReturnState === 'playing') { state = 'playing'; overlay.classList.add('hidden'); keys.clear(); pointer = null; updateHUD(); }
     else if (mapReturnState === 'paused') { state = 'playing'; pause(); }
     else if (mapReturnState === 'armory') showArmory();
@@ -672,7 +715,7 @@
       '<div class="campaign-picker"><label>篇章 <select id="chapterJump" aria-label="选择远征篇章">' + ['青叶启程', '月露群岛', '赤焰山林', '霜晶高原', '星辉王庭'].map((name, index) => '<option value="' + (index * 20 + 1) + '" ' + (Math.floor((id - 1) / 20) === index ? 'selected' : '') + '>' + (index + 1) + ' · ' + name + '</option>').join('') + '</select></label><label>关卡 <select id="stageJump" aria-label="选择篇章关卡">' + stages.slice(Math.floor((id - 1) / 20) * 20, Math.floor((id - 1) / 20) * 20 + 20).map(item => '<option value="' + item.id + '" ' + (item.id === id ? 'selected' : '') + '>第 ' + item.id + ' 关 · ' + (profile.clearedStages.includes(item.id) ? '✓' : item.id <= profile.unlockedStage ? '可挑战' : '未解锁') + '</option>').join('') + '</select></label></div>' +
       '<div class="chapter-brief"><span class="chapter-chip">普通 ' + s.normalCount + ' · 精英 ' + s.eliteCount + ' · Boss ' + s.bossCount + '</span><span class="chapter-chip">虫王 ' + s.bossSchedule[0] + ' 秒起 · ' + (s.bossCount > 1 ? '每' + s.bossInterval + '秒一位，可同时在场' : '固定时间登场') + '</span><span class="chapter-chip">首通 ☀ ' + s.reward.seeds + ' · ◆ ' + s.reward.cores + reward + '</span></div></div>' +
       '<div class="menu-footer lobby-footer">' + trainingEntry + '<div class="lobby-actions"><button class="lobby-play primary" id="start" ' + (!unlocked ? 'disabled' : '') + '><span class="action-icon">▶</span><strong>' + (unlocked ? '进入游戏' : '关卡未解锁') + '</strong><small>' + (unlocked ? '挑战第 ' + id + ' 关' : '先通关第 ' + (id - 1) + ' 关') + '</small></button>' +
-      [['navArmory', '⚒', '装备', '搭配与强化'], ['navHeroes', '✦', '英雄', '13 位英雄可选择'], ['navOrchard', '♧', '果园', '精灵与养成'], ['navWorld', '⚑', '世界', '建家 · 造兵 · 公会']].map(([key, icon, name, detail]) => '<button class="lobby-feature secondary" id="' + key + '" ' + (!featuresUnlocked() ? 'disabled title="首次通关后解锁"' : '') + '><span class="action-icon">' + (featuresUnlocked() ? icon : '🔒') + '</span><strong>' + name + '</strong><small>' + (featuresUnlocked() ? detail : '首次通关后解锁') + '</small></button>').join('') + '</div>' +
+      [['navArmory', '⚒', '装备工坊', '搭配与强化'], ['navHeroes', '✦', '英雄育成', '技能与出战'], ['navOrchard', '♧', '我的果园', '精灵与养成'], ['navWorld', '⚑', '共享世界', '建家 · 造兵 · 公会']].map(([key, icon, name, detail]) => '<button class="lobby-feature secondary" id="' + key + '" ' + (!featuresUnlocked() ? 'disabled title="首次通关后解锁"' : '') + '><span class="action-icon">' + (featuresUnlocked() ? icon : '🔒') + '</span><strong>' + name + '</strong><small>' + (featuresUnlocked() ? detail : '首次通关后解锁') + '</small></button>').join('') + '</div>' +
       '<div class="lobby-bottom"><span class="lobby-note">' + (!storageAvailable ? '浏览器存储不可用，进度仅在当前页面中保留' : escapeHTML(sessionGreeting) + (sessionGreeting ? ' · ' : '') + '出战：' + growth.hero(profile.selectedHero).name) + '</span><div class="lobby-links"><button class="chapter-map-link leaderboard-entry" id="navLeaderboard">🏆 通关排行</button><button class="chapter-map-link" id="navMap" ' + (!unlocked ? 'disabled' : '') + '>本关地形与饰品 ↗</button></div></div></div>', true);
     overlay.classList.add('lobby-overlay'); arena.classList.add('is-lobby');
     el('start').onclick = () => { if (unlocked && state === 'lobby') start(); };
@@ -786,6 +829,26 @@
     if (g.slot === 'armor') return '生命 ' + (g.hp + level * gearGrowth.hp) + ' · 每次减伤 ' + (g.defense + level * gearGrowth.defense) + ' · 移速 ' + Math.round(g.speedMult * 100) + '%';
     return '移速 ' + (g.speed + level * gearGrowth.speed) + ' · 拾取 ' + (g.pickup + level * gearGrowth.pickup) + ' · 经验 ' + Math.round(g.xpMult * 100) + '%';
   }
+  function gearValues(id, level = profile.inventory[id]?.level || 0) {
+    const g = gearDefs[id];
+    if (g.slot === 'weapon') return [['每籽伤害', g.damage * (1 + level * gearGrowth.damage)], ['每秒齐射', g.rate * (1 + level * gearGrowth.rate)], ['每轮种子', g.shots]];
+    if (g.slot === 'armor') return [['生命', g.hp + level * gearGrowth.hp], ['固定减伤', g.defense + level * gearGrowth.defense], ['移速倍率', g.speedMult * 100, '%']];
+    return [['移速', g.speed + level * gearGrowth.speed], ['拾取距离', g.pickup + level * gearGrowth.pickup], ['经验倍率', g.xpMult * 100, '%']];
+  }
+  function gearValueText(value, suffix = '') { return Number(value.toFixed(2)) + suffix; }
+  function gearComparisonHTML(id) {
+    const g = gearDefs[id], level = profile.inventory[id]?.level || 0, currentId = profile.equipped[g.slot];
+    const values = gearValues(id), current = gearValues(currentId);
+    const comparison = id === currentId ? '' : '<details class="equipment-comparison"><summary>与当前穿戴的' + gearDefs[currentId].name + '比较</summary><div>' + values.map(([label, value, suffix], index) => {
+      const diff = Number((value - current[index][1]).toFixed(2));
+      return '<span>' + label + '<b>' + gearValueText(current[index][1], suffix) + ' → ' + gearValueText(value, suffix) + '</b><small>' + (diff > 0 ? '+' : '') + gearValueText(diff, suffix) + '</small></span>';
+    }).join('') + '</div></details>';
+    if (!profile.inventory[id] || level >= 10) return comparison;
+    const next = gearValues(id, level + 1);
+    const output = values[0][1] * values[1][1] * values[2][1], nextOutput = next[0][1] * next[1][1] * next[2][1];
+    return '<div class="equipment-upgrade-preview"><strong>强化到 +' + (level + 1) + '</strong>' + values.map(([label, value, suffix], index) => next[index][1] === value ? '' : '<span>' + label + '<b>' + gearValueText(value, suffix) + ' → ' + gearValueText(next[index][1], suffix) + '</b></span>').join('') +
+      (g.slot === 'weapon' ? '<small>基础参考输出 / 秒：' + gearValueText(output) + ' → ' + gearValueText(nextOutput) + '（+' + gearValueText((nextOutput / output - 1) * 100) + '%）<br>按全部命中计算，不含技能、穿透和英雄加成。</small>' : '') + '</div>' + comparison;
+  }
   function gearStatChips(id) {
     const g = gearDefs[id], level = profile.inventory[id]?.level || 0;
     const stats = g.slot === 'weapon' ? [['每籽伤害', statText(g.damage * (1 + level * gearGrowth.damage))], ['每秒齐射', Number((g.rate * (1 + level * gearGrowth.rate)).toFixed(2))], ['每轮种子', g.shots]] :
@@ -808,8 +871,8 @@
         const owned = !!profile.inventory[id], level = profile.inventory[id]?.level || 0, equipped = profile.equipped[selectedGearSlot] === id, cost = gearCost(id);
         const unlock = stages.find(s => s.firstClearGear === id)?.id;
         const tier = !unlock ? '初始' : unlock <= 20 ? '青叶' : unlock <= 40 ? '月露' : unlock <= 60 ? '赤焰' : unlock <= 80 ? '霜晶' : '星辉';
-        const role = { weapon_seed: '均衡起步', weapon_pea: '高速单发', weapon_cherry: '双籽覆盖', weapon_pumpkin: '三籽重击', armor_leaf: '轻巧自在', armor_bark: '坚韧守护', armor_rind: '厚甲生存', charm_sprout: '基础采集', charm_bloom: '灵活采集', charm_harvest: '加快成长' }[id] || g.desc;
-        return '<article class="gear-card equipment-card ' + (owned ? '' : 'locked ') + (equipped ? 'equipped' : '') + '"><div class="equipment-picture"><span class="equipment-tier">' + tier + '</span>' + (equipped ? '<b class="equipment-equipped">✓ 穿戴中</b>' : !owned ? '<b class="equipment-locked">待解锁</b>' : '') + gearPortrait(id) + '</div><div class="equipment-copy"><strong>' + g.name + '</strong><p>' + role + '</p></div>' + gearStatChips(id) +
+        const role = { weapon_seed: '均衡单发 · 稳定起步', weapon_pea: '高频单发 · 持续清理小虫', weapon_cherry: '双籽覆盖 · 兼顾两侧虫群', weapon_pumpkin: '三籽重击 · 覆盖密集虫群', armor_leaf: '轻巧自在', armor_bark: '坚韧守护', armor_rind: '厚甲生存', charm_sprout: '基础采集', charm_bloom: '灵活采集', charm_harvest: '加快成长' }[id] || g.desc;
+        return '<article class="gear-card equipment-card ' + (owned ? '' : 'locked ') + (equipped ? 'equipped' : '') + '"><div class="equipment-picture"><span class="equipment-tier">' + tier + '</span>' + (equipped ? '<b class="equipment-equipped">✓ 穿戴中</b>' : !owned ? '<b class="equipment-locked">待解锁</b>' : '') + gearPortrait(id) + '</div><div class="equipment-copy"><strong>' + g.name + '</strong><p>' + role + '</p></div>' + gearStatChips(id) + gearComparisonHTML(id) +
           (owned ? '<div class="equipment-level"><span>强化 +' + level + ' / 10</span><div><i style="width:' + level * 10 + '%"></i></div></div><div class="gear-actions"><button class="secondary" data-equip="' + id + '" ' + (equipped ? 'disabled' : '') + '>' + (equipped ? '已装备' : '穿戴') + '</button>' +
             '<button class="secondary enhance-gear" data-enhance="' + id + '" ' + (level >= 10 || profile.seeds < cost.seeds || profile.cores < cost.cores ? 'disabled' : '') + '>' + (level >= 10 ? '已满级' : '强化 · ☀' + cost.seeds + ' ◆' + cost.cores) + '</button></div>' : '<div class="equipment-unlock">首通第 <b>' + unlock + '</b> 关获得</div>') + '</article>';
       }).join('') + '</div>', '<button class="primary" id="start">挑战第 ' + selectedStage + ' 关</button><button class="secondary" id="backLobby">返回关卡</button>', 'armory', '切换上方武器 / 护甲 / 饰品按钮查看全部装备 · 强化永久保留');
@@ -1333,11 +1396,15 @@
     if (state === 'ended') return;
     state = 'ended'; keys.clear(); pointer = null;
     if (win) { grantVictoryRewards(); selectedStage = Math.min(stages.length, activeStage.id + 1); }
+    const growthStep = win && firstGrowthStep();
+    const otherActions = '<details class="result-options"><summary>更多玩法与养成</summary>' + (win ? '<div class="endless-offer"><strong>∞ 无尽虫潮</strong><span>保留本关构筑，补满生命；剩余成长和最后轮盘进入无尽后领取。每 8 秒一波，可随时结算。</span></div><button class="secondary" id="startEndless">进入无尽模式 ∞</button>' : '') + '<div class="result-other-actions"><button class="secondary" id="resultWorld" ' + (!featuresUnlocked() ? 'disabled' : '') + '>进入共享世界</button><button class="secondary" id="resultOrchard" ' + (!featuresUnlocked() ? 'disabled' : '') + '>我的果园</button><button class="secondary" id="resultArmory" ' + (!featuresUnlocked() ? 'disabled' : '') + '>装备工坊</button></div></details>';
     showPanel(win ? '青叶果园，平安无恙。' : '小果子，歇一歇。', '第 ' + activeStage.id + ' 关 / ' + activeStage.name, '<div class="result-layout"><div class="result-summary"><p>' +
       (win ? '本关 ' + activeStage.bossCount + ' 位虫王已全部击败，精灵已经回家。' : '虫群暂时占了上风。培养精灵、强化装备后，再试一次。') + '</p>' + (win ? victoryRewardHTML + worldRewardHTML() : '') +
       '<div class="result-stats"><div><b>' + kills + ' / ' + activeStage.enemyCount + '</b><span>驱赶害虫</span></div><div><b>' + player.level + '</b><span>本关成长等级</span></div></div>' +
-      '</div>' + (win ? '<div class="endless-offer"><strong>∞ 无尽虫潮 · 突破成长</strong><span>保留本关构筑，补满生命，放开种类与等级上限。<br>清场剩余成长与最后轮盘进入无尽后领取。<br>每 8 秒一波，材料获得即保存，可随时结束。</span></div>' : '<div class="endless-offer"><strong>🌱 下一次，带着成长出发。</strong><span>到果园培养伙伴，或在工坊强化装备。局外成长永久保留。</span></div>') + '</div>',
-      (win ? '<button class="primary" id="startEndless">进入无尽模式 ∞</button>' : '') + (win && activeStage.id < stages.length ? '<button class="secondary" id="nextStage">挑战下一关</button>' : '<button class="secondary" id="restart">再挑战一次</button>') + '<button class="secondary" id="resultWorld" ' + (!featuresUnlocked() ? 'disabled' : '') + '>进入世界</button><button class="secondary" id="resultOrchard" ' + (!featuresUnlocked() ? 'disabled' : '') + '>看看果园</button><button class="secondary" id="resultArmory" ' + (!featuresUnlocked() ? 'disabled' : '') + '>装备与养成</button><button class="' + (win && profile.featureGuideRound !== 2 && profile.featureGuideStep < featureGuideSteps().length ? 'primary' : 'secondary') + '" id="backLobby">' + (win && profile.featureGuideRound !== 2 && profile.featureGuideStep < featureGuideSteps().length ? profile.featureGuideRound === 2 ? '再练一次养成操作' : '新功能已解锁 · 开始指引' : '选择关卡') + '</button>', '奖励与关卡进度自动保存');
+      '</div><div class="result-next">' + (growthStep ? growthRouteHTML('result', false) : '<div class="endless-offer"><strong>' + (win ? '🌱 带着成长，继续远征。' : '🌱 再准备一下，重新出发。') + '</strong><span>' + (win ? '新伙伴的祝福已生效。下一关还会带来新的精灵和装备。' : '到果园培养伙伴，或在装备工坊强化装备，提升下一次挑战的实力。') + '</span></div>') + otherActions + '</div></div>',
+      (growthStep ? '<button class="primary" id="resultGrowth">' + growthStep.name + '</button>' : '') + (win && activeStage.id < stages.length ? '<button class="' + (growthStep ? 'secondary' : 'primary') + '" id="nextStage">挑战下一关</button>' : '<button class="primary" id="restart">再挑战一次</button>') + '<button class="secondary" id="backLobby">选择关卡</button>', '奖励与关卡进度自动保存');
+    overlay.classList.add('result-overlay');
+    if (growthStep) el('resultGrowth').onclick = () => followGrowthRoute('result');
     bindSpritePortraits();
     if (win && activeStage.id < stages.length) el('nextStage').onclick = () => { selectStage(activeStage.id + 1); start(); };
     else el('restart').onclick = start;
@@ -1691,6 +1758,12 @@
     if (nearest && (distance < 26 ** 2 || gems.length >= XP_NODE_CAP)) nearest.value += value;
     else gems.push({ x, y, value });
   }
+  function experiencePickupRange() {
+    // Introduce the first choice using earned drops, without granting extra XP.
+    // Later choices still reward moving towards the visible blue experience.
+    if (runMode === 'stage' && activeStage.id <= 2) return Math.max(player.pickup, player.level === 1 ? 620 : 140);
+    return player.pickup;
+  }
   function applyTimeGrowth(enemy) {
     if (runMode !== 'stage' || enemy.timeScaleApplied || !enemy.baseCombat || enemy.hp <= 0) return;
     enemy.timeScaleApplied = true;
@@ -1892,7 +1965,7 @@
     gems = gems.filter(g => {
       if (training && trainingCatalog.steps[training.step].id === 'combat') return true;
       const dx = player.x - g.x, dy = player.y - g.y, d = Math.hypot(dx, dy);
-      if (d < player.pickup) { g.x += dx / (d || 1) * Math.min(d, 320 * player.magnetMult * dt); g.y += dy / (d || 1) * Math.min(d, 320 * player.magnetMult * dt); }
+      if (d < experiencePickupRange()) { g.x += dx / (d || 1) * Math.min(d, 320 * player.magnetMult * dt); g.y += dy / (d || 1) * Math.min(d, 320 * player.magnetMult * dt); }
       if (d < 19) { const value = runMode === 'stage' ? stageXP.collect(g.value, g) : g.value; player.xp += value; if (training) training.xpCollected += value; return false; } return true;
     });
     for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; }
@@ -1999,6 +2072,9 @@
     el('endlessWave').textContent = '∞ 第 ' + endlessWave + ' 波 · 已击杀 ' + kills;
     el('endlessLoot').textContent = '已存入：☀ ' + endlessCreditedSeeds + '　◆ ' + endlessCreditedCores;
     const canExplore = ['playing', 'paused'].includes(state) || (state === 'relicMap' && isRunActive());
+    const showXPGuide = runMode === 'stage' && activeStage.id <= 2 && state === 'playing' && player.level <= 2;
+    el('xpGuide').classList.toggle('hidden', !showXPGuide);
+    if (showXPGuide) el('xpGuide').textContent = player.level === 1 ? '蓝色 XP 是经验 · 首次成长会额外吸附，集满后选技能' : '靠近蓝色 XP 拾取经验，继续升级你的技能';
     el('exploreControls').classList.toggle('hidden', !canExplore); el('relicHud').classList.toggle('hidden', !isRunActive());
     el('dashSkill').classList.toggle('hidden', !player.skills.dash);
     el('dashSkill').disabled = state !== 'playing' || (player.skillTimers.dash || 0) > 0;
@@ -2020,7 +2096,7 @@
     if (relicSignature !== relicHudSignature) {
       relicHudSignature = relicSignature;
       el('relicSlots').innerHTML = ownedDefs.length ? ownedDefs.map(def => '<button class="relic-slot active" data-owned-relic="' + def.id + '" title="' + def.name + '：' + def.description + '" aria-label="查看' + def.name + '效果">' + def.icon + '<b>' + def.name + '</b></button>').join('') : '<span class="relic-empty">' + (training ? '饰品将在第 7 步出现<br>M 可查看位置和效果' : '探索亮光投放点，拾取后显示于此<br>M 查看本局 6 件的位置与效果') + '</span>';
-      el('relicSlots').querySelectorAll('[data-owned-relic]').forEach(button => { button.onclick = () => { selectedRelic = button.dataset.ownedRelic; showRelicMap(); }; });
+      el('relicSlots').querySelectorAll('[data-owned-relic]').forEach(button => { button.onclick = () => { selectedRelic = button.dataset.ownedRelic; showRelicMap(selectedRelic); }; });
     }
     el('lootTicker').classList.toggle('hidden', !currentNotice || !isRunActive());
     el('lootTicker').classList.toggle('frozen', state !== 'playing');

@@ -7,7 +7,7 @@ const clone = value => JSON.parse(JSON.stringify(value));
 const flush = async () => { for (let i = 0; i < 12; i++) await new Promise(resolve => setImmediate(resolve)); };
 function classList() { const names = new Set(); return { add(...values) { values.forEach(value => names.add(value)); }, remove(...values) { values.forEach(value => names.delete(value)); }, toggle(value, condition) { condition ? names.add(value) : names.delete(value); }, contains(value) { return names.has(value); } }; }
 function makeHost() {
-  const events = {}, fields = {}, body = { scrollTop: 0, scrollTo() {}, insertAdjacentHTML() {} };
+  const events = {}, fields = {}, body = { scrollTop: 0, scrollTo(x, y) { this.scrollTop = y; }, insertAdjacentHTML() {} };
   return { innerHTML: '', classList: classList(), events, fields, attributes: {},
     setAttribute(key, value) { this.attributes[key] = value; }, addEventListener(name, callback) { events[name] = callback; }, removeEventListener(name) { delete events[name]; },
     querySelector(selector) { return selector === '.world-body' ? body : fields[selector] || null; }, querySelectorAll() { return []; }, contains() { return true; },
@@ -57,6 +57,17 @@ async function verify() {
         const me = users.get(cookieName).player;
         if (!replay.has(payload.requestId)) {
           if (payload.type === 'settle') { me.resources.wood -= 120; me.resources.stone -= 80; me.home = { x: payload.x, y: payload.y, level: 1, protectedUntil: clock + 300000, buildings: { keep: 1, farm: 0, warehouse: 0, wall: 0, barracks: 0, lumbermill: 0, quarry: 0, ironworks: 0 }, production: {} }; }
+          if (payload.type === 'build') {
+            const level = ++me.home.buildings[payload.building], costs = state.rules.costs.buildings[payload.building][level];
+            for(const [key,value] of Object.entries(costs || {}))me.resources[key]-=value;
+            const production = state.rules.production[payload.building];
+            if(production)me.home.production[payload.building]={...production,stored:0,capacity:1250,nextTickAt:clock+60000};
+          }
+          if (payload.type === 'train') {
+            const training=state.rules.training[payload.unit];
+            for(const [key,value] of Object.entries(training.cost))me.resources[key]-=value*payload.count;
+            me.queues.push({unit:payload.unit,count:payload.count,readyAt:clock+training.seconds*payload.count*1000});
+          }
           if (payload.type === 'harvest' || payload.type === 'harvest-all') {
             result.harvested = { wood: 0, stone: 0, grain: 0, iron: 0, token: 0 };
             for (const [key, item] of Object.entries(me.home.production)) if (payload.type === 'harvest-all' || key === payload.building) { me.resources[item.resource] += item.stored; result.harvested[item.resource] += item.stored; item.stored = 0; }
@@ -88,6 +99,8 @@ async function verify() {
   await client.prepareSession('字欧'); assert.match(host.innerHTML, /旧家园结余 · 可以收取/); assert.match(host.innerHTML, /24 粮草/); assert.match(host.innerHTML, /先升级主城/);
   host.click('harvest', { building: 'lumbermill' }); await flush(); assert.equal(calls.at(-1).payload.building, 'lumbermill'); assert.equal(alice.resources.wood, 398);
   host.click('harvest-all'); await flush(); assert.equal(calls.at(-1).payload.type, 'harvest-all'); assert.equal(alice.resources.grain, 524); assert.match(host.innerHTML, /物资已入库/);
+  assert.doesNotMatch(host.innerHTML, /物资已入库：&lt;span|物资已入库：<span/);
+  assert.match(host.innerHTML, /物资已入库：🌾 粮草 24/);
   alice.troops = { infantry: 20, archer: 10, cavalry: 2 }; alice.home.buildings.barracks = 1;
   await client.prepareSession('字欧'); host.click('tab', { tab: 'army' });
   host.submit('worldSquadForm', { '#worldSquadName': '青叶小队', '#worldSquad-infantry': '8', '#worldSquad-archer': '4', '#worldSquad-cavalry': '0' }); await flush();
@@ -122,6 +135,31 @@ async function verify() {
   let guideCompletions = 0;
   client.open({ overlay: host, name: '李总', guideHTML: '<aside class="feature-guide">地图空地引导<button data-world-action="guide-done">完成指引</button></aside>', onGuideDone() { guideCompletions++; client.close(); } });
   await flush(); assert.match(host.innerHTML, /地图空地引导/); host.click('guide-done'); assert.equal(guideCompletions, 1); assert.equal(Object.keys(host.events).length, 0);
+  unavailable = false;
+  state.map.cells.push({x:7,y:7,ownerId:'occupied-center',ownerName:'中心玩家',level:1});
+  await client.enterGame('起步验收','guide-test-password');
+  let harvests=0; client.open({overlay:host,name:'起步验收',onHarvest(){harvests++;}}); await flush();
+  const selected=host.innerHTML.match(/class="world-tile [^"]*world-selected[^"]*"[^>]*data-x="(\d+)" data-y="(\d+)"/);
+  assert(selected); assert(!state.map.cells.some(cell=>cell.x===Number(selected[1])&&cell.y===Number(selected[2])));
+  assert.match(host.innerHTML,/选一块空地/); host.click('guide-next'); host.querySelector('.world-body').scrollTop=800; host.click('settle'); await flush();
+  assert.equal(host.querySelector('.world-body').scrollTop,0,'Successful settlement shows the next home task at the top');
+  const novice=users.get('起步验收').player;
+  assert.match(host.innerHTML,/推荐下一步 · 2 \/ 6/); host.click('guide-next'); await flush();
+  assert.equal(novice.home.buildings.farm,1); assert.match(host.innerHTML,/等待农田生产/);
+  const beforeWait=calls.length; host.click('guide-next'); await flush(); assert.equal(calls.length,beforeWait);
+  novice.home.production.farm.stored=8; clock+=60000; await client.prepareSession('起步验收');
+  host.click('guide-next'); await flush(); assert.equal(harvests,1); assert.equal(novice.resources.grain,508);
+  assert.match(host.innerHTML,/物资已入库：🌾 粮草 8/); assert.match(host.innerHTML,/推荐下一步 · 4 \/ 6/);
+  client.close(); client.open({overlay:host,name:'起步验收',harvestSeen:true}); await flush(); assert.match(host.innerHTML,/推荐下一步 · 4 \/ 6/);
+  host.click('guide-next'); await flush(); assert.equal(novice.home.buildings.barracks,1);
+  host.click('guide-next'); await flush(); assert.equal(novice.queues[0].count,10); assert.equal(novice.resources.grain,428);
+  assert.doesNotMatch(host.innerHTML,/id="worldSquadForm"/); assert.match(host.innerHTML,/等待第一批士兵入伍/);
+  novice.troops.infantry=10; novice.queues=[]; clock+=50000; await client.prepareSession('起步验收');
+  assert.match(host.innerHTML,/编成第一支小队/); host.click('guide-next');
+  host.submit('worldSquadForm',{'#worldSquadName':'起步小队','#worldSquad-infantry':'10','#worldSquad-archer':'0','#worldSquad-cavalry':'0'}); await flush();
+  assert.equal(novice.squads[0].units.infantry,10); assert.match(host.innerHTML,/家园起步已完成/);
+  client.close(); assert.equal(intervals.size,0);
+  console.log('PASS world starting tasks: occupied-center fallback, farm, no premature harvest, safe text, persisted harvest, barracks, training before composition, and completed squad');
   for (const call of calls) { assert.equal(call.options.credentials, 'same-origin'); if (call.payload) assert.equal(call.options.headers['Content-Type'], 'application/json'); if (!call.url.endsWith('/enter') && !call.url.endsWith('/link')) assert.equal(call.payload?.password, undefined, 'Credentials appear only in authentication requests'); }
   console.log('PASS frontier client: unified entry and single-flight reconnect, password memory only, legacy link preservation, logout identity isolation, main-city scene, manual harvest, squads and selected attack, idempotent retry, campaign tickets, escaping and cleanup');
 }

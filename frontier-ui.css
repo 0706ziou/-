@@ -201,3 +201,12 @@
   .world-tile-art .world-building-art { width: 100%; height: 100%; }
   .world-wild .world-tile-art .world-building-art { width: 14px; height: 14px; }
 }
+
+.world-start-guide { display: flex; align-items: center; justify-content: space-between; gap: 14px; border-color: #b7d58499; background: linear-gradient(120deg,#344d32,#263d2b); }
+.world-start-guide h3 { margin: 5px 0; }.world-start-guide p { margin: 5px 0 8px; }
+.world-start-guide ol { display: flex; flex-wrap: wrap; gap: 5px 12px; list-style: none; padding: 0; margin: 9px 0; font-size: 11px; color: #9dae91; }
+.world-start-guide li.done { color: #b9d89b; }.world-start-guide li.current { color: #f4e9b4; font-weight: 700; }
+.world-start-guide>button { flex: 0 0 auto; }.world-start-guide small { display: block; line-height: 1.7; }
+.world-guide-complete { padding: 10px 12px; border-radius: 10px; background: #30462b66; font-size: 12px; color: #c1d9a1; }
+.world-guide-complete summary { cursor: pointer; }.world-guide-complete p { font-size: 11px; line-height: 1.7; }
+@media(max-width:620px){.world-start-guide{flex-direction:column;align-items:stretch;gap:10px}.world-start-guide ol{font-size:10px;gap:5px 9px}.world-start-guide>button{align-self:flex-start;min-height:38px}}
