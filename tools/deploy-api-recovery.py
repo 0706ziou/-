@@ -23,11 +23,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-COMMIT = "838869ef24b0ac39055f97f7b3fbf2c89b9437cd"
-TREE = "a208938a855a77e467eede4f1a0d3770ead622cb"
-RUNTIME_FINGERPRINT = "109bce1cd9848dca76a52f08f371e18447bdbe64200d7ebdbc8ae84c6fd952c3"
+COMMIT = "d51ef86c11ea84c1d8cea6d34a90029b93f83f1d"
+TREE = "7af468aaa1d4b883861168a4592b85b20f24a0e0"
+RUNTIME_FINGERPRINT = "aea93ae3e7e94fdbab154072071fdb22b82b01608ebfbf87603a8c93c1aad6f7"
 RUNTIME_FILES = 140
-RUNTIME_BYTES = 28423540
+RUNTIME_BYTES = 28434336
 REVIEWED_OBJECTS = 15
 TRUSTED_CACHE = {
     "23d01d045eafaa0f452373ae64f6d9d1676863b1861d49155bb395421b314fbb",  # previous reviewed growth-menu release
@@ -43,6 +43,7 @@ TRUSTED_CACHE = {
     "b7513b1b206c1d09d096734ca94a481ec7f01345ae5f1b90820ca4c91842af4a",  # previously verified 54b2bb8 production release
     "c8c15291d877fd25457f9be8f684daaf5527f9db3d57fcf4bd60e59893a0af31",
     "7fa18ad8124df2a49971125d256dcb702807042d666f6d73d8af8dd8cb4a66a9",
+    "109bce1cd9848dca76a52f08f371e18447bdbe64200d7ebdbc8ae84c6fd952c3",  # previous verified first-minutes release
 }
 SCRIPT_HASHES = {
     "tools/deploy-ip-site.sh": "62ba31c83741fb14fd3901a3a490988b1cfdc1f64691bf81eef9316f99fb2806",
