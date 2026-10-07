@@ -7,8 +7,9 @@ const range = value => value.min === value.max ? String(value.min) : value.min +
 const tablePath = path.join(root, '20关数值表.txt');
 const table = ['果园保卫战 — 前20关实际数值表', '',
   '前三关为新手关：72/96/120只普通虫，1/2/3只精英，各1位虫王；脱离伤害3秒后每秒恢复2生命。',
-  '第四关起保留原基础数值；Boss首只60秒，后续按独立时间表登场，上一只未死也不等待，可同时在场。',
-  '普通虫提供经验，前两关经验降低45%；精英轮盘抽1个，Boss抽3个肉鸽词条。经验加成不增加本关经验总量。清场剩余成长及最后轮盘进入无尽后领取。',
+  '第四至十关逐步增加压力，第十关接回原配置；Boss首只60秒，后续按独立时间表登场，上一只未死也不等待，可同时在场。',
+  '普通虫提供经验，前两关经验降低45%；精英轮盘抽1个，每位Boss抽3个肉鸽词条。最终轮盘在本关结算前领取，剩余经验在无尽继续成长。',
+  '正式关卡每20秒（第11关起30秒）触发3.5秒附近经验吸附；前十关首次成长额外扩大拾取。经验加成不增加本关经验总量。',
   '新账号首次通关解锁装备、英雄、果园、世界并触发点击指引；第二关起不再重复养成指引。',
   '以下为基础数值；后续登场怪物随实战时间增强，完整倍率与升级次数见经验升级数值表.txt。',
   '格式：数量 / 生命 / 移速 / 接触伤害 / 掉落经验。', ''];
@@ -20,10 +21,18 @@ for (const stage of stages.slice(0,20)) {
   table.push('  普通追击：开局'+stage.initialPursuers+'，每'+stage.pursuitInterval+'秒新增'+stage.batchSize,
     '  精英追击：'+stage.eliteFirstAt+'秒首批，每'+stage.eliteInterval+'秒新增'+stage.eliteBatchSize,
     '  Boss登场时间：'+stage.bossSchedule.join('/')+'秒（上一只未死也登场）');
-  for(const id of stage.bossIds) {const boss=context.window.ORCHARD_BOSSES[id-1],b=stage.beginner;table.push('  Boss '+id+' '+boss.name+'：生命'+(b?.bossHp??boss.hp)+' / 移速'+(b?.bossSpeed??boss.speed)+' / 伤害'+(b?.bossDamage??boss.damage)+' / 冲刺速度'+(b?.chargeSpeed??boss.chargeSpeed));}
+  for(const id of stage.bossIds) {const boss=context.window.ORCHARD_BOSSES[id-1],b=stage.beginner,o=stage.openingBoss;table.push('  Boss '+id+' '+boss.name+'：生命'+(b?.bossHp??boss.hp)+' / 移速'+(b?.bossSpeed??Number((boss.speed*(o?.speed??1)).toFixed(2)))+' / 伤害'+(b?.bossDamage??Number((boss.damage*(o?.damage??1)).toFixed(2)))+' / 冲刺速度'+(b?.chargeSpeed??Number((boss.chargeSpeed*(o?.charge??1)).toFixed(2))));}
   table.push('  每只Boss经验：'+range(stage.experience.ranges.boss), '  通关奖励：阳光籽'+stage.reward.seeds+'，果核'+stage.reward.cores, '');
 }
 fs.writeFileSync(tablePath, table.join('\n'), 'utf8');
+const campaignPath = path.join(root, '100关与英雄养成说明.txt');
+let campaign = fs.readFileSync(campaignPath, 'utf8');
+for(const s of stages) {
+  const boss=context.window.ORCHARD_BOSSES[s.id-1];
+  const row=`${s.id}｜${s.name}｜${s.slow.hp}/${s.fast.hp}/${s.elite.hp}｜${s.normalCount}/${s.eliteCount}/${s.bossCount}｜${s.reward.seeds}/${s.reward.cores}｜${s.beginner?.bossHp??boss.hp}`;
+  campaign=campaign.replace(new RegExp('^'+s.id+'｜[^\\r\\n]*','m'),row);
+}
+fs.writeFileSync(campaignPath,campaign,'utf8');
 const lines=['果园保卫战 — 递增成长与时间压力数值','',
  '设计目标：开局较快获得成长，随后逐步变慢；秒数仅用于校准手感，不是自动升级倒计时。',
  '升级需求：140 + 53×(当前等级−1) + 4×(当前等级−1)²。关卡与无尽沿用同一条平滑曲线，不在LV.31或LV.41跳回低需求。',
@@ -35,7 +44,7 @@ const lines=['果园保卫战 — 递增成长与时间压力数值','',
  '经验总量与轮盘：',
  '怪物掉落仍按10000经验的固定分配基准计算；精英/Boss份额由轮盘替代，经验为0；前两关普通经验再乘55%。',
  '本次只提高中后期升级成本，不提高掉落量。前两关各4536/4560经验，可支持9次经验升级，精英/Boss仍抽1/3个词条。',
- '经验加成提前发放本关预算，不改变完整预算支持的升级次数；清场后未领取的成长与最后轮盘在无尽领取。',
+ '经验加成提前发放本关预算，不改变完整预算支持的升级次数；最后轮盘在通关结算前领取，剩余经验在无尽继续成长。',
  '下表为消耗整关预算后的理论上限，不保证通关前所有经验选择都已弹完。','',
  '逐级成本（当前等级 → 下一等级 | 本级经验 | 累计经验 | 40经验/秒下的单级参考时间 | 关卡防连弹窗口）'];
 for(let level=1;level<=60;level++)lines.push(`LV.${level} → LV.${level+1} | ${xp.need(level)} | ${xp.budget(level)} | ${(xp.need(level)/xp.referenceXPPerSecond).toFixed(1)}秒 | ${xp.interval(level).toFixed(1)}秒`);
@@ -56,6 +65,6 @@ lines.push('只按实战时间判定；上一只未死也不阻挡下一只。�
  '间隔设定：首60秒让前期构筑建立；4～20关按round(42−(关号−4)×12/16)秒，21～100关按round(36−(关号−21)×6/79)秒。',
  '相比旧的22秒最短资格排程，新间隔更宽，为并存Boss及已有时间血量增长留出空间。仍需完整实战校准不同英雄的压力。');
 lines.push('','精致轮盘：扇区显示实际词条名称、图标、品质；固定指针落点与抽中奖励一致。Boss三连抽按每次更新后的合法词条池结算，防止满级词条被无效抽取。',
- '转动时按钮锁定，结束后显示收获卡片（名称、品质、等级、效果），再次点击仅继续游戏，不重复发奖。构筑已满时改为生命补给。');
+ '转动时按钮锁定，可快速揭晓；结束后显示收获卡片，再次点击仅继续游戏，不重复发奖。可选自动开奖并继续，奖励停留2秒，页面隐藏时冻结。构筑已满时改为生命补给。');
 fs.writeFileSync(path.join(root,'经验升级数值表.txt'),lines.join('\n')+'\n');
 console.log('Updated runtime-derived experience and time-pressure tables.');

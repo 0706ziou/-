@@ -676,6 +676,19 @@ h1 { font-size: 23px; }
 .result-overlay .result-layout { flex: none; grid-template-rows: auto; align-items: start; }
 .result-overlay .result-summary { justify-content: flex-start; }
 .result-next { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.overlay.result-overlay { height: fit-content; width: min(1040px, calc(100vw - 32px)); max-height: calc(100dvh - 100px); margin: auto; }
+.result-overlay .menu-dialog { height: auto; max-height: calc(100dvh - 134px); }
+.result-overlay .menu-body { flex: 0 1 auto; }
+.result-review { border: 1px solid #6a805356; border-radius: 12px; padding: 14px; background: #20382a; }
+.result-review h3 { margin: 0 0 12px; font-size: 13px; color: #e0ebbf; }
+.result-review dl { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+.result-review dl > div { min-width: 0; }
+.result-review dt { color: #9fb691; font-size: 10px; }
+.result-review dd { margin: 4px 0 0; font-size: 12px; color: #e8efcb; overflow-wrap: anywhere; }
+.result-overlay .result-damage { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid #6a805333; color: #d4bb9b; font-size: 11px; }
+.result-overlay .menu-dialog .endless-offer { padding: 12px; }
+.result-overlay .menu-dialog .endless-offer strong { font-size: 14px; }
+.result-overlay .menu-dialog .endless-offer span { margin-top: 7px; }
 .result-options { padding: 12px; border: 1px solid #6a805356; border-radius: 12px; text-align: left; }
 .result-options summary { cursor: pointer; font-size: 12px; color: #bcd69c; }
 .result-options .endless-offer { margin: 10px 0; padding: 10px; }
@@ -685,6 +698,9 @@ h1 { font-size: 23px; }
 .relic-nearest { align-self: flex-start; font-size: 11px; padding: 7px 10px; }
 .relic-detail details { font-size: 10px; color: #b6c79c; }.relic-detail summary { cursor: pointer; }
 @media (max-width: 650px) {
+  .overlay.result-overlay { inset: 12px; width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
+  .result-overlay .menu-dialog { max-height: calc(100dvh - 58px); }
+  .result-review { padding: 12px; }.result-review dl { gap: 10px 12px; }
   .growth-route { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px; }
   .growth-route strong { font-size: 12px; }.growth-route .primary { align-self: flex-start; }
   .result-overlay .result-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; gap: 12px; }

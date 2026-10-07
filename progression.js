@@ -1,5 +1,5 @@
 /*
- * 果园远征：100关、五个篇章。前三关为新手关，4～20关保留原配置；后80关固定398普通虫、精英45→64、Boss短队列与渐进数值。
+ * 果园远征：100关、五个篇章。前三关为新手关，4～10关逐步接回原难度；后80关固定398普通虫、精英45→64、Boss短队列与渐进数值。
  * Boss 使用独立绝对时间表：首位 60 秒；前一位未死也不阻挡下一位，可同时在场。
  * 4～20关间隔42→30秒；21～100关间隔36→30秒。击杀和清空小怪均不改排程。
  * 普通追击开局 20→36，每批 20→32，间隔 10→7 秒；精英首批 16→12 秒。
@@ -257,7 +257,7 @@
     });
   }
   const chapterEquipment = { 25: 'weapon_grape', 30: 'armor_moon', 35: 'charm_moon', 40: 'weapon_blueberry', 45: 'charm_gale', 50: 'armor_thorn', 60: 'weapon_sunbow', 70: 'charm_star', 85: 'armor_frost', 100: 'weapon_coconut' };
-  // Three gentle opening stages; later chapters keep their existing tuning.
+  // Three gentle opening stages precede the gradual opening curve.
   for (let index = 0; index < 3; index++) {
     const stage = stages[index], rank = index + 1;
     Object.assign(stage, {
@@ -272,6 +272,34 @@
       description: '新手友好：' + (48 + rank * 24) + '只普通虫、' + rank + '只精英和1位虫王。脱离伤害3秒后每秒恢复2生命；虫王固定60秒登场，清空小怪不提前。虫王更加耐打，登场护壳1.5秒减伤90%。'
     });
   }
+  // Bridge the gentle tutorial into the original chapter, reaching the original
+  // roster and combat values at stage ten instead of moving the cliff to eleven.
+  const opening = [
+    [144, 32, 4, 2, 10, 14, 6, 42, 74, 6, 30, 88, 5, 104, 84, 7],
+    [184, 46, 6, 3, 12, 16, 6.6, 54, 78, 8, 35, 101, 6, 140, 98, 9],
+    [224, 62, 8, 4, 14, 18, 7.2, 67, 82, 10, 42, 114, 8, 182, 106, 12],
+    [264, 84, 12, 5, 17, 20, 7.6, 80, 86, 12, 51, 127, 10, 220, 114, 15],
+    [304, 112, 16, 6, 20, 22, 8, 93, 91, 15, 60, 140, 12, 252, 120, 18],
+    [350, 144, 20, 8, 24, 24, 8.2, 106, 95, 18, 68, 150, 14, 286, 127, 22],
+    [398, 176, 24, 10, 28, 26, 8.4, 118, 99, 21, 76, 159, 15, 320, 133, 26]
+  ];
+  opening.forEach((values, index) => {
+    const stage = stages[index + 3];
+    const [normalCount, fastCount, eliteCount, bossCount, initialPursuers, batchSize, pursuitInterval,
+      slowHP, slowSpeed, slowDamage, fastHP, fastSpeed, fastDamage, eliteHP, eliteSpeed, eliteDamage] = values;
+    const blend = index / 6;
+    Object.assign(stage, {
+      normalCount, fastCount, eliteCount, bossCount, initialPursuers, batchSize, pursuitInterval,
+      bossIds: Array.from({ length: bossCount }, (_, i) => stage.id - bossCount + 1 + i),
+      slow: { ...stage.slow, hp: slowHP, speed: slowSpeed, damage: slowDamage },
+      fast: { ...stage.fast, hp: fastHP, speed: fastSpeed, damage: fastDamage },
+      eliteStats: { hp: eliteHP, speed: eliteSpeed, damage: eliteDamage },
+      eliteFirstAt: [28, 26, 24, 22, 20, 17, 14][index],
+      eliteInterval: Number((11.8 - blend * 4).toFixed(1)), eliteBatchSize: index < 4 ? 1 : 2,
+      openingBoss: Object.freeze({ damage: .30 + blend * .70, speed: .75 + blend * .25, charge: .58 + blend * .42 }),
+      description: normalCount + '只普通虫、' + eliteCount + '只精英、' + bossCount + '位虫王。开局先拾取经验形成攻击技能，利用晨露吸附收回远处经验；精英逐批加入，虫王60秒起按时间登场。'
+    });
+  });
   for (const stage of stages) if (chapterEquipment[stage.id]) stage.firstClearGear = chapterEquipment[stage.id];
   // Independent timers replace kill-gated queues. Wider gaps than the old
   // 22-second eligibility queue account for overlapping bosses and time HP growth.

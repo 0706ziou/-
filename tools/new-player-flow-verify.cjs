@@ -60,12 +60,12 @@ check('An ordinary opening reaches the first XP choice within thirty battle seco
   }
 });
 check('The opening assist leaves distant XP and later stages under the normal pickup rules', () => {
-  for(const id of [1,3]) {
+  for(const id of [1,3,10,11]) {
     const g=createGame(),t=g.t; t.profile.unlockedStage=id; t.selectStage(id); t.start();
     const victim=t.enemies.find(e=>!e.boss&&!e.elite); quietField(t);
     victim.x=t.player.x+300; victim.y=t.player.y; victim.hp=0; t.enemies.push(victim); t.update(.001);
     const gem=t.gems[0], x=gem.x; t.update(.1);
-    assert.equal(gem.x<x,id===1);
+    assert.equal(gem.x<x,id<=10);
     const far=t.player.x+1800; t.dropExperience(far,t.player.y,1); const farGem=t.gems.find(gem=>gem.x===far); t.update(.1);
     assert.equal(farGem.x,far);
   }

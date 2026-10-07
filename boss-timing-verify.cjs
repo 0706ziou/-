@@ -26,7 +26,7 @@ check('Intervals progress smoothly and keep exact representative end times',()=>
   for(const s of ss){assert.equal(s.bossSchedule[0],60);for(let i=1;i<s.bossCount;i++)assert.equal(s.bossSchedule[i]-s.bossSchedule[i-1],s.bossInterval);}
   assert.equal(ss[3].bossInterval,42);assert.equal(ss[19].bossInterval,30);assert.equal(ss[20].bossInterval,36);assert.equal(ss[99].bossInterval,30);
   for(const group of [ss.slice(3,20),ss.slice(20)])for(let i=1;i<group.length;i++)assert(group[i].bossInterval<=group[i-1].bossInterval&&group[i-1].bossInterval-group[i].bossInterval<=1);
-  assert.deepEqual(Array.from(ss[3].bossSchedule),[60,102,144,186]);
+  assert.deepEqual(Array.from(ss[3].bossSchedule),[60,102]);
   assert.equal(ss[19].bossSchedule.at(-1),630);assert.equal(ss[39].bossSchedule.at(-1),375);assert.equal(ss[99].bossSchedule.at(-1),330);
 });
 check('Boss kills cannot add recovery time, and clearing ordinary or elite enemies cannot skip time',()=>{
@@ -74,10 +74,11 @@ check('HUD retains a countdown with a living boss, displays the latest arrival a
 check('All overlapping bosses must die before rewards settle, and payouts occur only once',()=>{
   const g=stageGame(4),{t}=g,s=t.activeStage;
   for(const e of t.enemies)if(!e.boss)e.hp=0;t.update(0);drain(g);
-  t.elapsed=s.bossSchedule.at(-1);t.update(0);assert.equal(active(t).length,4);
-  for(const e of active(t).slice(0,3))e.hp=0;t.update(0);drain(g);
-  assert.equal(t.state,'playing');assert.equal(t.bossKills,3);assert.equal(t.profile.seeds,0);
-  active(t)[0].hp=0;t.update(0);assert.equal(t.state,'rescue');assert.equal(t.profile.seeds,s.reward.seeds);
+  t.elapsed=s.bossSchedule.at(-1);t.update(0);assert.equal(active(t).length,s.bossCount);
+  for(const e of active(t).slice(0,-1))e.hp=0;t.update(0);drain(g);
+  assert.equal(t.state,'playing');assert.equal(t.bossKills,s.bossCount-1);assert.equal(t.profile.seeds,0);
+  active(t)[0].hp=0;t.update(0);assert.equal(t.state,'roulette');assert.equal(t.profile.seeds,0);
+  drain(g);assert.equal(t.state,'rescue');assert.equal(t.profile.seeds,s.reward.seeds);
   const profile=JSON.stringify(t.profile);t.completeRescue();assert.equal(t.state,'ended');t.completeRescue();assert.equal(JSON.stringify(t.profile),profile);
 });
 console.log(`${checks} independent Boss schedule checks passed.`);

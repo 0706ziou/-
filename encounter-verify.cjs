@@ -47,15 +47,16 @@ check('Opening boss base health and disclosed arrival guard fit a readable begin
   }
 });
 for (const stage of stages.slice(0, 20)) {
-  const sourceBoss = bosses[stage.id - 1], opening = !!stage.beginner;
+  const sourceBoss = bosses[stage.id - 1], opening = !!stage.beginner, bridge = !!stage.openingBoss;
   const boss = opening ? { ...sourceBoss, hp: stage.beginner.bossHp, speed: stage.beginner.bossSpeed,
-    damage: stage.beginner.bossDamage, chargeSpeed: stage.beginner.chargeSpeed, chargeInterval: stage.beginner.chargeInterval } : sourceBoss;
+    damage: stage.beginner.bossDamage, chargeSpeed: stage.beginner.chargeSpeed, chargeInterval: stage.beginner.chargeInterval } : bridge ? { ...sourceBoss,
+    damage: sourceBoss.damage * stage.openingBoss.damage, speed: sourceBoss.speed * stage.openingBoss.speed, chargeSpeed: sourceBoss.chargeSpeed * stage.openingBoss.charge } : sourceBoss;
   check(`Chapter ${stage.id}: the fixed roster and ordinary-only XP budget match the growth curve`, () => {
-    assert.equal(stage.normalCount, opening ? 48 + stage.id * 24 : 398);
-    assert.equal(stage.eliteCount, opening ? stage.id : 4 + stage.id * 2);
-    assert.equal(stage.bossCount, opening ? 1 : stage.id);
+    if(opening){assert.equal(stage.normalCount,48+stage.id*24);assert.equal(stage.eliteCount,stage.id);assert.equal(stage.bossCount,1);}
+    else if(stage.id>=10){assert.equal(stage.normalCount,398);assert.equal(stage.eliteCount,4+stage.id*2);assert.equal(stage.bossCount,stage.id);}
+    else {assert(stage.normalCount>stages[stage.id-2].normalCount&&stage.normalCount<398);assert(stage.eliteCount>stages[stage.id-2].eliteCount&&stage.eliteCount<24);assert(stage.bossCount>stages[stage.id-2].bossCount&&stage.bossCount<stage.id);}
     assert.equal(stage.enemyCount, stage.normalCount + stage.eliteCount + stage.bossCount);
-    assert.deepEqual(Array.from(stage.bossIds), opening ? [stage.id] : Array.from({ length: stage.id }, (_, i) => i + 1));
+    assert.deepEqual(Array.from(stage.bossIds), Array.from({ length: stage.bossCount }, (_, i) => stage.id-stage.bossCount+1+i));
     assert.equal(stage.xpRewards.length, stage.enemyCount);
     assert(stage.xpRewards.every(xp => Number.isInteger(xp) && xp >= 0));
     assert(stage.xpRewards.slice(0,stage.normalCount).every(xp => xp > 0));
@@ -72,14 +73,14 @@ for (const stage of stages.slice(0, 20)) {
     assert(stage.slow.damage < 110 / 3);
     assert(opening ? stage.fast.damage <= stage.slow.damage : stage.fast.damage < stage.slow.damage);
     assert(stage.elite.hp > stage.slow.hp && stage.elite.damage > stage.slow.damage);
-    assert(stage.initialPursuers >= (opening ? 6 : 20) && stage.initialPursuers <= (opening ? 10 : 36));
-    assert(stage.batchSize >= (opening ? 10 : 20) && stage.batchSize <= (opening ? 14 : 32));
-    assert(stage.pursuitInterval >= (opening ? 5 : 7) && stage.pursuitInterval <= (opening ? 5 : 10));
+    assert(stage.initialPursuers >= (opening ? 6 : bridge ? 10 : 20) && stage.initialPursuers <= (opening ? 10 : 36));
+    assert(stage.batchSize >= (opening ? 10 : bridge ? 14 : 20) && stage.batchSize <= (opening ? 14 : 32));
+    assert(stage.pursuitInterval >= (opening ? 5 : bridge ? 6 : 7) && stage.pursuitInterval <= (opening ? 5 : 10));
   });
   check(`Chapter ${stage.id}: elite pressure starts after ordinary-only movement practice`, () => {
-    assert(stage.eliteFirstAt >= (opening ? 25 : 12) && stage.eliteFirstAt <= (opening ? 25 : 16));
+    assert(stage.eliteFirstAt >= (opening ? 25 : 12) && stage.eliteFirstAt <= (opening ? 25 : bridge ? 28 : 16));
     assert(stage.eliteFirstAt > stage.pursuitInterval);
-    assert(stage.eliteInterval >= (opening ? 14 : 6.6) && stage.eliteInterval <= (opening ? 14 : 8.8));
+    assert(stage.eliteInterval >= (opening ? 14 : 6.6) && stage.eliteInterval <= (opening ? 14 : bridge ? 11.8 : 8.8));
     assert(stage.eliteBatchSize >= 1 && stage.eliteBatchSize <= 3);
     const lastAt = stage.eliteFirstAt + Math.floor((stage.eliteCount - 1) / stage.eliteBatchSize) * stage.eliteInterval;
     assert(lastAt >= (opening ? 25 : 50) && lastAt <= (opening ? 53 : 150), `Elites remain staggered, last at ${lastAt}`);
@@ -105,7 +106,7 @@ for (const stage of stages.slice(0, 20)) {
     assert(boss.hp >= (opening ? 900 : 1600) && boss.hp <= 8500);
     assert(boss.speed < 205);
     assert(boss.damage <= 110 / 2, 'Unarmored full-health heroes survive two contacts');
-    assert(boss.chargeSpeed >= (opening ? 115 : 250) && boss.chargeSpeed <= (opening ? 135 : 326));
+    assert(boss.chargeSpeed >= (opening ? 115 : bridge ? 150 : 250) && boss.chargeSpeed <= (opening ? 135 : 326));
     assert(boss.chargeInterval >= (opening ? 8 : 4.8) && boss.chargeInterval <= (opening ? 8 : 7));
     // Assumed effective focused output, after movement / swarm target splitting.
     // This checks a design envelope; it is not a measured live-browser win rate.
@@ -113,27 +114,33 @@ for (const stage of stages.slice(0, 20)) {
     const expectedSeconds = boss.hp / effectiveDps;
     assert(expectedSeconds >= (opening ? 7 : 10) && expectedSeconds <= (opening ? 15 : 30), `Paper fight length ${expectedSeconds}`);
   });
-  if (stage.id > 1 && stage.id !== 4) {
+  if (stage.id > 1) {
     const previous = stages[stage.id - 2], previousSourceBoss = bosses[stage.id - 2];
-    const previousBoss = opening ? { ...previousSourceBoss, hp: previous.beginner.bossHp, damage: previous.beginner.bossDamage } : previousSourceBoss;
+    const previousBoss = previous.beginner ? { ...previousSourceBoss, hp: previous.beginner.bossHp, damage: previous.beginner.bossDamage } : { ...previousSourceBoss, damage: previousSourceBoss.damage*(previous.openingBoss?.damage??1) };
     check(`Chapter ${stage.id}: pressure grows smoothly instead of a health or damage jump`, () => {
       for (const type of ['slow', 'fast', 'elite']) {
         assert(stage[type].hp >= previous[type].hp);
-        assert(stage[type].hp / previous[type].hp <= (opening ? 1.5 : 1.2));
+        assert(stage[type].hp / previous[type].hp <= (opening || bridge ? 1.5 : 1.2));
         assert(stage[type].damage >= previous[type].damage);
         assert(stage[type].speed >= previous[type].speed);
       }
-      assert(boss.hp > previousBoss.hp && boss.hp / previousBoss.hp <= (opening ? 1.5 : 1.2));
+      assert(boss.hp > previousBoss.hp && boss.hp / previousBoss.hp <= (opening || bridge ? 1.5 : 1.2));
       assert(boss.damage >= previousBoss.damage);
       assert(stage.bossInterval <= previous.bossInterval);
     });
   }
 }
-check('Fourth chapter deliberately starts the full roster after three gentle opening stages', () => {
+check('Opening pressure increases gradually and reaches the original roster at ten without a cliff at eleven', () => {
   assert(stages.slice(0, 3).every(stage => stage.beginner));
   assert(stages.slice(3).every(stage => !stage.beginner));
-  assert.equal(stages[3].normalCount, 398);
-  assert(stages[3].slow.hp / stages[2].slow.hp <= 2.2);
+  assert.equal(stages[3].enemyCount, 150);
+  for(let i=3;i<=10;i++) {
+    const current=stages[i],previous=stages[i-1];
+    assert(current.enemyCount>previous.enemyCount&&current.enemyCount/previous.enemyCount<1.3);
+    assert(current.slow.damage/previous.slow.damage<=1.5);
+    assert(current.initialPursuers/current.pursuitInterval<=previous.initialPursuers/previous.pursuitInterval*1.3);
+  }
+  assert.equal(stages[9].normalCount,398);assert.equal(stages[9].eliteCount,24);assert.equal(stages[9].bossCount,10);
   assert(stages[3].fast.speed < 205);
 });
 check('Stage twenty schedules every boss independently across a ten-and-a-half minute release window', () => {

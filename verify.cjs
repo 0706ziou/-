@@ -35,7 +35,7 @@ gameSource = gameSource.replace(boot,
   openItemStore,closeItemStore,topUpDiamonds,buyDiamondProduct,performCommerce,drawCommerceAura,get storeRevision(){return storeRevision},store,get storeReturnState(){return storeReturnState},showOrchard,upgradeOrchard,upgradeSprite,orchardCost,spriteCost,completeRescue,readyBoss,announceBossArrival,
   startEndless,spawnEndlessWave,bankEndlessRewards,finishEndless,rouletteTick,pressure,applyTimeGrowth,
   dropExperience,XP_NODE_CAP,get W(){return W},get H(){return H},WORLD_W,WORLD_H,seedDamage,experienceNeed,upgradeBase,experience,checkStageCompletion,
-  get stageXP(){return stageXP},
+  get stageXP(){return stageXP},get runStats(){return runStats},
   relicDefs,relicPoints,relicEffects,builds,resetRelics,claimRelic,updateSkills,activateDash,showRelicMap,closeRelicMap,isRunActive,skillHit,healPlayer,
   get runRelicDefs(){return runRelicDefs},set runRelicDefs(v){runRelicDefs=v},
   get noticeQueue(){return noticeQueue},get currentNotice(){return currentNotice},get noticeClock(){return noticeClock},
@@ -635,8 +635,8 @@ test('A timed boss encounter saves the rescued spirit only after the entire rost
   assert(element('bossForecast').textContent.includes(bosses[0].name));
   assert.equal(t.state,'playing');const boss=t.enemies[0];assert(boss.boss&&boss.aggro);
   assert.equal(boss.xp,t.activeStage.xpRewards[t.activeStage.normalCount+t.activeStage.eliteCount]);
-  boss.hp=0;t.update(.01);assert.equal(t.state,'rescue');assert.equal(t.kills,t.activeStage.enemyCount);assert.equal(t.enemies.length,0);
-  assert(t.profile.clearedStages.includes(1),'Victory settles without pending roulette');
+  boss.hp=0;t.update(.01);assert.equal(t.state,'roulette');assert.equal(t.kills,t.activeStage.enemyCount);assert.equal(t.enemies.length,0);
+  assert.equal(JSON.stringify(t.profile),profile,'Final boss rewards resolve before victory settles');
   drainUpgradeChoices(t);assert.equal(t.state,'rescue');assert(t.player.level<=t.activeStage.experience.choices+1);assert.equal(t.gems.length,0);
   assert(element('overlay').innerHTML.includes(rescues[0].name));
   assert.equal(t.profile.unlockedStage,2);assert(t.profile.clearedStages.includes(1));assert.equal(t.profile.rescuedSprites.length,1);
@@ -648,13 +648,15 @@ test('First twenty stages have complete rising combat values, valid batches and 
   const names=new Set();let previous=null;
   for(const s of t.stages.slice(0,20)){
     assert.equal(s.id,names.size+1);assert(s.name&&s.description);names.add(s.name);
-    assert.equal(s.normalCount,s.id<=3?48+s.id*24:398);assert.equal(s.eliteCount,s.id<=3?s.id:4+2*s.id);assert.equal(s.bossCount,s.id<=3?1:s.id);
+    if(s.id<=3){assert.equal(s.normalCount,48+s.id*24);assert.equal(s.eliteCount,s.id);assert.equal(s.bossCount,1)}
+    else if(s.id>=10){assert.equal(s.normalCount,398);assert.equal(s.eliteCount,4+2*s.id);assert.equal(s.bossCount,s.id)}
+    else {assert(s.normalCount>previous.normalCount&&s.normalCount<398);assert(s.eliteCount>previous.eliteCount&&s.eliteCount<24);assert(s.bossCount>previous.bossCount&&s.bossCount<s.id)}
     assert.equal(s.enemyCount,s.normalCount+s.eliteCount+s.bossCount);assert(Number.isInteger(s.fastCount)&&s.fastCount>0&&s.fastCount<s.normalCount);
-    assert.deepEqual(Array.from(s.bossIds),s.id<=3?[s.id]:Array.from({length:s.id},(_,i)=>i+1));
+    assert.deepEqual(Array.from(s.bossIds),Array.from({length:s.bossCount},(_,i)=>s.id-s.bossCount+1+i));
     assert.equal(s.bossSchedule.length,s.bossCount);assert(s.bossSchedule[0]>=60&&s.bossSchedule[0]<=65);
     assert(s.bossSchedule.every((at,i)=>at>=60&&(i===0||at-s.bossSchedule[i-1]>=22)));
     assert.equal(s.bossActiveCap,s.bossCount);assert.equal(s.bossRecovery,0);assert(!Object.hasOwn(s,'bossTriggers'));
-    assert.equal(s.fastCount%2,0);assert.equal(s.initialPursuers%2,0);assert.equal(s.batchSize%2,0);
+    assert.equal(s.fastCount%2,0);assert.equal(s.batchSize%2,0);
     for(const type of ['slow','fast'])for(const stat of ['hp','speed','damage','xp']){
       assert(Number.isFinite(s[type][stat])&&s[type][stat]>0);
       if(previous)assert(s[type][stat]>=previous[type][stat]);
@@ -662,7 +664,7 @@ test('First twenty stages have complete rising combat values, valid batches and 
     assert(s.fast.speed>s.slow.speed);assert(s.slow.hp>s.fast.hp);
     for(const n of [s.initialPursuers,s.batchSize,s.pursuitInterval,s.reward.seeds,s.reward.cores])assert(Number.isFinite(n)&&n>0);
     assert(s.initialPursuers<398);assert(Number.isInteger(s.initialPursuers)&&Number.isInteger(s.batchSize));
-    if(previous){if(s.id!==4)assert(s.pursuitInterval<=previous.pursuitInterval);assert(s.reward.seeds>=previous.reward.seeds);assert(s.reward.cores>=previous.reward.cores)}
+    if(previous){if(s.id>10)assert(s.pursuitInterval<=previous.pursuitInterval);assert(s.reward.seeds>=previous.reward.seeds);assert(s.reward.cores>=previous.reward.cores)}
     if(s.firstClearGear)assert(t.gearDefs[s.firstClearGear]);
     previous=s;
   }
@@ -679,7 +681,7 @@ test('Every stage spawns the exact normal, elite and accumulated boss roster wit
     for(let i=0;i<t.enemies.length;i++){
       const e=t.enemies[i];
       assert.equal(e.xp,s.xpRewards[i]);
-      if(e.boss){const order=i-s.normalCount-s.eliteCount,stats=bosses[s.bossIds[order]-1];assert.equal(e.type,2);assert.equal(e.hp,s.beginner?.bossHp??stats.hp);assert.equal(e.speed,s.beginner?.bossSpeed??stats.speed);assert.equal(e.damage,s.beginner?.bossDamage??stats.damage);assert.equal(e.pursuitAt,Infinity);assert.equal(e.aggro,false);assert.equal(e.introduced,false);assert.equal(e.bossOrder,order);assert.equal(e.bossArrivalAt,s.bossSchedule[order]);continue}
+      if(e.boss){const order=i-s.normalCount-s.eliteCount,stats=bosses[s.bossIds[order]-1];assert.equal(e.type,2);assert.equal(e.hp,s.beginner?.bossHp??stats.hp);assert.equal(e.speed,s.beginner?.bossSpeed??stats.speed*(s.openingBoss?.speed??1));assert.equal(e.damage,s.beginner?.bossDamage??stats.damage*(s.openingBoss?.damage??1));assert.equal(e.pursuitAt,Infinity);assert.equal(e.aggro,false);assert.equal(e.introduced,false);assert.equal(e.bossOrder,order);assert.equal(e.bossArrivalAt,s.bossSchedule[order]);continue}
       if(e.elite){
         for(const key of ['hp','speed','damage'])assert.equal(e[key],s.elite[key]);
         assert.equal(e.r,25);assert.equal(e.maxHp,s.elite.hp);assert.equal(e.type,0);
@@ -755,7 +757,7 @@ test('Stage twenty encounters every earlier boss in order and pays only after th
   }
   assert.deepEqual(seen,Array.from(bosses.slice(0,20).map(b=>b.name)));assert.equal(t.nonBossKills,0);
   killNonBossCount(t,s.normalCount+s.eliteCount);assert.equal(t.nonBossKills,s.normalCount+s.eliteCount);
-  assert.equal(t.kills,s.enemyCount);assert.equal(t.enemies.length,0);assert.equal(t.state,'rescue');assert(t.profile.clearedStages.includes(20));
+  assert.equal(t.kills,s.enemyCount);assert.equal(t.enemies.length,0);assert.equal(t.state,'roulette');assert.equal(JSON.stringify(t.profile),before);
   drainUpgradeChoices(t);assert.equal(t.state,'rescue');assert(t.player.level<=t.activeStage.experience.choices+1);
   assert.equal(t.profile.seeds,s.reward.seeds);assert.equal(t.profile.cores,s.reward.cores);assert.deepEqual(Array.from(t.profile.rescuedSprites),[20]);
   t.completeRescue();assert.equal(t.state,'ended');assert(t.startEndless());assert(t.enemies.every(e=>!e.boss&&!e.elite));
@@ -1045,7 +1047,7 @@ test('Bosses activate immediately and rescue animations complete automatically t
   // real choices so this test continues to isolate boss/rescue animation clocks.
   for(let i=0;i<150;i++){now+=40;t.frame(now);drainUpgradeChoices(t)}
   assert.equal(t.state,'playing');const boss=t.enemies.find(e=>e.boss);assert(boss.aggro);boss.hp=0;t.update(.001);
-  assert.equal(t.state,'rescue');drainUpgradeChoices(t);assert.equal(t.state,'rescue');const elapsed=t.elapsed,hp=t.player.hp;
+  assert.equal(t.state,'roulette');drainUpgradeChoices(t);assert.equal(t.state,'rescue');const elapsed=t.elapsed,hp=t.player.hp;
   for(let i=0;i<20;i++){now+=40;t.frame(now)}
   assert.equal(t.state,'rescue');assert.equal(t.elapsed,elapsed);assert.equal(t.player.hp,hp);
   for(let i=0;i<150&&t.state==='rescue';i++){now+=40;t.frame(now)}
@@ -1057,7 +1059,7 @@ test('Pausing after a boss arrival freezes combat, and hidden tabs still freeze 
   assert.equal(t.state,'playing');t.pause();const elapsed=t.elapsed;let now=1000;document.hidden=true;
   for(let i=0;i<150;i++){now+=40;t.frame(now)}
   assert.equal(t.state,'paused');assert.equal(t.elapsed,elapsed);document.hidden=false;t.resume();
-  t.enemies.find(e=>e.boss).hp=0;t.update(.001);assert.equal(t.state,'rescue');drainUpgradeChoices(t);assert.equal(t.state,'rescue');document.hidden=true;
+  t.enemies.find(e=>e.boss).hp=0;t.update(.001);assert.equal(t.state,'roulette');drainUpgradeChoices(t);assert.equal(t.state,'rescue');document.hidden=true;
   for(let i=0;i<150;i++){now+=40;t.frame(now)}
   assert.equal(t.state,'rescue');document.hidden=false;
   for(let i=0;i<150&&t.state==='rescue';i++){now+=40;t.frame(now)}assert.equal(t.state,'ended');
@@ -1188,7 +1190,7 @@ test('Endless mode is available only after a real boss victory and completed res
   for(const e of t.enemies)if(!e.boss)e.hp=0;t.shotClock=Infinity;t.elapsed=t.activeStage.bossSchedule[0];t.update(.001);drainUpgradeChoices(t);if(t.state==='playing')t.update(.001);
   assert.equal(t.state,'playing');assert(!t.startEndless());
   assert(!t.startEndless());t.enemies.find(e=>e.boss).hp=0;t.update(.001);
-  assert.equal(t.state,'rescue');assert(!t.startEndless());drainUpgradeChoices(t);
+  assert.equal(t.state,'roulette');assert(!t.startEndless());drainUpgradeChoices(t);
   assert.equal(t.state,'rescue');assert(!t.startEndless());t.completeRescue();
   assert(element('overlay').innerHTML.includes('id="startEndless"'));t.player.xp=0;t.gems=[];
   assert(t.startEndless());assert(!t.startEndless());
@@ -1199,7 +1201,7 @@ test('Endless mode is available only after a real boss victory and completed res
 test('Endless entry keeps the current build and experience, heals health and resets its own stats',({t,element})=>{
   clearStage(t);t.player.upgrades.damage=2;t.player.damage*=1.6;t.player.shots=4;t.player.hp=3;t.player.xp=2;t.gems=[{x:40,y:40,value:7}];
   const before={...t.player},saved=JSON.stringify(t.profile),gem=t.gems[0];
-  element('startEndless').onclick();assert.equal(t.state,'roulette');assert.equal(t.runMode,'endless');
+  element('startEndless').onclick();assert.equal(t.state,'upgrade');assert.equal(t.runMode,'endless');
   for(const key of ['damage','rate','shots','speed','pickup','level','need','maxHp'])assert.equal(t.player[key],before[key]);
   assert(t.player.xp>=before.xp);assert.equal(t.player.upgrades.damage,2);assert.equal(t.player.hp,t.player.maxHp);assert(t.player.inv>0);
   assert.equal(t.gems[0],gem);assert.equal(t.elapsed,0);assert.equal(t.kills,0);assert.equal(t.endlessWave,1);
@@ -1280,7 +1282,7 @@ test('The visible endless exit button and defeat both retain the saved clear and
 });
 test('New endless XP resolves as random upgrades at entry without losing the completed stage build',({t})=>{
   clearStage(t);t.gems=[];t.player.xp=t.player.need;const level=t.player.level;
-  assert(t.startEndless());assert.equal(t.state,'roulette');drainUpgradeChoices(t);assert.equal(t.state,'playing');assert.equal(t.runMode,'endless');assert.equal(t.endlessWave,1);
+  assert(t.startEndless());assert.equal(t.state,'upgrade');drainUpgradeChoices(t);assert.equal(t.state,'playing');assert.equal(t.runMode,'endless');assert.equal(t.endlessWave,1);
   assert(t.player.level>=level+1);assert.equal(t.state,'playing');assert(t.player.xp<t.player.need);
 });
 test('Nearby and capped experience drops merge without losing any earned value',({t})=>{
@@ -2424,4 +2426,4 @@ if(require.main===module){
   console.log(`${count} gameplay checks passed.`);
   if(failures.length){console.error(`${failures.length} checks failed.`);process.exitCode=1;}
 }
-module.exports={createGame,quietField,clearStage,click};
+module.exports={createGame,quietField,clearStage,click,enemy,drainUpgradeChoices};
